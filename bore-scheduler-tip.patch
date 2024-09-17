@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched.h b/include/linux/sched.h
---- a/include/linux/sched.h	2024-09-15 16:21:09.000000000 +0200
-+++ b/include/linux/sched.h	2024-09-15 22:54:30.596292345 +0200
+--- a/include/linux/sched.h	2024-09-17 10:48:05.000000000 +0200
++++ b/include/linux/sched.h	2024-09-17 11:39:27.627671611 +0200
 @@ -555,6 +555,16 @@ struct sched_entity {
  	u64				sum_exec_runtime;
  	u64				prev_sum_exec_runtime;
@@ -19,8 +19,8 @@ diff -rupN a/include/linux/sched.h b/include/linux/sched.h
  	u64				slice;
  
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2024-09-15 16:21:09.000000000 +0200
-+++ b/init/Kconfig	2024-09-15 22:54:30.604292408 +0200
+--- a/init/Kconfig	2024-09-17 10:48:05.000000000 +0200
++++ b/init/Kconfig	2024-09-17 11:39:27.629671629 +0200
 @@ -1297,6 +1297,23 @@ config CHECKPOINT_RESTORE
  
  	  If unsure, say N here.
@@ -46,8 +46,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Automatic process group scheduling"
  	select CGROUPS
 diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
---- a/kernel/Kconfig.hz	2024-09-15 16:21:09.000000000 +0200
-+++ b/kernel/Kconfig.hz	2024-09-15 22:54:30.619292525 +0200
+--- a/kernel/Kconfig.hz	2024-09-17 10:48:05.000000000 +0200
++++ b/kernel/Kconfig.hz	2024-09-17 11:39:27.629671629 +0200
 @@ -55,5 +55,21 @@ config HZ
  	default 300 if HZ_300
  	default 1000 if HZ_1000
@@ -71,8 +71,8 @@ diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
  config SCHED_HRTICK
  	def_bool HIGH_RES_TIMERS
 diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
---- a/kernel/sched/core.c	2024-09-15 16:21:09.000000000 +0200
-+++ b/kernel/sched/core.c	2024-09-15 22:54:30.625292573 +0200
+--- a/kernel/sched/core.c	2024-09-17 10:48:05.000000000 +0200
++++ b/kernel/sched/core.c	2024-09-17 11:40:51.421423471 +0200
 @@ -4377,6 +4377,138 @@ int wake_up_state(struct task_struct *p,
  	return try_to_wake_up(p, state, 0);
  }
@@ -238,15 +238,15 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  
 +#ifdef CONFIG_SCHED_BORE
 +	sched_init_bore();
-+	printk(KERN_INFO "BORE (Burst-Oriented Response Enhancer) CPU Scheduler modification 5.3.0-rc1 by Masahito Suzuki");
++	printk(KERN_INFO "BORE (Burst-Oriented Response Enhancer) CPU Scheduler modification 5.3.0-rc3 by Masahito Suzuki");
 +#endif // CONFIG_SCHED_BORE
 +
  	wait_bit_init();
  
  #ifdef CONFIG_FAIR_GROUP_SCHED
 diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
---- a/kernel/sched/debug.c	2024-09-15 16:21:09.000000000 +0200
-+++ b/kernel/sched/debug.c	2024-09-15 22:54:30.629292604 +0200
+--- a/kernel/sched/debug.c	2024-09-17 10:48:05.000000000 +0200
++++ b/kernel/sched/debug.c	2024-09-17 11:39:27.630671638 +0200
 @@ -167,7 +167,52 @@ static const struct file_operations sche
  };
  
@@ -351,8 +351,8 @@ diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2024-09-15 16:21:09.000000000 +0200
-+++ b/kernel/sched/fair.c	2024-09-15 22:56:37.549314157 +0200
+--- a/kernel/sched/fair.c	2024-09-17 10:48:05.000000000 +0200
++++ b/kernel/sched/fair.c	2024-09-17 11:41:34.216806962 +0200
 @@ -19,6 +19,9 @@
   *
   *  Adaptive scheduling granularity, math enhancements by Peter Zijlstra
@@ -772,20 +772,19 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	/*
  	 * Tell update_rq_clock() that we've just updated,
  	 * so we don't do microscopic update in schedule()
-@@ -13065,6 +13352,10 @@ static void task_tick_fair(struct rq *rq
+@@ -13065,6 +13352,9 @@ static void task_tick_fair(struct rq *rq
  static void task_fork_fair(struct task_struct *p)
  {
  	set_task_max_allowed_capacity(p);
 +	#ifdef CONFIG_SCHED_BORE
-+		struct sched_entity *se = &p->se;
-+		update_burst_score(se);
++		update_burst_score(&p->se);
 +	#endif // CONFIG_SCHED_BORE
  }
  
  /*
 diff -rupN a/kernel/sched/features.h b/kernel/sched/features.h
---- a/kernel/sched/features.h	2024-09-15 16:21:09.000000000 +0200
-+++ b/kernel/sched/features.h	2024-09-15 22:54:30.637292667 +0200
+--- a/kernel/sched/features.h	2024-09-17 10:48:05.000000000 +0200
++++ b/kernel/sched/features.h	2024-09-17 11:39:27.631671647 +0200
 @@ -17,7 +17,11 @@ SCHED_FEAT(PLACE_REL_DEADLINE, true)
   * Inhibit (wakeup) preemption until the current task has either matched the
   * 0-lag point or until is has exhausted it's slice.
@@ -799,8 +798,8 @@ diff -rupN a/kernel/sched/features.h b/kernel/sched/features.h
   * Allow wakeup of tasks with a shorter slice to cancel RESPECT_SLICE for
   * current.
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2024-09-15 16:21:09.000000000 +0200
-+++ b/kernel/sched/sched.h	2024-09-15 22:54:30.641292698 +0200
+--- a/kernel/sched/sched.h	2024-09-17 10:48:05.000000000 +0200
++++ b/kernel/sched/sched.h	2024-09-17 11:39:27.632671656 +0200
 @@ -1992,7 +1992,11 @@ static inline void update_sched_domain_d
  static inline void dirty_sched_domain_sysctl(int cpu) { }
  #endif
