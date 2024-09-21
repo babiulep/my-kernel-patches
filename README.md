@@ -2,7 +2,9 @@
 Patches for the linux kernel
 
 2024-09-21:
-- updated bore scheduler to 5.3.0 for linux mainline
+- added bore5.5.0-rc1.patch for linux mainline
+  updated bore scheduler to 5.3.0 for linux mainline
+  renamed bore-scheduler-tip.patch to bore5.3.0.patch
 
 2024-09-19:
 - mainline commit 839c4f596f898edc424070dc8b517381572f8502  
