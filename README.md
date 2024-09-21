@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-09-21:
+- updated bore scheduler to 5.3.0 for linux mainline
+
 2024-09-19:
 - mainline commit 839c4f596f898edc424070dc8b517381572f8502  
   added nvidia-560.35.03.patch  
