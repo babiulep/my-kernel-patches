@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-09-24:
+- update bore5.5.0.patch to 0001-linux6.11-bc9057da-bore5.5.0-rc3.patch
+
 2024-09-23:
 - updated bore5.5.0.patch to 0001-linux6.11-bc9057da-bore5.5.0-rc2.patch
 
