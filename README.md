@@ -1,6 +1,10 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-09-29:
+- remove bore5.3.0.patch  
+  bore5.5.0.patch: mainline commit 3efc57369a0ce8f76bf0804f7e673982384e4ac9
+
 2024-09-25:
 - remove rc3 from bore5.5.0.patch
 
