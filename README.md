@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-10-01:
+- added bore5.5.1-6.12-rc1.patch
+
 2024-09-30:
 - separate patches for 6.11.1 and 6.12-rc1
 
