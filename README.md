@@ -1,6 +1,10 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-10-18:
+- add bore5.6.1-6.12.patch  
+  works with mainline commit 75aa74d52f43e75d0beb20572f98529071b700e5
+
 2024-10-01:
 - added bore5.5.1-6.12-rc1.patch
 
