@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-10-21:
+- add bore5.6.1-tip.patch for tip repository
+
 2024-10-18:
 - add bore5.6.1-6.12.patch  
   works with mainline commit 75aa74d52f43e75d0beb20572f98529071b700e5
