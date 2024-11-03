@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 --- a/include/linux/sched/bore.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/linux/sched/bore.h	2024-10-29 10:17:42.884023263 +0100
++++ b/include/linux/sched/bore.h	2024-11-03 11:41:47.286048911 +0100
 @@ -0,0 +1,37 @@
 +
 +#include <linux/sched.h>
@@ -40,8 +40,8 @@ diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 +#endif // CONFIG_SCHED_BORE
 +#endif // _LINUX_SCHED_BORE_H
 diff -rupN a/include/linux/sched.h b/include/linux/sched.h
---- a/include/linux/sched.h	2024-10-29 08:18:59.000000000 +0100
-+++ b/include/linux/sched.h	2024-10-29 10:17:42.884023263 +0100
+--- a/include/linux/sched.h	2024-11-03 06:38:41.000000000 +0100
++++ b/include/linux/sched.h	2024-11-03 11:41:47.286048911 +0100
 @@ -538,6 +538,14 @@ struct sched_statistics {
  #endif /* CONFIG_SCHEDSTATS */
  } ____cacheline_aligned;
@@ -74,8 +74,8 @@ diff -rupN a/include/linux/sched.h b/include/linux/sched.h
  	u64				slice;
  
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2024-10-29 08:18:59.000000000 +0100
-+++ b/init/Kconfig	2024-10-29 10:17:42.884023263 +0100
+--- a/init/Kconfig	2024-11-03 06:38:41.000000000 +0100
++++ b/init/Kconfig	2024-11-03 11:41:47.286048911 +0100
 @@ -1332,6 +1332,23 @@ config CHECKPOINT_RESTORE
  
  	  If unsure, say N here.
@@ -101,8 +101,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Automatic process group scheduling"
  	select CGROUPS
 diff -rupN a/kernel/fork.c b/kernel/fork.c
---- a/kernel/fork.c	2024-10-29 08:18:59.000000000 +0100
-+++ b/kernel/fork.c	2024-10-29 10:17:42.884023263 +0100
+--- a/kernel/fork.c	2024-11-03 06:38:41.000000000 +0100
++++ b/kernel/fork.c	2024-11-03 11:41:47.290048937 +0100
 @@ -113,6 +113,8 @@
  #include <asm/cacheflush.h>
  #include <asm/tlbflush.h>
@@ -123,8 +123,8 @@ diff -rupN a/kernel/fork.c b/kernel/fork.c
  	retval = perf_event_init_task(p, clone_flags);
  	if (retval)
 diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
---- a/kernel/Kconfig.hz	2024-10-29 08:18:59.000000000 +0100
-+++ b/kernel/Kconfig.hz	2024-10-29 10:17:42.888023288 +0100
+--- a/kernel/Kconfig.hz	2024-11-03 06:38:41.000000000 +0100
++++ b/kernel/Kconfig.hz	2024-11-03 11:41:47.286048911 +0100
 @@ -55,5 +55,48 @@ config HZ
  	default 300 if HZ_300
  	default 1000 if HZ_1000
@@ -148,7 +148,7 @@ diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
 +
 +config MIGRATION_COST_BASE_NS
 +	int "Default value for migration_cost_base_ns"
-+	default 300000
++	default 500000
 +	help
 +	 The BORE Scheduler automatically calculates the optimal
 +	 migration_cost_ns using the following equation:
@@ -161,7 +161,7 @@ diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
 +
 +config MIGRATION_COST_STEP_NS
 +	int "Default value for migration_cost_step_ns"
-+	default 50000
++	default 0
 +	help
 +	 The BORE Scheduler automatically calculates the optimal
 +	 migration_cost_ns using the following equation:
@@ -176,7 +176,7 @@ diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
  	def_bool HIGH_RES_TIMERS
 diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 --- a/kernel/sched/bore.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/bore.c	2024-10-29 10:17:42.888023288 +0100
++++ b/kernel/sched/bore.c	2024-11-03 11:41:47.290048937 +0100
 @@ -0,0 +1,381 @@
 +/*
 + *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
@@ -560,8 +560,8 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +#endif // CONFIG_SYSCTL
 +#endif // CONFIG_SCHED_BORE
 diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
---- a/kernel/sched/core.c	2024-10-29 08:18:59.000000000 +0100
-+++ b/kernel/sched/core.c	2024-10-29 10:17:42.892023315 +0100
+--- a/kernel/sched/core.c	2024-11-03 06:38:41.000000000 +0100
++++ b/kernel/sched/core.c	2024-11-03 11:41:47.290048937 +0100
 @@ -97,6 +97,8 @@
  #include "../../io_uring/io-wq.h"
  #include "../smpboot.h"
@@ -576,7 +576,7 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  #endif
  
 +#ifdef CONFIG_SCHED_BORE
-+	printk(KERN_INFO "BORE (Burst-Oriented Response Enhancer) CPU Scheduler modification 5.7.1 by Masahito Suzuki");
++	printk(KERN_INFO "BORE (Burst-Oriented Response Enhancer) CPU Scheduler modification 5.7.2 by Masahito Suzuki");
 +	init_task_bore(&init_task);
 +#endif // CONFIG_SCHED_BORE
 +
@@ -584,8 +584,8 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  
  #ifdef CONFIG_FAIR_GROUP_SCHED
 diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
---- a/kernel/sched/debug.c	2024-10-29 08:18:59.000000000 +0100
-+++ b/kernel/sched/debug.c	2024-10-29 10:17:42.896023341 +0100
+--- a/kernel/sched/debug.c	2024-11-03 06:38:41.000000000 +0100
++++ b/kernel/sched/debug.c	2024-11-03 11:41:47.290048937 +0100
 @@ -167,7 +167,55 @@ static const struct file_operations sche
  };
  
@@ -698,8 +698,8 @@ diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2024-10-29 08:18:59.000000000 +0100
-+++ b/kernel/sched/fair.c	2024-10-29 10:17:42.900023369 +0100
+--- a/kernel/sched/fair.c	2024-11-03 06:38:41.000000000 +0100
++++ b/kernel/sched/fair.c	2024-11-03 11:42:26.598299705 +0100
 @@ -55,6 +55,8 @@
  #include "stats.h"
  #include "autogroup.h"
@@ -733,8 +733,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
 + * EEVDF: default 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds
 + */
 +#ifdef CONFIG_SCHED_BORE
-+const static  uint nsecs_per_tick              = 1000000000ULL / HZ;
-+const_debug   uint sysctl_sched_min_base_slice = CONFIG_MIN_BASE_SLICE_NS;
++static const unsigned int nsecs_per_tick       = 1000000000ULL / HZ;
++unsigned int sysctl_sched_min_base_slice       = CONFIG_MIN_BASE_SLICE_NS;
 +__read_mostly uint sysctl_sched_base_slice     = nsecs_per_tick;
 +#else // !CONFIG_SCHED_BORE
  unsigned int sysctl_sched_base_slice			= 750000ULL;
@@ -742,8 +742,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
 +#endif // CONFIG_SCHED_BORE
  
 +#ifdef CONFIG_SCHED_BORE
-+const_debug uint sysctl_sched_migration_cost_base = CONFIG_MIGRATION_COST_BASE_NS;
-+const_debug uint sysctl_sched_migration_cost_step = CONFIG_MIGRATION_COST_STEP_NS;
++unsigned int sysctl_sched_migration_cost_base  = CONFIG_MIGRATION_COST_BASE_NS;
++unsigned int sysctl_sched_migration_cost_step  = CONFIG_MIGRATION_COST_STEP_NS;
 +__read_mostly uint sysctl_sched_migration_cost = CONFIG_MIGRATION_COST_BASE_NS;
 +#else // !CONFIG_SCHED_BORE
  const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
@@ -937,16 +937,16 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  }
  
 diff -rupN a/kernel/sched/Makefile b/kernel/sched/Makefile
---- a/kernel/sched/Makefile	2024-10-29 08:18:59.000000000 +0100
-+++ b/kernel/sched/Makefile	2024-10-29 10:17:42.904023394 +0100
+--- a/kernel/sched/Makefile	2024-11-03 06:38:41.000000000 +0100
++++ b/kernel/sched/Makefile	2024-11-03 11:41:47.290048937 +0100
 @@ -32,3 +32,4 @@ obj-y += core.o
  obj-y += fair.o
  obj-y += build_policy.o
  obj-y += build_utility.o
 +obj-y += bore.o
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2024-10-29 08:18:59.000000000 +0100
-+++ b/kernel/sched/sched.h	2024-10-29 10:17:42.904023394 +0100
+--- a/kernel/sched/sched.h	2024-11-03 06:38:41.000000000 +0100
++++ b/kernel/sched/sched.h	2024-11-03 11:41:47.290048937 +0100
 @@ -2082,7 +2082,12 @@ static inline void update_sched_domain_d
  static inline void dirty_sched_domain_sysctl(int cpu) { }
  #endif
@@ -965,16 +965,16 @@ diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
  
  extern const_debug unsigned int sysctl_sched_nr_migrate;
 +#ifdef CONFIG_SCHED_BORE
-+extern const_debug unsigned int sysctl_sched_migration_cost_base;
-+extern const_debug unsigned int sysctl_sched_migration_cost_step;
-+extern __read_mostly unsigned int sysctl_sched_migration_cost;
++extern unsigned int sysctl_sched_migration_cost_base;
++extern unsigned int sysctl_sched_migration_cost_step;
++extern __read_mostly uint sysctl_sched_migration_cost;
 +#else // !CONFIG_SCHED_BORE
  extern const_debug unsigned int sysctl_sched_migration_cost;
 +#endif // CONFIG_SCHED_BORE
  
 +#ifdef CONFIG_SCHED_BORE
-+extern const_debug unsigned int sysctl_sched_min_base_slice;
-+extern __read_mostly unsigned int sysctl_sched_base_slice;
++extern unsigned int sysctl_sched_min_base_slice;
++extern __read_mostly uint sysctl_sched_base_slice;
 +#else // !CONFIG_SCHED_BORE
  extern unsigned int sysctl_sched_base_slice;
 +#endif // CONFIG_SCHED_BORE
