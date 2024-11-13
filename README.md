@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-11-13:
+- add bore5.7.3-tip.patch for tip repository
+
 2024-11-03:
 - add bore5.7.2-tip.patch for tip repository
 
