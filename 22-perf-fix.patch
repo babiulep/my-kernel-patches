@@ -1,0 +1,69 @@
+---
+v2: update build tests.
+---
+ tools/perf/Makefile.config | 4 ++++
+ tools/perf/Makefile.perf   | 2 +-
+ tools/perf/tests/make      | 6 +++---
+ 3 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/tools/perf/Makefile.config b/tools/perf/Makefile.config
+index b93ed2b7623f..707d7355ff18 100644
+--- a/tools/perf/Makefile.config
++++ b/tools/perf/Makefile.config
+@@ -91,6 +91,10 @@ ifneq ($(SRCARCH),$(filter $(SRCARCH),x86 arm arm64 powerpc s390 csky riscv loon
+   NO_LIBDW_DWARF_UNWIND := 1
+ endif
+ 
++ifneq ($(LIBUNWIND),1)
++  NO_LIBUNWIND := 1
++endif
++
+ ifeq ($(LIBUNWIND_LIBS),)
+   NO_LIBUNWIND := 1
+ endif
+diff --git a/tools/perf/Makefile.perf b/tools/perf/Makefile.perf
+index b4dee7c20ed1..d74241a15131 100644
+--- a/tools/perf/Makefile.perf
++++ b/tools/perf/Makefile.perf
+@@ -52,7 +52,7 @@ include ../scripts/utilities.mak
+ #
+ # Define NO_LIBELF if you do not want libelf dependency (e.g. cross-builds)
+ #
+-# Define NO_LIBUNWIND if you do not want libunwind dependency for dwarf
++# Define LIBUNWIND if you do not want libunwind dependency for dwarf
+ # backtrace post unwind.
+ #
+ # Define NO_BACKTRACE if you do not want stack backtrace debug feature
+diff --git a/tools/perf/tests/make b/tools/perf/tests/make
+index a5040772043f..a7fcbd589752 100644
+--- a/tools/perf/tests/make
++++ b/tools/perf/tests/make
+@@ -81,7 +81,7 @@ make_no_gtk2        := NO_GTK2=1
+ make_no_ui          := NO_SLANG=1 NO_GTK2=1
+ make_no_demangle    := NO_DEMANGLE=1
+ make_no_libelf      := NO_LIBELF=1
+-make_no_libunwind   := NO_LIBUNWIND=1
++make_libunwind      := LIBUNWIND=1
+ make_no_libdw_dwarf_unwind := NO_LIBDW_DWARF_UNWIND=1
+ make_no_backtrace   := NO_BACKTRACE=1
+ make_no_libcapstone := NO_CAPSTONE=1
+@@ -121,7 +121,7 @@ make_static         := LDFLAGS=-static NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX3
+ 
+ # all the NO_* variable combined
+ make_minimal        := NO_LIBPERL=1 NO_LIBPYTHON=1 NO_GTK2=1
+-make_minimal        += NO_DEMANGLE=1 NO_LIBELF=1 NO_LIBUNWIND=1 NO_BACKTRACE=1
++make_minimal        += NO_DEMANGLE=1 NO_LIBELF=1 NO_BACKTRACE=1
+ make_minimal        += NO_LIBNUMA=1 NO_LIBAUDIT=1 NO_LIBBIONIC=1
+ make_minimal        += NO_LIBDW_DWARF_UNWIND=1 NO_AUXTRACE=1 NO_LIBBPF=1
+ make_minimal        += NO_LIBCRYPTO=1 NO_SDT=1 NO_JVMTI=1 NO_LIBZSTD=1
+@@ -153,7 +153,7 @@ run += make_no_gtk2
+ run += make_no_ui
+ run += make_no_demangle
+ run += make_no_libelf
+-run += make_no_libunwind
++run += make_libunwind
+ run += make_no_libdw_dwarf_unwind
+ run += make_no_backtrace
+ run += make_no_libcapstone
+-- 
+2.47.0.163.g1226f6d8fa-goog
