@@ -1,0 +1,147 @@
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH 1/4] wireguard: device: omit unnecessary memset of netdev
+ private data
+From: Tobias Klauser <tklauser@distanz.ch>
+Date: Sun, 17 Nov 2024 22:20:27 +0100
+Message-Id: <20241117212030.629159-2-Jason@zx2c4.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+The memory for netdev_priv is allocated using kvzalloc in
+alloc_netdev_mqs before rtnl_link_ops->setup is called so there is no
+need to zero it again in wg_setup.
+
+Signed-off-by: Tobias Klauser <tklauser@distanz.ch>
+Reviewed-by: Simon Horman <horms@kernel.org>
+Signed-off-by: Jason A. Donenfeld <Jason@zx2c4.com>
+---
+ drivers/net/wireguard/device.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/net/wireguard/device.c b/drivers/net/wireguard/device.c
+index 45e9b908dbfb..a2ba71fbbed4 100644
+--- a/drivers/net/wireguard/device.c
++++ b/drivers/net/wireguard/device.c
+@@ -302,7 +302,6 @@ static void wg_setup(struct net_device *dev)
+ 	/* We need to keep the dst around in case of icmp replies. */
+ 	netif_keep_dst(dev);
+ 
+-	memset(wg, 0, sizeof(*wg));
+ 	wg->dev = dev;
+ }
+ 
+-- 
+2.46.0
+
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH 2/4] wireguard: allowedips: remove redundant selftest call
+From: Dheeraj Reddy Jonnalagadda <dheeraj.linuxdev@gmail.com>
+Date: Sun, 17 Nov 2024 22:20:28 +0100
+Message-Id: <20241117212030.629159-3-Jason@zx2c4.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+This commit fixes a useless call issue detected by Coverity (CID
+1508092). The call to horrible_allowedips_lookup_v4 is unnecessary as
+its return value is never checked.
+
+Signed-off-by: Dheeraj Reddy Jonnalagadda <dheeraj.linuxdev@gmail.com>
+Fixes: e7096c131e51 ("net: WireGuard secure network tunnel")
+Signed-off-by: Jason A. Donenfeld <Jason@zx2c4.com>
+---
+ drivers/net/wireguard/selftest/allowedips.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/net/wireguard/selftest/allowedips.c b/drivers/net/wireguard/selftest/allowedips.c
+index 3d1f64ff2e12..25de7058701a 100644
+--- a/drivers/net/wireguard/selftest/allowedips.c
++++ b/drivers/net/wireguard/selftest/allowedips.c
+@@ -383,7 +383,6 @@ static __init bool randomized_test(void)
+ 		for (i = 0; i < NUM_QUERIES; ++i) {
+ 			get_random_bytes(ip, 4);
+ 			if (lookup(t.root4, 32, ip) != horrible_allowedips_lookup_v4(&h, (struct in_addr *)ip)) {
+-				horrible_allowedips_lookup_v4(&h, (struct in_addr *)ip);
+ 				pr_err("allowedips random v4 self-test: FAIL\n");
+ 				goto free;
+ 			}
+-- 
+2.46.0
+
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH 3/4] wireguard: selftests: load nf_conntrack if not present
+From: Hangbin Liu <liuhangbin@gmail.com>
+Date: Sun, 17 Nov 2024 22:20:29 +0100
+Message-Id: <20241117212030.629159-4-Jason@zx2c4.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Some distros may not load nf_conntrack by default, which will cause
+subsequent nf_conntrack sets to fail. Load this module if it is not
+already loaded.
+
+[ Jason: add [[ -e ... ]] check so this works in the qemu harness. ]
+
+Fixes: e7096c131e51 ("net: WireGuard secure network tunnel")
+Signed-off-by: Hangbin Liu <liuhangbin@gmail.com>
+Reviewed-by: Simon Horman <horms@kernel.org>
+Signed-off-by: Jason A. Donenfeld <Jason@zx2c4.com>
+---
+ tools/testing/selftests/wireguard/netns.sh | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/testing/selftests/wireguard/netns.sh b/tools/testing/selftests/wireguard/netns.sh
+index 405ff262ca93..55500f901fbc 100755
+--- a/tools/testing/selftests/wireguard/netns.sh
++++ b/tools/testing/selftests/wireguard/netns.sh
+@@ -332,6 +332,7 @@ waitiface $netns1 vethc
+ waitiface $netns2 veths
+ 
+ n0 bash -c 'printf 1 > /proc/sys/net/ipv4/ip_forward'
++[[ -e /proc/sys/net/netfilter/nf_conntrack_udp_timeout ]] || modprobe nf_conntrack
+ n0 bash -c 'printf 2 > /proc/sys/net/netfilter/nf_conntrack_udp_timeout'
+ n0 bash -c 'printf 2 > /proc/sys/net/netfilter/nf_conntrack_udp_timeout_stream'
+ n0 iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -d 10.0.0.0/24 -j SNAT --to 10.0.0.1
+-- 
+2.46.0
+
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH 4/4] wireguard: device: support big tcp GSO
+From: Daniel Borkmann <daniel@iogearbox.net>
+Date: Sun, 17 Nov 2024 22:20:30 +0100
+Message-Id: <20241117212030.629159-5-Jason@zx2c4.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Advertise GSO_MAX_SIZE as TSO max size in order support BIG TCP for wireguard.
+This helps to improve wireguard performance a bit when enabled as it allows
+wireguard to aggregate larger skbs in wg_packet_consume_data_done() via
+napi_gro_receive(), but also allows the stack to build larger skbs on xmit
+where the driver then segments them before encryption inside wg_xmit().
+We've seen a 15% improvement in TCP stream performance.
+
+Signed-off-by: Daniel Borkmann <daniel@iogearbox.net>
+Signed-off-by: Jason A. Donenfeld <Jason@zx2c4.com>
+---
+ drivers/net/wireguard/device.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/net/wireguard/device.c b/drivers/net/wireguard/device.c
+index a2ba71fbbed4..6cf173a008e7 100644
+--- a/drivers/net/wireguard/device.c
++++ b/drivers/net/wireguard/device.c
+@@ -302,6 +302,8 @@ static void wg_setup(struct net_device *dev)
+ 	/* We need to keep the dst around in case of icmp replies. */
+ 	netif_keep_dst(dev);
+ 
++	netif_set_tso_max_size(dev, GSO_MAX_SIZE);
++
+ 	wg->dev = dev;
+ }
+ 
+-- 
+2.46.0
+

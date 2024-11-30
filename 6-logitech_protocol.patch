@@ -1,0 +1,111 @@
+diff -rupN a/drivers/hid/hid-logitech-hidpp.c b/drivers/hid/hid-logitech-hidpp.c
+--- a/drivers/hid/hid-logitech-hidpp.c	2024-09-21 04:34:00.000000000 +0200
++++ b/drivers/hid/hid-logitech-hidpp.c	2024-09-22 10:58:03.115464239 +0200
+@@ -974,7 +974,7 @@ static int hidpp_root_get_protocol_versi
+ 		return -EIO;
+ 
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -1069,7 +1069,7 @@ static int hidpp_devicenametype_get_coun
+ 		CMD_GET_DEVICE_NAME_TYPE_GET_COUNT, NULL, 0, &response);
+ 
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -1093,7 +1093,7 @@ static int hidpp_devicenametype_get_devi
+ 		&response);
+ 
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -1254,7 +1254,7 @@ static int hidpp20_batterylevel_get_batt
+ 	if (ret == HIDPP_ERROR_RESOURCE_ERROR)
+ 		return -EIO;
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -1280,7 +1280,7 @@ static int hidpp20_batterylevel_get_batt
+ 					  CMD_BATTERY_LEVEL_STATUS_GET_BATTERY_CAPABILITY,
+ 					  NULL, 0, &response);
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -1437,7 +1437,7 @@ static int hidpp20_battery_get_battery_v
+ 					  NULL, 0, &response);
+ 
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -1586,7 +1586,7 @@ static int hidpp20_unifiedbattery_get_ca
+ 	if (ret == HIDPP_ERROR_RESOURCE_ERROR)
+ 		return -EIO;
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -1676,7 +1676,7 @@ static int hidpp20_unifiedbattery_get_st
+ 	if (ret == HIDPP_ERROR_RESOURCE_ERROR)
+ 		return -EIO;
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -2128,7 +2128,7 @@ static int hidpp_solar_request_battery_e
+ 					  CMD_SOLAR_SET_LIGHT_MEASURE,
+ 					  params, 2, &response);
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -2221,7 +2221,7 @@ static int hidpp_touchpad_fw_items_set(s
+ 		CMD_TOUCHPAD_FW_ITEMS_SET, &items->state, 1, &response);
+ 
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -2291,7 +2291,7 @@ static int hidpp_touchpad_get_raw_info(s
+ 		CMD_TOUCHPAD_GET_RAW_INFO, NULL, 0, &response);
+ 
+ 	if (ret > 0) {
+-		hid_err(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
++		hid_err_once(hidpp->hid_dev, "%s: received protocol error 0x%02x\n",
+ 			__func__, ret);
+ 		return -EPROTO;
+ 	}
+@@ -3458,7 +3458,7 @@ static int g920_get_config(struct hidpp_
+ 	if (ret) {
+ 		if (ret < 0)
+ 			return ret;
+-		hid_err(hidpp->hid_dev,
++		hid_err_once(hidpp->hid_dev,
+ 			"%s: received protocol error 0x%02x\n", __func__, ret);
+ 		return -EPROTO;
+ 	}

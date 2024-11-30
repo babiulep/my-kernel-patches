@@ -1,0 +1,1469 @@
+diff -rupN a/fs/ext4/balloc.c b/fs/ext4/balloc.c
+--- a/fs/ext4/balloc.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/balloc.c	2024-11-29 15:12:20.113192085 +0100
+@@ -550,7 +550,8 @@ ext4_read_block_bitmap_nowait(struct sup
+ 	trace_ext4_read_block_bitmap_load(sb, block_group, ignore_locked);
+ 	ext4_read_bh_nowait(bh, REQ_META | REQ_PRIO |
+ 			    (ignore_locked ? REQ_RAHEAD : 0),
+-			    ext4_end_bitmap_read);
++			    ext4_end_bitmap_read,
++			    ext4_simulate_fail(sb, EXT4_SIM_BBITMAP_EIO));
+ 	return bh;
+ verify:
+ 	err = ext4_validate_block_bitmap(sb, desc, block_group, bh);
+@@ -577,7 +578,6 @@ int ext4_wait_block_bitmap(struct super_
+ 	if (!desc)
+ 		return -EFSCORRUPTED;
+ 	wait_on_buffer(bh);
+-	ext4_simulate_fail_bh(sb, bh, EXT4_SIM_BBITMAP_EIO);
+ 	if (!buffer_uptodate(bh)) {
+ 		ext4_error_err(sb, EIO, "Cannot read block bitmap - "
+ 			       "block_group = %u, block_bitmap = %llu",
+diff -rupN a/fs/ext4/dir.c b/fs/ext4/dir.c
+--- a/fs/ext4/dir.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/dir.c	2024-11-29 15:12:20.157145947 +0100
+@@ -418,7 +418,7 @@ struct fname {
+ 	__u32		inode;
+ 	__u8		name_len;
+ 	__u8		file_type;
+-	char		name[];
++	char		name[] __counted_by(name_len);
+ };
+ 
+ /*
+@@ -471,14 +471,13 @@ int ext4_htree_store_dirent(struct file
+ 	struct rb_node **p, *parent = NULL;
+ 	struct fname *fname, *new_fn;
+ 	struct dir_private_info *info;
+-	int len;
+ 
+ 	info = dir_file->private_data;
+ 	p = &info->root.rb_node;
+ 
+ 	/* Create and allocate the fname structure */
+-	len = sizeof(struct fname) + ent_name->len + 1;
+-	new_fn = kzalloc(len, GFP_KERNEL);
++	new_fn = kzalloc(struct_size(new_fn, name, ent_name->len + 1),
++			 GFP_KERNEL);
+ 	if (!new_fn)
+ 		return -ENOMEM;
+ 	new_fn->hash = hash;
+diff -rupN a/fs/ext4/ext4.h b/fs/ext4/ext4.h
+--- a/fs/ext4/ext4.h	2024-11-28 20:43:57.000000000 +0100
++++ b/fs/ext4/ext4.h	2024-11-29 15:12:20.114044908 +0100
+@@ -1870,14 +1870,6 @@ static inline bool ext4_simulate_fail(st
+ 	return false;
+ }
+ 
+-static inline void ext4_simulate_fail_bh(struct super_block *sb,
+-					 struct buffer_head *bh,
+-					 unsigned long code)
+-{
+-	if (!IS_ERR(bh) && ext4_simulate_fail(sb, code))
+-		clear_buffer_uptodate(bh);
+-}
+-
+ /*
+  * Error number codes for s_{first,last}_error_errno
+  *
+@@ -3105,9 +3097,9 @@ extern struct buffer_head *ext4_sb_bread
+ extern struct buffer_head *ext4_sb_bread_unmovable(struct super_block *sb,
+ 						   sector_t block);
+ extern void ext4_read_bh_nowait(struct buffer_head *bh, blk_opf_t op_flags,
+-				bh_end_io_t *end_io);
++				bh_end_io_t *end_io, bool simu_fail);
+ extern int ext4_read_bh(struct buffer_head *bh, blk_opf_t op_flags,
+-			bh_end_io_t *end_io);
++			bh_end_io_t *end_io, bool simu_fail);
+ extern int ext4_read_bh_lock(struct buffer_head *bh, blk_opf_t op_flags, bool wait);
+ extern void ext4_sb_breadahead_unmovable(struct super_block *sb, sector_t block);
+ extern int ext4_seq_options_show(struct seq_file *seq, void *offset);
+diff -rupN a/fs/ext4/extents.c b/fs/ext4/extents.c
+--- a/fs/ext4/extents.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/extents.c	2024-11-29 15:12:20.131071108 +0100
+@@ -568,7 +568,7 @@ __read_extent_tree_block(const char *fun
+ 
+ 	if (!bh_uptodate_or_lock(bh)) {
+ 		trace_ext4_ext_load_extent(inode, pblk, _RET_IP_);
+-		err = ext4_read_bh(bh, 0, NULL);
++		err = ext4_read_bh(bh, 0, NULL, false);
+ 		if (err < 0)
+ 			goto errout;
+ 	}
+@@ -3138,7 +3138,7 @@ static void ext4_zeroout_es(struct inode
+ 		return;
+ 
+ 	ext4_es_insert_extent(inode, ee_block, ee_len, ee_pblock,
+-			      EXTENT_STATUS_WRITTEN, 0);
++			      EXTENT_STATUS_WRITTEN, false);
+ }
+ 
+ /* FIXME!! we need to try to merge to left or right after zero-out  */
+@@ -4158,7 +4158,7 @@ insert_hole:
+ 	/* Put just found gap into cache to speed up subsequent requests */
+ 	ext_debug(inode, " -> %u:%u\n", hole_start, len);
+ 	ext4_es_insert_extent(inode, hole_start, len, ~0,
+-			      EXTENT_STATUS_HOLE, 0);
++			      EXTENT_STATUS_HOLE, false);
+ 
+ 	/* Update hole_len to reflect hole size after lblk */
+ 	if (hole_start != lblk)
+@@ -4482,7 +4482,7 @@ static int ext4_alloc_file_blocks(struct
+ 	int depth = 0;
+ 	struct ext4_map_blocks map;
+ 	unsigned int credits;
+-	loff_t epos;
++	loff_t epos, old_size = i_size_read(inode);
+ 
+ 	BUG_ON(!ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS));
+ 	map.m_lblk = offset;
+@@ -4541,6 +4541,11 @@ retry:
+ 			if (ext4_update_inode_size(inode, epos) & 0x1)
+ 				inode_set_mtime_to_ts(inode,
+ 						      inode_get_ctime(inode));
++			if (epos > old_size) {
++				pagecache_isize_extended(inode, old_size, epos);
++				ext4_zero_partial_blocks(handle, inode,
++						     old_size, epos - old_size);
++			}
+ 		}
+ 		ret2 = ext4_mark_inode_dirty(handle, inode);
+ 		ext4_update_inode_fsync_trans(handle, inode, 1);
+diff -rupN a/fs/ext4/extents_status.c b/fs/ext4/extents_status.c
+--- a/fs/ext4/extents_status.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/extents_status.c	2024-11-29 15:12:20.110059741 +0100
+@@ -848,7 +848,7 @@ out:
+  */
+ void ext4_es_insert_extent(struct inode *inode, ext4_lblk_t lblk,
+ 			   ext4_lblk_t len, ext4_fsblk_t pblk,
+-			   unsigned int status, int flags)
++			   unsigned int status, bool delalloc_reserve_used)
+ {
+ 	struct extent_status newes;
+ 	ext4_lblk_t end = lblk + len - 1;
+@@ -863,8 +863,8 @@ void ext4_es_insert_extent(struct inode
+ 	if (EXT4_SB(inode->i_sb)->s_mount_state & EXT4_FC_REPLAY)
+ 		return;
+ 
+-	es_debug("add [%u/%u) %llu %x %x to extent status tree of inode %lu\n",
+-		 lblk, len, pblk, status, flags, inode->i_ino);
++	es_debug("add [%u/%u) %llu %x %d to extent status tree of inode %lu\n",
++		 lblk, len, pblk, status, delalloc_reserve_used, inode->i_ino);
+ 
+ 	if (!len)
+ 		return;
+@@ -945,7 +945,7 @@ error:
+ 	resv_used += pending;
+ 	if (resv_used)
+ 		ext4_da_update_reserve_space(inode, resv_used,
+-				flags & EXT4_GET_BLOCKS_DELALLOC_RESERVE);
++					     delalloc_reserve_used);
+ 
+ 	if (err1 || err2 || err3 < 0)
+ 		goto retry;
+diff -rupN a/fs/ext4/extents_status.h b/fs/ext4/extents_status.h
+--- a/fs/ext4/extents_status.h	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/extents_status.h	2024-11-29 15:12:20.110703402 +0100
+@@ -135,7 +135,8 @@ extern void ext4_es_init_tree(struct ext
+ 
+ extern void ext4_es_insert_extent(struct inode *inode, ext4_lblk_t lblk,
+ 				  ext4_lblk_t len, ext4_fsblk_t pblk,
+-				  unsigned int status, int flags);
++				  unsigned int status,
++				  bool delalloc_reserve_used);
+ extern void ext4_es_cache_extent(struct inode *inode, ext4_lblk_t lblk,
+ 				 ext4_lblk_t len, ext4_fsblk_t pblk,
+ 				 unsigned int status);
+diff -rupN a/fs/ext4/fast_commit.c b/fs/ext4/fast_commit.c
+--- a/fs/ext4/fast_commit.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/fast_commit.c	2024-11-29 15:12:20.146003722 +0100
+@@ -291,9 +291,9 @@ void ext4_fc_del(struct inode *inode)
+ 		return;
+ 
+ restart:
+-	spin_lock(&EXT4_SB(inode->i_sb)->s_fc_lock);
++	spin_lock(&sbi->s_fc_lock);
+ 	if (list_empty(&ei->i_fc_list) && list_empty(&ei->i_fc_dilist)) {
+-		spin_unlock(&EXT4_SB(inode->i_sb)->s_fc_lock);
++		spin_unlock(&sbi->s_fc_lock);
+ 		return;
+ 	}
+ 
+@@ -357,9 +357,7 @@ void ext4_fc_mark_ineligible(struct supe
+ 	}
+ 	spin_lock(&sbi->s_fc_lock);
+ 	is_ineligible = ext4_test_mount_flag(sb, EXT4_MF_FC_INELIGIBLE);
+-	if (has_transaction &&
+-	    (!is_ineligible ||
+-	     (is_ineligible && tid_gt(tid, sbi->s_fc_ineligible_tid))))
++	if (has_transaction && (!is_ineligible || tid_gt(tid, sbi->s_fc_ineligible_tid)))
+ 		sbi->s_fc_ineligible_tid = tid;
+ 	ext4_set_mount_flag(sb, EXT4_MF_FC_INELIGIBLE);
+ 	spin_unlock(&sbi->s_fc_lock);
+diff -rupN a/fs/ext4/file.c b/fs/ext4/file.c
+--- a/fs/ext4/file.c	2024-11-28 20:43:57.000000000 +0100
++++ b/fs/ext4/file.c	2024-11-29 15:12:20.129135428 +0100
+@@ -392,8 +392,9 @@ static int ext4_dio_write_end_io(struct
+ 	 */
+ 	if (pos + size <= READ_ONCE(EXT4_I(inode)->i_disksize) &&
+ 	    pos + size <= i_size_read(inode))
+-		return size;
+-	return ext4_handle_inode_extension(inode, pos, size, size);
++		return 0;
++	error = ext4_handle_inode_extension(inode, pos, size, size);
++	return error < 0 ? error : 0;
+ }
+ 
+ static const struct iomap_dio_ops ext4_dio_write_ops = {
+@@ -564,12 +565,9 @@ static ssize_t ext4_dio_write_iter(struc
+ 		}
+ 
+ 		ret = ext4_orphan_add(handle, inode);
+-		if (ret) {
+-			ext4_journal_stop(handle);
+-			goto out;
+-		}
+-
+ 		ext4_journal_stop(handle);
++		if (ret)
++			goto out;
+ 	}
+ 
+ 	if (ilock_shared && !unwritten)
+diff -rupN a/fs/ext4/fsmap.c b/fs/ext4/fsmap.c
+--- a/fs/ext4/fsmap.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/fsmap.c	2024-11-29 15:12:20.094449946 +0100
+@@ -185,6 +185,56 @@ static inline ext4_fsblk_t ext4_fsmap_ne
+ 	return fmr->fmr_physical + fmr->fmr_length;
+ }
+ 
++static int ext4_getfsmap_meta_helper(struct super_block *sb,
++				     ext4_group_t agno, ext4_grpblk_t start,
++				     ext4_grpblk_t len, void *priv)
++{
++	struct ext4_getfsmap_info *info = priv;
++	struct ext4_fsmap *p;
++	struct ext4_fsmap *tmp;
++	struct ext4_sb_info *sbi = EXT4_SB(sb);
++	ext4_fsblk_t fsb, fs_start, fs_end;
++	int error;
++
++	fs_start = fsb = (EXT4_C2B(sbi, start) +
++			  ext4_group_first_block_no(sb, agno));
++	fs_end = fs_start + EXT4_C2B(sbi, len);
++
++	/* Return relevant extents from the meta_list */
++	list_for_each_entry_safe(p, tmp, &info->gfi_meta_list, fmr_list) {
++		if (p->fmr_physical < info->gfi_next_fsblk) {
++			list_del(&p->fmr_list);
++			kfree(p);
++			continue;
++		}
++		if (p->fmr_physical <= fs_start ||
++		    p->fmr_physical + p->fmr_length <= fs_end) {
++			/* Emit the retained free extent record if present */
++			if (info->gfi_lastfree.fmr_owner) {
++				error = ext4_getfsmap_helper(sb, info,
++							&info->gfi_lastfree);
++				if (error)
++					return error;
++				info->gfi_lastfree.fmr_owner = 0;
++			}
++			error = ext4_getfsmap_helper(sb, info, p);
++			if (error)
++				return error;
++			fsb = p->fmr_physical + p->fmr_length;
++			if (info->gfi_next_fsblk < fsb)
++				info->gfi_next_fsblk = fsb;
++			list_del(&p->fmr_list);
++			kfree(p);
++			continue;
++		}
++	}
++	if (info->gfi_next_fsblk < fsb)
++		info->gfi_next_fsblk = fsb;
++
++	return 0;
++}
++
++
+ /* Transform a blockgroup's free record into a fsmap */
+ static int ext4_getfsmap_datadev_helper(struct super_block *sb,
+ 					ext4_group_t agno, ext4_grpblk_t start,
+@@ -539,6 +589,7 @@ static int ext4_getfsmap_datadev(struct
+ 		error = ext4_mballoc_query_range(sb, info->gfi_agno,
+ 				EXT4_B2C(sbi, info->gfi_low.fmr_physical),
+ 				EXT4_B2C(sbi, info->gfi_high.fmr_physical),
++				ext4_getfsmap_meta_helper,
+ 				ext4_getfsmap_datadev_helper, info);
+ 		if (error)
+ 			goto err;
+@@ -560,7 +611,8 @@ static int ext4_getfsmap_datadev(struct
+ 
+ 	/* Report any gaps at the end of the bg */
+ 	info->gfi_last = true;
+-	error = ext4_getfsmap_datadev_helper(sb, end_ag, last_cluster, 0, info);
++	error = ext4_getfsmap_datadev_helper(sb, end_ag, last_cluster + 1,
++					     0, info);
+ 	if (error)
+ 		goto err;
+ 
+diff -rupN a/fs/ext4/ialloc.c b/fs/ext4/ialloc.c
+--- a/fs/ext4/ialloc.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/ialloc.c	2024-11-29 15:12:20.119132307 +0100
+@@ -193,8 +193,9 @@ ext4_read_inode_bitmap(struct super_bloc
+ 	 * submit the buffer_head for reading
+ 	 */
+ 	trace_ext4_load_inode_bitmap(sb, block_group);
+-	ext4_read_bh(bh, REQ_META | REQ_PRIO, ext4_end_bitmap_read);
+-	ext4_simulate_fail_bh(sb, bh, EXT4_SIM_IBITMAP_EIO);
++	ext4_read_bh(bh, REQ_META | REQ_PRIO,
++		     ext4_end_bitmap_read,
++		     ext4_simulate_fail(sb, EXT4_SIM_IBITMAP_EIO));
+ 	if (!buffer_uptodate(bh)) {
+ 		put_bh(bh);
+ 		ext4_error_err(sb, EIO, "Cannot read inode bitmap - "
+diff -rupN a/fs/ext4/indirect.c b/fs/ext4/indirect.c
+--- a/fs/ext4/indirect.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/indirect.c	2024-11-29 15:12:20.119823619 +0100
+@@ -170,7 +170,7 @@ static Indirect *ext4_get_branch(struct
+ 		}
+ 
+ 		if (!bh_uptodate_or_lock(bh)) {
+-			if (ext4_read_bh(bh, 0, NULL) < 0) {
++			if (ext4_read_bh(bh, 0, NULL, false) < 0) {
+ 				put_bh(bh);
+ 				goto failure;
+ 			}
+diff -rupN a/fs/ext4/inode.c b/fs/ext4/inode.c
+--- a/fs/ext4/inode.c	2024-11-28 20:43:57.000000000 +0100
++++ b/fs/ext4/inode.c	2024-11-29 15:12:20.133590706 +0100
+@@ -483,7 +483,7 @@ static int ext4_map_query_blocks(handle_
+ 	status = map->m_flags & EXT4_MAP_UNWRITTEN ?
+ 			EXTENT_STATUS_UNWRITTEN : EXTENT_STATUS_WRITTEN;
+ 	ext4_es_insert_extent(inode, map->m_lblk, map->m_len,
+-			      map->m_pblk, status, 0);
++			      map->m_pblk, status, false);
+ 	return retval;
+ }
+ 
+@@ -563,8 +563,8 @@ static int ext4_map_create_blocks(handle
+ 
+ 	status = map->m_flags & EXT4_MAP_UNWRITTEN ?
+ 			EXTENT_STATUS_UNWRITTEN : EXTENT_STATUS_WRITTEN;
+-	ext4_es_insert_extent(inode, map->m_lblk, map->m_len,
+-			      map->m_pblk, status, flags);
++	ext4_es_insert_extent(inode, map->m_lblk, map->m_len, map->m_pblk,
++			      status, flags & EXT4_GET_BLOCKS_DELALLOC_RESERVE);
+ 
+ 	return retval;
+ }
+@@ -856,7 +856,14 @@ struct buffer_head *ext4_getblk(handle_t
+ 	if (nowait)
+ 		return sb_find_get_block(inode->i_sb, map.m_pblk);
+ 
+-	bh = sb_getblk(inode->i_sb, map.m_pblk);
++	/*
++	 * Since bh could introduce extra ref count such as referred by
++	 * journal_head etc. Try to avoid using __GFP_MOVABLE here
++	 * as it may fail the migration when journal_head remains.
++	 */
++	bh = getblk_unmovable(inode->i_sb->s_bdev, map.m_pblk,
++				inode->i_sb->s_blocksize);
++
+ 	if (unlikely(!bh))
+ 		return ERR_PTR(-ENOMEM);
+ 	if (map.m_flags & EXT4_MAP_NEW) {
+@@ -1317,8 +1324,10 @@ static int ext4_write_end(struct file *f
+ 	folio_unlock(folio);
+ 	folio_put(folio);
+ 
+-	if (old_size < pos && !verity)
++	if (old_size < pos && !verity) {
+ 		pagecache_isize_extended(inode, old_size, pos);
++		ext4_zero_partial_blocks(handle, inode, old_size, pos - old_size);
++	}
+ 	/*
+ 	 * Don't mark the inode dirty under folio lock. First, it unnecessarily
+ 	 * makes the holding time of folio lock longer. Second, it forces lock
+@@ -1433,8 +1442,10 @@ static int ext4_journalled_write_end(str
+ 	folio_unlock(folio);
+ 	folio_put(folio);
+ 
+-	if (old_size < pos && !verity)
++	if (old_size < pos && !verity) {
+ 		pagecache_isize_extended(inode, old_size, pos);
++		ext4_zero_partial_blocks(handle, inode, old_size, pos - old_size);
++	}
+ 
+ 	if (size_changed) {
+ 		ret2 = ext4_mark_inode_dirty(handle, inode);
+@@ -2999,7 +3010,8 @@ static int ext4_da_do_write_end(struct a
+ 	struct inode *inode = mapping->host;
+ 	loff_t old_size = inode->i_size;
+ 	bool disksize_changed = false;
+-	loff_t new_i_size;
++	loff_t new_i_size, zero_len = 0;
++	handle_t *handle;
+ 
+ 	if (unlikely(!folio_buffers(folio))) {
+ 		folio_unlock(folio);
+@@ -3043,18 +3055,21 @@ static int ext4_da_do_write_end(struct a
+ 	folio_unlock(folio);
+ 	folio_put(folio);
+ 
+-	if (old_size < pos)
++	if (pos > old_size) {
+ 		pagecache_isize_extended(inode, old_size, pos);
++		zero_len = pos - old_size;
++	}
+ 
+-	if (disksize_changed) {
+-		handle_t *handle;
++	if (!disksize_changed && !zero_len)
++		return copied;
+ 
+-		handle = ext4_journal_start(inode, EXT4_HT_INODE, 2);
+-		if (IS_ERR(handle))
+-			return PTR_ERR(handle);
+-		ext4_mark_inode_dirty(handle, inode);
+-		ext4_journal_stop(handle);
+-	}
++	handle = ext4_journal_start(inode, EXT4_HT_INODE, 2);
++	if (IS_ERR(handle))
++		return PTR_ERR(handle);
++	if (zero_len)
++		ext4_zero_partial_blocks(handle, inode, old_size, zero_len);
++	ext4_mark_inode_dirty(handle, inode);
++	ext4_journal_stop(handle);
+ 
+ 	return copied;
+ }
+@@ -4528,10 +4543,10 @@ make_io:
+ 	 * Read the block from disk.
+ 	 */
+ 	trace_ext4_load_inode(sb, ino);
+-	ext4_read_bh_nowait(bh, REQ_META | REQ_PRIO, NULL);
++	ext4_read_bh_nowait(bh, REQ_META | REQ_PRIO, NULL,
++			    ext4_simulate_fail(sb, EXT4_SIM_INODE_EIO));
+ 	blk_finish_plug(&plug);
+ 	wait_on_buffer(bh);
+-	ext4_simulate_fail_bh(sb, bh, EXT4_SIM_INODE_EIO);
+ 	if (!buffer_uptodate(bh)) {
+ 		if (ret_block)
+ 			*ret_block = block;
+@@ -5457,6 +5472,14 @@ int ext4_setattr(struct mnt_idmap *idmap
+ 		}
+ 
+ 		if (attr->ia_size != inode->i_size) {
++			/* attach jbd2 jinode for EOF folio tail zeroing */
++			if (attr->ia_size & (inode->i_sb->s_blocksize - 1) ||
++			    oldsize & (inode->i_sb->s_blocksize - 1)) {
++				error = ext4_inode_attach_jinode(inode);
++				if (error)
++					goto err_out;
++			}
++
+ 			handle = ext4_journal_start(inode, EXT4_HT_INODE, 3);
+ 			if (IS_ERR(handle)) {
+ 				error = PTR_ERR(handle);
+@@ -5467,12 +5490,17 @@ int ext4_setattr(struct mnt_idmap *idmap
+ 				orphan = 1;
+ 			}
+ 			/*
+-			 * Update c/mtime on truncate up, ext4_truncate() will
+-			 * update c/mtime in shrink case below
++			 * Update c/mtime and tail zero the EOF folio on
++			 * truncate up. ext4_truncate() handles the shrink case
++			 * below.
+ 			 */
+-			if (!shrink)
++			if (!shrink) {
+ 				inode_set_mtime_to_ts(inode,
+ 						      inode_set_ctime_current(inode));
++				if (oldsize & (inode->i_sb->s_blocksize - 1))
++					ext4_block_truncate_page(handle,
++							inode->i_mapping, oldsize);
++			}
+ 
+ 			if (shrink)
+ 				ext4_fc_track_range(handle, inode,
+diff -rupN a/fs/ext4/mballoc.c b/fs/ext4/mballoc.c
+--- a/fs/ext4/mballoc.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/mballoc.c	2024-11-29 15:12:20.153306633 +0100
+@@ -5711,7 +5711,7 @@ static void ext4_mb_show_ac(struct ext4_
+ 			(unsigned long)ac->ac_b_ex.fe_logical,
+ 			(int)ac->ac_criteria);
+ 	mb_debug(sb, "%u found", ac->ac_found);
+-	mb_debug(sb, "used pa: %s, ", ac->ac_pa ? "yes" : "no");
++	mb_debug(sb, "used pa: %s, ", str_yes_no(ac->ac_pa));
+ 	if (ac->ac_pa)
+ 		mb_debug(sb, "pa_type %s\n", ac->ac_pa->pa_type == MB_GROUP_PA ?
+ 			 "group pa" : "inode pa");
+@@ -6056,7 +6056,7 @@ static bool ext4_mb_discard_preallocatio
+ 	}
+ 
+ out_dbg:
+-	mb_debug(sb, "freed %d, retry ? %s\n", freed, ret ? "yes" : "no");
++	mb_debug(sb, "freed %d, retry ? %s\n", freed, str_yes_no(ret));
+ 	return ret;
+ }
+ 
+@@ -6999,13 +6999,14 @@ int
+ ext4_mballoc_query_range(
+ 	struct super_block		*sb,
+ 	ext4_group_t			group,
+-	ext4_grpblk_t			start,
++	ext4_grpblk_t			first,
+ 	ext4_grpblk_t			end,
++	ext4_mballoc_query_range_fn	meta_formatter,
+ 	ext4_mballoc_query_range_fn	formatter,
+ 	void				*priv)
+ {
+ 	void				*bitmap;
+-	ext4_grpblk_t			next;
++	ext4_grpblk_t			start, next;
+ 	struct ext4_buddy		e4b;
+ 	int				error;
+ 
+@@ -7016,10 +7017,19 @@ ext4_mballoc_query_range(
+ 
+ 	ext4_lock_group(sb, group);
+ 
+-	start = max(e4b.bd_info->bb_first_free, start);
++	start = max(e4b.bd_info->bb_first_free, first);
+ 	if (end >= EXT4_CLUSTERS_PER_GROUP(sb))
+ 		end = EXT4_CLUSTERS_PER_GROUP(sb) - 1;
+-
++	if (meta_formatter && start != first) {
++		if (start > end)
++			start = end;
++		ext4_unlock_group(sb, group);
++		error = meta_formatter(sb, group, first, start - first,
++				       priv);
++		if (error)
++			goto out_unload;
++		ext4_lock_group(sb, group);
++	}
+ 	while (start <= end) {
+ 		start = mb_find_next_zero_bit(bitmap, end + 1, start);
+ 		if (start > end)
+diff -rupN a/fs/ext4/mballoc.h b/fs/ext4/mballoc.h
+--- a/fs/ext4/mballoc.h	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/mballoc.h	2024-11-29 15:12:20.097203713 +0100
+@@ -259,6 +259,7 @@ ext4_mballoc_query_range(
+ 	ext4_group_t			agno,
+ 	ext4_grpblk_t			start,
+ 	ext4_grpblk_t			end,
++	ext4_mballoc_query_range_fn	meta_formatter,
+ 	ext4_mballoc_query_range_fn	formatter,
+ 	void				*priv);
+ 
+diff -rupN a/fs/ext4/mmp.c b/fs/ext4/mmp.c
+--- a/fs/ext4/mmp.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/mmp.c	2024-11-29 15:12:20.123255854 +0100
+@@ -94,7 +94,7 @@ static int read_mmp_block(struct super_b
+ 	}
+ 
+ 	lock_buffer(*bh);
+-	ret = ext4_read_bh(*bh, REQ_META | REQ_PRIO, NULL);
++	ret = ext4_read_bh(*bh, REQ_META | REQ_PRIO, NULL, false);
+ 	if (ret)
+ 		goto warn_exit;
+ 
+diff -rupN a/fs/ext4/move_extent.c b/fs/ext4/move_extent.c
+--- a/fs/ext4/move_extent.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/move_extent.c	2024-11-29 15:12:20.123577784 +0100
+@@ -213,7 +213,7 @@ static int mext_page_mkuptodate(struct f
+ 			unlock_buffer(bh);
+ 			continue;
+ 		}
+-		ext4_read_bh_nowait(bh, 0, NULL);
++		ext4_read_bh_nowait(bh, 0, NULL, false);
+ 		nr++;
+ 	} while (block++, (bh = bh->b_this_page) != head);
+ 
+diff -rupN a/fs/ext4/namei.c b/fs/ext4/namei.c
+--- a/fs/ext4/namei.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/namei.c	2024-11-29 15:12:20.137080095 +0100
+@@ -1747,7 +1747,7 @@ static struct buffer_head * ext4_dx_find
+ #endif
+ 	frame = dx_probe(fname, dir, NULL, frames);
+ 	if (IS_ERR(frame))
+-		return (struct buffer_head *) frame;
++		return ERR_CAST(frame);
+ 	do {
+ 		block = dx_get_block(frame->at);
+ 		bh = ext4_read_dirblock(dir, block, DIRENT_HTREE);
+@@ -1952,7 +1952,7 @@ static struct ext4_dir_entry_2 *do_split
+ 	if (IS_ERR(bh2)) {
+ 		brelse(*bh);
+ 		*bh = NULL;
+-		return (struct ext4_dir_entry_2 *) bh2;
++		return ERR_CAST(bh2);
+ 	}
+ 
+ 	BUFFER_TRACE(*bh, "get_write_access");
+@@ -2000,8 +2000,17 @@ static struct ext4_dir_entry_2 *do_split
+ 	else
+ 		split = count/2;
+ 
++	if (WARN_ON_ONCE(split == 0)) {
++		/* Should never happen, but avoid out-of-bounds access below */
++		ext4_error_inode_block(dir, (*bh)->b_blocknr, 0,
++			"bad indexed directory? hash=%08x:%08x count=%d move=%u",
++			hinfo->hash, hinfo->minor_hash, count, move);
++		err = -EFSCORRUPTED;
++		goto out;
++	}
++
+ 	hash2 = map[split].hash;
+-	continued = split > 0 ? hash2 == map[split - 1].hash : 0;
++	continued = hash2 == map[split - 1].hash;
+ 	dxtrace(printk(KERN_INFO "Split block %lu at %x, %i/%i\n",
+ 			(unsigned long)dx_get_block(frame->at),
+ 					hash2, split, count-split));
+@@ -2043,10 +2052,11 @@ static struct ext4_dir_entry_2 *do_split
+ 	return de;
+ 
+ journal_error:
++	ext4_std_error(dir->i_sb, err);
++out:
+ 	brelse(*bh);
+ 	brelse(bh2);
+ 	*bh = NULL;
+-	ext4_std_error(dir->i_sb, err);
+ 	return ERR_PTR(err);
+ }
+ 
+diff -rupN a/fs/ext4/page-io.c b/fs/ext4/page-io.c
+--- a/fs/ext4/page-io.c	2024-11-28 20:43:55.000000000 +0100
++++ b/fs/ext4/page-io.c	2024-11-29 15:13:54.949707371 +0100
+@@ -418,6 +418,7 @@ submit_and_retry:
+ 	}
+ 	if (io->io_bio == NULL) {
+ 		io_submit_init_bio(io, bh);
++		io->io_bio->bi_write_hint = inode->i_write_hint;
+ 		if (folio_test_uncached(folio)) {
+ 			ext4_io_end_t *io_end = io->io_bio->bi_private;
+ 			io_end->flag |= EXT4_IO_UNCACHED;
+diff -rupN a/fs/ext4/resize.c b/fs/ext4/resize.c
+--- a/fs/ext4/resize.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/ext4/resize.c	2024-11-29 15:12:20.124150838 +0100
+@@ -1300,7 +1300,7 @@ static struct buffer_head *ext4_get_bitm
+ 	if (unlikely(!bh))
+ 		return NULL;
+ 	if (!bh_uptodate_or_lock(bh)) {
+-		if (ext4_read_bh(bh, 0, NULL) < 0) {
++		if (ext4_read_bh(bh, 0, NULL, false) < 0) {
+ 			brelse(bh);
+ 			return NULL;
+ 		}
+diff -rupN a/fs/ext4/super.c b/fs/ext4/super.c
+--- a/fs/ext4/super.c	2024-11-28 20:43:57.000000000 +0100
++++ b/fs/ext4/super.c	2024-11-29 15:12:20.159616124 +0100
+@@ -161,8 +161,14 @@ MODULE_ALIAS("ext3");
+ 
+ 
+ static inline void __ext4_read_bh(struct buffer_head *bh, blk_opf_t op_flags,
+-				  bh_end_io_t *end_io)
++				  bh_end_io_t *end_io, bool simu_fail)
+ {
++	if (simu_fail) {
++		clear_buffer_uptodate(bh);
++		unlock_buffer(bh);
++		return;
++	}
++
+ 	/*
+ 	 * buffer's verified bit is no longer valid after reading from
+ 	 * disk again due to write out error, clear it to make sure we
+@@ -176,7 +182,7 @@ static inline void __ext4_read_bh(struct
+ }
+ 
+ void ext4_read_bh_nowait(struct buffer_head *bh, blk_opf_t op_flags,
+-			 bh_end_io_t *end_io)
++			 bh_end_io_t *end_io, bool simu_fail)
+ {
+ 	BUG_ON(!buffer_locked(bh));
+ 
+@@ -184,10 +190,11 @@ void ext4_read_bh_nowait(struct buffer_h
+ 		unlock_buffer(bh);
+ 		return;
+ 	}
+-	__ext4_read_bh(bh, op_flags, end_io);
++	__ext4_read_bh(bh, op_flags, end_io, simu_fail);
+ }
+ 
+-int ext4_read_bh(struct buffer_head *bh, blk_opf_t op_flags, bh_end_io_t *end_io)
++int ext4_read_bh(struct buffer_head *bh, blk_opf_t op_flags,
++		 bh_end_io_t *end_io, bool simu_fail)
+ {
+ 	BUG_ON(!buffer_locked(bh));
+ 
+@@ -196,7 +203,7 @@ int ext4_read_bh(struct buffer_head *bh,
+ 		return 0;
+ 	}
+ 
+-	__ext4_read_bh(bh, op_flags, end_io);
++	__ext4_read_bh(bh, op_flags, end_io, simu_fail);
+ 
+ 	wait_on_buffer(bh);
+ 	if (buffer_uptodate(bh))
+@@ -208,10 +215,10 @@ int ext4_read_bh_lock(struct buffer_head
+ {
+ 	lock_buffer(bh);
+ 	if (!wait) {
+-		ext4_read_bh_nowait(bh, op_flags, NULL);
++		ext4_read_bh_nowait(bh, op_flags, NULL, false);
+ 		return 0;
+ 	}
+-	return ext4_read_bh(bh, op_flags, NULL);
++	return ext4_read_bh(bh, op_flags, NULL, false);
+ }
+ 
+ /*
+@@ -266,7 +273,7 @@ void ext4_sb_breadahead_unmovable(struct
+ 
+ 	if (likely(bh)) {
+ 		if (trylock_buffer(bh))
+-			ext4_read_bh_nowait(bh, REQ_RAHEAD, NULL);
++			ext4_read_bh_nowait(bh, REQ_RAHEAD, NULL, false);
+ 		brelse(bh);
+ 	}
+ }
+@@ -346,9 +353,9 @@ __u32 ext4_free_group_clusters(struct su
+ __u32 ext4_free_inodes_count(struct super_block *sb,
+ 			      struct ext4_group_desc *bg)
+ {
+-	return le16_to_cpu(bg->bg_free_inodes_count_lo) |
++	return le16_to_cpu(READ_ONCE(bg->bg_free_inodes_count_lo)) |
+ 		(EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT ?
+-		 (__u32)le16_to_cpu(bg->bg_free_inodes_count_hi) << 16 : 0);
++		 (__u32)le16_to_cpu(READ_ONCE(bg->bg_free_inodes_count_hi)) << 16 : 0);
+ }
+ 
+ __u32 ext4_used_dirs_count(struct super_block *sb,
+@@ -402,9 +409,9 @@ void ext4_free_group_clusters_set(struct
+ void ext4_free_inodes_set(struct super_block *sb,
+ 			  struct ext4_group_desc *bg, __u32 count)
+ {
+-	bg->bg_free_inodes_count_lo = cpu_to_le16((__u16)count);
++	WRITE_ONCE(bg->bg_free_inodes_count_lo, cpu_to_le16((__u16)count));
+ 	if (EXT4_DESC_SIZE(sb) >= EXT4_MIN_DESC_SIZE_64BIT)
+-		bg->bg_free_inodes_count_hi = cpu_to_le16(count >> 16);
++		WRITE_ONCE(bg->bg_free_inodes_count_hi, cpu_to_le16(count >> 16));
+ }
+ 
+ void ext4_used_dirs_set(struct super_block *sb,
+@@ -2096,16 +2103,16 @@ static int ext4_parse_test_dummy_encrypt
+ }
+ 
+ #define EXT4_SET_CTX(name)						\
+-static inline void ctx_set_##name(struct ext4_fs_context *ctx,		\
+-				  unsigned long flag)			\
++static inline __maybe_unused						\
++void ctx_set_##name(struct ext4_fs_context *ctx, unsigned long flag)	\
+ {									\
+ 	ctx->mask_s_##name |= flag;					\
+ 	ctx->vals_s_##name |= flag;					\
+ }
+ 
+ #define EXT4_CLEAR_CTX(name)						\
+-static inline void ctx_clear_##name(struct ext4_fs_context *ctx,	\
+-				    unsigned long flag)			\
++static inline __maybe_unused						\
++void ctx_clear_##name(struct ext4_fs_context *ctx, unsigned long flag)	\
+ {									\
+ 	ctx->mask_s_##name |= flag;					\
+ 	ctx->vals_s_##name &= ~flag;					\
+@@ -3030,6 +3037,9 @@ static int _ext4_show_options(struct seq
+ 		SEQ_OPTS_PUTS("mb_optimize_scan=1");
+ 	}
+ 
++	if (nodefs && !test_opt(sb, NO_PREFETCH_BLOCK_BITMAPS))
++		SEQ_OPTS_PUTS("prefetch_block_bitmaps");
++
+ 	ext4_show_quota_options(seq, sb);
+ 	return 0;
+ }
+@@ -3709,12 +3719,12 @@ static int ext4_run_li_request(struct ex
+ 		ret = 1;
+ 
+ 	if (!ret) {
+-		start_time = ktime_get_real_ns();
++		start_time = ktime_get_ns();
+ 		ret = ext4_init_inode_table(sb, group,
+ 					    elr->lr_timeout ? 0 : 1);
+ 		trace_ext4_lazy_itable_init(sb, group);
+ 		if (elr->lr_timeout == 0) {
+-			elr->lr_timeout = nsecs_to_jiffies((ktime_get_real_ns() - start_time) *
++			elr->lr_timeout = nsecs_to_jiffies((ktime_get_ns() - start_time) *
+ 				EXT4_SB(elr->lr_super)->s_li_wait_mult);
+ 		}
+ 		elr->lr_next_sched = jiffies + elr->lr_timeout;
+@@ -3774,8 +3784,9 @@ static int ext4_lazyinit_thread(void *ar
+ 
+ cont_thread:
+ 	while (true) {
+-		next_wakeup = MAX_JIFFY_OFFSET;
++		bool next_wakeup_initialized = false;
+ 
++		next_wakeup = 0;
+ 		mutex_lock(&eli->li_list_mtx);
+ 		if (list_empty(&eli->li_request_list)) {
+ 			mutex_unlock(&eli->li_list_mtx);
+@@ -3788,8 +3799,11 @@ cont_thread:
+ 					 lr_request);
+ 
+ 			if (time_before(jiffies, elr->lr_next_sched)) {
+-				if (time_before(elr->lr_next_sched, next_wakeup))
++				if (!next_wakeup_initialized ||
++				    time_before(elr->lr_next_sched, next_wakeup)) {
+ 					next_wakeup = elr->lr_next_sched;
++					next_wakeup_initialized = true;
++				}
+ 				continue;
+ 			}
+ 			if (down_read_trylock(&elr->lr_super->s_umount)) {
+@@ -3817,16 +3831,18 @@ cont_thread:
+ 				elr->lr_next_sched = jiffies +
+ 					get_random_u32_below(EXT4_DEF_LI_MAX_START_DELAY * HZ);
+ 			}
+-			if (time_before(elr->lr_next_sched, next_wakeup))
++			if (!next_wakeup_initialized ||
++			    time_before(elr->lr_next_sched, next_wakeup)) {
+ 				next_wakeup = elr->lr_next_sched;
++				next_wakeup_initialized = true;
++			}
+ 		}
+ 		mutex_unlock(&eli->li_list_mtx);
+ 
+ 		try_to_freeze();
+ 
+ 		cur = jiffies;
+-		if ((time_after_eq(cur, next_wakeup)) ||
+-		    (MAX_JIFFY_OFFSET == next_wakeup)) {
++		if (!next_wakeup_initialized || time_after_eq(cur, next_wakeup)) {
+ 			cond_resched();
+ 			continue;
+ 		}
+@@ -6332,7 +6348,7 @@ static int ext4_sync_fs(struct super_blo
+ 	struct ext4_sb_info *sbi = EXT4_SB(sb);
+ 
+ 	if (unlikely(ext4_forced_shutdown(sb)))
+-		return 0;
++		return -EIO;
+ 
+ 	trace_ext4_sync_fs(sb, wait);
+ 	flush_workqueue(sbi->rsv_conversion_wq);
+@@ -6549,8 +6565,12 @@ static int __ext4_remount(struct fs_cont
+ 		goto restore_opts;
+ 	}
+ 
+-	if (test_opt2(sb, ABORT))
+-		ext4_abort(sb, ESHUTDOWN, "Abort forced by user");
++	if ((old_opts.s_mount_opt & EXT4_MOUNT_DELALLOC) &&
++	    !test_opt(sb, DELALLOC)) {
++		ext4_msg(sb, KERN_ERR, "can't disable delalloc during remount");
++		err = -EINVAL;
++		goto restore_opts;
++	}
+ 
+ 	sb->s_flags = (sb->s_flags & ~SB_POSIXACL) |
+ 		(test_opt(sb, POSIX_ACL) ? SB_POSIXACL : 0);
+@@ -6720,6 +6740,14 @@ static int __ext4_remount(struct fs_cont
+ 	if (!ext4_has_feature_mmp(sb) || sb_rdonly(sb))
+ 		ext4_stop_mmpd(sbi);
+ 
++	/*
++	 * Handle aborting the filesystem as the last thing during remount to
++	 * avoid obsure errors during remount when some option changes fail to
++	 * apply due to shutdown filesystem.
++	 */
++	if (test_opt2(sb, ABORT))
++		ext4_abort(sb, ESHUTDOWN, "Abort forced by user");
++
+ 	return 0;
+ 
+ restore_opts:
+diff -rupN a/fs/jbd2/commit.c b/fs/jbd2/commit.c
+--- a/fs/jbd2/commit.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/jbd2/commit.c	2024-11-29 15:12:20.146768950 +0100
+@@ -662,10 +662,6 @@ void jbd2_journal_commit_transaction(jou
+ 		JBUFFER_TRACE(jh, "ph3: write metadata");
+ 		escape = jbd2_journal_write_metadata_buffer(commit_transaction,
+ 						jh, &wbuf[bufs], blocknr);
+-		if (escape < 0) {
+-			jbd2_journal_abort(journal, escape);
+-			continue;
+-		}
+ 		jbd2_file_log_bh(&io_bufs, wbuf[bufs]);
+ 
+ 		/* Record the new block's tag in the current descriptor
+diff -rupN a/fs/jbd2/journal.c b/fs/jbd2/journal.c
+--- a/fs/jbd2/journal.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/jbd2/journal.c	2024-11-29 15:12:20.161751329 +0100
+@@ -318,7 +318,6 @@ static inline void jbd2_data_do_escape(c
+  *
+  *
+  * Return value:
+- *  <0: Error
+  *  =0: Finished OK without escape
+  *  =1: Finished OK with escape
+  */
+@@ -386,12 +385,7 @@ int jbd2_journal_write_metadata_buffer(t
+ 			goto escape_done;
+ 
+ 		spin_unlock(&jh_in->b_state_lock);
+-		tmp = jbd2_alloc(bh_in->b_size, GFP_NOFS);
+-		if (!tmp) {
+-			brelse(new_bh);
+-			free_buffer_head(new_bh);
+-			return -ENOMEM;
+-		}
++		tmp = jbd2_alloc(bh_in->b_size, GFP_NOFS | __GFP_NOFAIL);
+ 		spin_lock(&jh_in->b_state_lock);
+ 		if (jh_in->b_frozen_data) {
+ 			jbd2_free(tmp, bh_in->b_size);
+@@ -1518,9 +1512,10 @@ static int journal_load_superblock(journ
+  * destroy journal_t structures, and to initialise and read existing
+  * journal blocks from disk.  */
+ 
+-/* First: create and setup a journal_t object in memory.  We initialise
+- * very few fields yet: that has to wait until we have created the
+- * journal structures from from scratch, or loaded them from disk. */
++/* The journal_init_common() function creates and fills a journal_t object
++ * in memory. It calls journal_load_superblock() to load the on-disk journal
++ * superblock and initialize the journal_t object.
++ */
+ 
+ static journal_t *journal_init_common(struct block_device *bdev,
+ 			struct block_device *fs_dev,
+diff -rupN a/fs/jbd2/recovery.c b/fs/jbd2/recovery.c
+--- a/fs/jbd2/recovery.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/jbd2/recovery.c	2024-11-29 15:12:20.142948494 +0100
+@@ -485,6 +485,104 @@ static int jbd2_block_tag_csum_verify(jo
+ 		return tag->t_checksum == cpu_to_be16(csum32);
+ }
+ 
++static __always_inline int jbd2_do_replay(journal_t *journal,
++					  struct recovery_info *info,
++					  struct buffer_head *bh,
++					  unsigned long *next_log_block,
++					  unsigned int next_commit_ID)
++{
++	char *tagp;
++	int flags;
++	int ret = 0;
++	int tag_bytes = journal_tag_bytes(journal);
++	int descr_csum_size = 0;
++	unsigned long io_block;
++	journal_block_tag_t tag;
++	struct buffer_head *obh;
++	struct buffer_head *nbh;
++
++	if (jbd2_journal_has_csum_v2or3(journal))
++		descr_csum_size = sizeof(struct jbd2_journal_block_tail);
++
++	tagp = &bh->b_data[sizeof(journal_header_t)];
++	while (tagp - bh->b_data + tag_bytes <=
++	       journal->j_blocksize - descr_csum_size) {
++		int err;
++
++		memcpy(&tag, tagp, sizeof(tag));
++		flags = be16_to_cpu(tag.t_flags);
++
++		io_block = (*next_log_block)++;
++		wrap(journal, *next_log_block);
++		err = jread(&obh, journal, io_block);
++		if (err) {
++			/* Recover what we can, but report failure at the end. */
++			ret = err;
++			pr_err("JBD2: IO error %d recovering block %lu in log\n",
++			      err, io_block);
++		} else {
++			unsigned long long blocknr;
++
++			J_ASSERT(obh != NULL);
++			blocknr = read_tag_block(journal, &tag);
++
++			/* If the block has been revoked, then we're all done here. */
++			if (jbd2_journal_test_revoke(journal, blocknr,
++						     next_commit_ID)) {
++				brelse(obh);
++				++info->nr_revoke_hits;
++				goto skip_write;
++			}
++
++			/* Look for block corruption */
++			if (!jbd2_block_tag_csum_verify(journal, &tag,
++					(journal_block_tag3_t *)tagp,
++					obh->b_data, next_commit_ID)) {
++				brelse(obh);
++				ret = -EFSBADCRC;
++				pr_err("JBD2: Invalid checksum recovering data block %llu in journal block %lu\n",
++				      blocknr, io_block);
++				goto skip_write;
++			}
++
++			/* Find a buffer for the new data being restored */
++			nbh = __getblk(journal->j_fs_dev, blocknr,
++				       journal->j_blocksize);
++			if (nbh == NULL) {
++				pr_err("JBD2: Out of memory during recovery.\n");
++				brelse(obh);
++				return -ENOMEM;
++			}
++
++			lock_buffer(nbh);
++			memcpy(nbh->b_data, obh->b_data, journal->j_blocksize);
++			if (flags & JBD2_FLAG_ESCAPE) {
++				*((__be32 *)nbh->b_data) =
++				cpu_to_be32(JBD2_MAGIC_NUMBER);
++			}
++
++			BUFFER_TRACE(nbh, "marking dirty");
++			set_buffer_uptodate(nbh);
++			mark_buffer_dirty(nbh);
++			BUFFER_TRACE(nbh, "marking uptodate");
++			++info->nr_replays;
++			unlock_buffer(nbh);
++			brelse(obh);
++			brelse(nbh);
++		}
++
++skip_write:
++		tagp += tag_bytes;
++		if (!(flags & JBD2_FLAG_SAME_UUID))
++			tagp += 16;
++
++		if (flags & JBD2_FLAG_LAST_TAG)
++			break;
++	}
++
++	return ret;
++}
++
+ static int do_one_pass(journal_t *journal,
+ 			struct recovery_info *info, enum passtype pass)
+ {
+@@ -493,13 +591,10 @@ static int do_one_pass(journal_t *journa
+ 	int			err, success = 0;
+ 	journal_superblock_t *	sb;
+ 	journal_header_t *	tmp;
+-	struct buffer_head *	bh;
++	struct buffer_head	*bh = NULL;
+ 	unsigned int		sequence;
+ 	int			blocktype;
+-	int			tag_bytes = journal_tag_bytes(journal);
+ 	__u32			crc32_sum = ~0; /* Transactional Checksums */
+-	int			descr_csum_size = 0;
+-	int			block_error = 0;
+ 	bool			need_check_commit_time = false;
+ 	__u64			last_trans_commit_time = 0, commit_time;
+ 
+@@ -528,12 +623,6 @@ static int do_one_pass(journal_t *journa
+ 	 */
+ 
+ 	while (1) {
+-		int			flags;
+-		char *			tagp;
+-		journal_block_tag_t	tag;
+-		struct buffer_head *	obh;
+-		struct buffer_head *	nbh;
+-
+ 		cond_resched();
+ 
+ 		/* If we already know where to stop the log traversal,
+@@ -552,6 +641,8 @@ static int do_one_pass(journal_t *journa
+ 		 * record. */
+ 
+ 		jbd2_debug(3, "JBD2: checking block %ld\n", next_log_block);
++		brelse(bh);
++		bh = NULL;
+ 		err = jread(&bh, journal, next_log_block);
+ 		if (err)
+ 			goto failed;
+@@ -567,20 +658,16 @@ static int do_one_pass(journal_t *journa
+ 
+ 		tmp = (journal_header_t *)bh->b_data;
+ 
+-		if (tmp->h_magic != cpu_to_be32(JBD2_MAGIC_NUMBER)) {
+-			brelse(bh);
++		if (tmp->h_magic != cpu_to_be32(JBD2_MAGIC_NUMBER))
+ 			break;
+-		}
+ 
+ 		blocktype = be32_to_cpu(tmp->h_blocktype);
+ 		sequence = be32_to_cpu(tmp->h_sequence);
+ 		jbd2_debug(3, "Found magic %d, sequence %d\n",
+ 			  blocktype, sequence);
+ 
+-		if (sequence != next_commit_ID) {
+-			brelse(bh);
++		if (sequence != next_commit_ID)
+ 			break;
+-		}
+ 
+ 		/* OK, we have a valid descriptor block which matches
+ 		 * all of the sequence number checks.  What are we going
+@@ -589,11 +676,7 @@ static int do_one_pass(journal_t *journa
+ 		switch(blocktype) {
+ 		case JBD2_DESCRIPTOR_BLOCK:
+ 			/* Verify checksum first */
+-			if (jbd2_journal_has_csum_v2or3(journal))
+-				descr_csum_size =
+-					sizeof(struct jbd2_journal_block_tail);
+-			if (descr_csum_size > 0 &&
+-			    !jbd2_descriptor_block_csum_verify(journal,
++			if (!jbd2_descriptor_block_csum_verify(journal,
+ 							       bh->b_data)) {
+ 				/*
+ 				 * PASS_SCAN can see stale blocks due to lazy
+@@ -603,7 +686,6 @@ static int do_one_pass(journal_t *journa
+ 					pr_err("JBD2: Invalid checksum recovering block %lu in log\n",
+ 					       next_log_block);
+ 					err = -EFSBADCRC;
+-					brelse(bh);
+ 					goto failed;
+ 				}
+ 				need_check_commit_time = true;
+@@ -619,125 +701,39 @@ static int do_one_pass(journal_t *journa
+ 			if (pass != PASS_REPLAY) {
+ 				if (pass == PASS_SCAN &&
+ 				    jbd2_has_feature_checksum(journal) &&
+-				    !need_check_commit_time &&
+ 				    !info->end_transaction) {
+ 					if (calc_chksums(journal, bh,
+ 							&next_log_block,
+-							&crc32_sum)) {
+-						put_bh(bh);
++							&crc32_sum))
+ 						break;
+-					}
+-					put_bh(bh);
+ 					continue;
+ 				}
+ 				next_log_block += count_tags(journal, bh);
+ 				wrap(journal, next_log_block);
+-				put_bh(bh);
+ 				continue;
+ 			}
+ 
+-			/* A descriptor block: we can now write all of
+-			 * the data blocks.  Yay, useful work is finally
+-			 * getting done here! */
+-
+-			tagp = &bh->b_data[sizeof(journal_header_t)];
+-			while ((tagp - bh->b_data + tag_bytes)
+-			       <= journal->j_blocksize - descr_csum_size) {
+-				unsigned long io_block;
+-
+-				memcpy(&tag, tagp, sizeof(tag));
+-				flags = be16_to_cpu(tag.t_flags);
+-
+-				io_block = next_log_block++;
+-				wrap(journal, next_log_block);
+-				err = jread(&obh, journal, io_block);
+-				if (err) {
+-					/* Recover what we can, but
+-					 * report failure at the end. */
+-					success = err;
+-					printk(KERN_ERR
+-						"JBD2: IO error %d recovering "
+-						"block %lu in log\n",
+-						err, io_block);
+-				} else {
+-					unsigned long long blocknr;
+-
+-					J_ASSERT(obh != NULL);
+-					blocknr = read_tag_block(journal,
+-								 &tag);
+-
+-					/* If the block has been
+-					 * revoked, then we're all done
+-					 * here. */
+-					if (jbd2_journal_test_revoke
+-					    (journal, blocknr,
+-					     next_commit_ID)) {
+-						brelse(obh);
+-						++info->nr_revoke_hits;
+-						goto skip_write;
+-					}
+-
+-					/* Look for block corruption */
+-					if (!jbd2_block_tag_csum_verify(
+-			journal, &tag, (journal_block_tag3_t *)tagp,
+-			obh->b_data, be32_to_cpu(tmp->h_sequence))) {
+-						brelse(obh);
+-						success = -EFSBADCRC;
+-						printk(KERN_ERR "JBD2: Invalid "
+-						       "checksum recovering "
+-						       "data block %llu in "
+-						       "journal block %lu\n",
+-						       blocknr, io_block);
+-						block_error = 1;
+-						goto skip_write;
+-					}
+-
+-					/* Find a buffer for the new
+-					 * data being restored */
+-					nbh = __getblk(journal->j_fs_dev,
+-							blocknr,
+-							journal->j_blocksize);
+-					if (nbh == NULL) {
+-						printk(KERN_ERR
+-						       "JBD2: Out of memory "
+-						       "during recovery.\n");
+-						err = -ENOMEM;
+-						brelse(bh);
+-						brelse(obh);
+-						goto failed;
+-					}
+-
+-					lock_buffer(nbh);
+-					memcpy(nbh->b_data, obh->b_data,
+-							journal->j_blocksize);
+-					if (flags & JBD2_FLAG_ESCAPE) {
+-						*((__be32 *)nbh->b_data) =
+-						cpu_to_be32(JBD2_MAGIC_NUMBER);
+-					}
+-
+-					BUFFER_TRACE(nbh, "marking dirty");
+-					set_buffer_uptodate(nbh);
+-					mark_buffer_dirty(nbh);
+-					BUFFER_TRACE(nbh, "marking uptodate");
+-					++info->nr_replays;
+-					unlock_buffer(nbh);
+-					brelse(obh);
+-					brelse(nbh);
+-				}
+-
+-			skip_write:
+-				tagp += tag_bytes;
+-				if (!(flags & JBD2_FLAG_SAME_UUID))
+-					tagp += 16;
+-
+-				if (flags & JBD2_FLAG_LAST_TAG)
+-					break;
++			/*
++			 * A descriptor block: we can now write all of the
++			 * data blocks. Yay, useful work is finally getting
++			 * done here!
++			 */
++			err = jbd2_do_replay(journal, info, bh, &next_log_block,
++					     next_commit_ID);
++			if (err) {
++				if (err == -ENOMEM)
++					goto failed;
++				success = err;
+ 			}
+ 
+-			brelse(bh);
+ 			continue;
+ 
+ 		case JBD2_COMMIT_BLOCK:
++			if (pass != PASS_SCAN) {
++				next_commit_ID++;
++				continue;
++			}
++
+ 			/*     How to differentiate between interrupted commit
+ 			 *               and journal corruption ?
+ 			 *
+@@ -782,7 +778,6 @@ static int do_one_pass(journal_t *journa
+ 					pr_err("JBD2: Invalid checksum found in transaction %u\n",
+ 					       next_commit_ID);
+ 					err = -EFSBADCRC;
+-					brelse(bh);
+ 					goto failed;
+ 				}
+ 			ignore_crc_mismatch:
+@@ -792,7 +787,6 @@ static int do_one_pass(journal_t *journa
+ 				 */
+ 				jbd2_debug(1, "JBD2: Invalid checksum ignored in transaction %u, likely stale data\n",
+ 					  next_commit_ID);
+-				brelse(bh);
+ 				goto done;
+ 			}
+ 
+@@ -802,8 +796,7 @@ static int do_one_pass(journal_t *journa
+ 			 * much to do other than move on to the next sequence
+ 			 * number.
+ 			 */
+-			if (pass == PASS_SCAN &&
+-			    jbd2_has_feature_checksum(journal)) {
++			if (jbd2_has_feature_checksum(journal)) {
+ 				struct commit_header *cbh =
+ 					(struct commit_header *)bh->b_data;
+ 				unsigned found_chksum =
+@@ -812,7 +805,6 @@ static int do_one_pass(journal_t *journa
+ 				if (info->end_transaction) {
+ 					journal->j_failed_commit =
+ 						info->end_transaction;
+-					brelse(bh);
+ 					break;
+ 				}
+ 
+@@ -828,36 +820,33 @@ static int do_one_pass(journal_t *journa
+ 					goto chksum_error;
+ 
+ 				crc32_sum = ~0;
++				goto chksum_ok;
+ 			}
+-			if (pass == PASS_SCAN &&
+-			    !jbd2_commit_block_csum_verify(journal,
+-							   bh->b_data)) {
+-				if (jbd2_commit_block_csum_verify_partial(
+-								  journal,
+-								  bh->b_data)) {
+-					pr_notice("JBD2: Find incomplete commit block in transaction %u block %lu\n",
+-						  next_commit_ID, next_log_block);
+-					goto chksum_ok;
+-				}
+-			chksum_error:
+-				if (commit_time < last_trans_commit_time)
+-					goto ignore_crc_mismatch;
+-				info->end_transaction = next_commit_ID;
+-				info->head_block = head_block;
+ 
+-				if (!jbd2_has_feature_async_commit(journal)) {
+-					journal->j_failed_commit =
+-						next_commit_ID;
+-					brelse(bh);
+-					break;
+-				}
++			if (jbd2_commit_block_csum_verify(journal, bh->b_data))
++				goto chksum_ok;
++
++			if (jbd2_commit_block_csum_verify_partial(journal,
++								  bh->b_data)) {
++				pr_notice("JBD2: Find incomplete commit block in transaction %u block %lu\n",
++					  next_commit_ID, next_log_block);
++				goto chksum_ok;
+ 			}
+-			if (pass == PASS_SCAN) {
+-			chksum_ok:
+-				last_trans_commit_time = commit_time;
+-				head_block = next_log_block;
++
++chksum_error:
++			if (commit_time < last_trans_commit_time)
++				goto ignore_crc_mismatch;
++			info->end_transaction = next_commit_ID;
++			info->head_block = head_block;
++
++			if (!jbd2_has_feature_async_commit(journal)) {
++				journal->j_failed_commit = next_commit_ID;
++				break;
+ 			}
+-			brelse(bh);
++
++chksum_ok:
++			last_trans_commit_time = commit_time;
++			head_block = next_log_block;
+ 			next_commit_ID++;
+ 			continue;
+ 
+@@ -876,14 +865,11 @@ static int do_one_pass(journal_t *journa
+ 
+ 			/* If we aren't in the REVOKE pass, then we can
+ 			 * just skip over this block. */
+-			if (pass != PASS_REVOKE) {
+-				brelse(bh);
++			if (pass != PASS_REVOKE)
+ 				continue;
+-			}
+ 
+ 			err = scan_revoke_records(journal, bh,
+ 						  next_commit_ID, info);
+-			brelse(bh);
+ 			if (err)
+ 				goto failed;
+ 			continue;
+@@ -891,12 +877,12 @@ static int do_one_pass(journal_t *journa
+ 		default:
+ 			jbd2_debug(3, "Unrecognised magic %d, end of scan.\n",
+ 				  blocktype);
+-			brelse(bh);
+ 			goto done;
+ 		}
+ 	}
+ 
+  done:
++	brelse(bh);
+ 	/*
+ 	 * We broke out of the log scan loop: either we came to the
+ 	 * known end of the log or we found an unexpected block in the
+@@ -927,11 +913,10 @@ static int do_one_pass(journal_t *journa
+ 			success = err;
+ 	}
+ 
+-	if (block_error && success == 0)
+-		success = -EIO;
+ 	return success;
+ 
+  failed:
++	brelse(bh);
+ 	return err;
+ }
+ 
+diff -rupN a/include/linux/jbd2.h b/include/linux/jbd2.h
+--- a/include/linux/jbd2.h	2024-11-17 23:15:08.000000000 +0100
++++ b/include/linux/jbd2.h	2024-11-29 15:12:20.155261379 +0100
+@@ -1796,22 +1796,21 @@ static inline unsigned long jbd2_log_spa
+ static inline u32 jbd2_chksum(journal_t *journal, u32 crc,
+ 			      const void *address, unsigned int length)
+ {
+-	struct {
+-		struct shash_desc shash;
+-		char ctx[JBD_MAX_CHECKSUM_SIZE];
+-	} desc;
++	DEFINE_RAW_FLEX(struct shash_desc, desc, __ctx,
++		DIV_ROUND_UP(JBD_MAX_CHECKSUM_SIZE,
++			     sizeof(*((struct shash_desc *)0)->__ctx)));
+ 	int err;
+ 
+ 	BUG_ON(crypto_shash_descsize(journal->j_chksum_driver) >
+ 		JBD_MAX_CHECKSUM_SIZE);
+ 
+-	desc.shash.tfm = journal->j_chksum_driver;
+-	*(u32 *)desc.ctx = crc;
++	desc->tfm = journal->j_chksum_driver;
++	*(u32 *)desc->__ctx = crc;
+ 
+-	err = crypto_shash_update(&desc.shash, address, length);
++	err = crypto_shash_update(desc, address, length);
+ 	BUG_ON(err);
+ 
+-	return *(u32 *)desc.ctx;
++	return *(u32 *)desc->__ctx;
+ }
+ 
+ /* Return most recent uncommitted transaction */
+diff -rupN a/mm/truncate.c b/mm/truncate.c
+--- a/mm/truncate.c	2024-11-28 20:43:55.000000000 +0100
++++ b/mm/truncate.c	2024-11-29 15:12:20.135312227 +0100
+@@ -806,6 +806,21 @@ void pagecache_isize_extended(struct ino
+ 	 */
+ 	if (folio_mkclean(folio))
+ 		folio_mark_dirty(folio);
++
++	/*
++	 * The post-eof range of the folio must be zeroed before it is exposed
++	 * to the file. Writeback normally does this, but since i_size has been
++	 * increased we handle it here.
++	 */
++	if (folio_test_dirty(folio)) {
++		unsigned int offset, end;
++
++		offset = from - folio_pos(folio);
++		end = min_t(unsigned int, to - folio_pos(folio),
++			    folio_size(folio));
++		folio_zero_segment(folio, offset, end);
++	}
++
+ 	folio_unlock(folio);
+ 	folio_put(folio);
+ }
