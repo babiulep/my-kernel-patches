@@ -1,0 +1,1553 @@
+diff -rupN a/arch/alpha/kernel/pci-sysfs.c b/arch/alpha/kernel/pci-sysfs.c
+--- a/arch/alpha/kernel/pci-sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/arch/alpha/kernel/pci-sysfs.c	2024-11-30 19:50:50.340824372 +0100
+@@ -64,7 +64,7 @@ static int __pci_mmap_fits(struct pci_de
+  * Return: %0 on success, negative error code otherwise
+  */
+ static int pci_mmap_resource(struct kobject *kobj,
+-			     struct bin_attribute *attr,
++			     const struct bin_attribute *attr,
+ 			     struct vm_area_struct *vma, int sparse)
+ {
+ 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+@@ -93,14 +93,14 @@ static int pci_mmap_resource(struct kobj
+ }
+ 
+ static int pci_mmap_resource_sparse(struct file *filp, struct kobject *kobj,
+-				    struct bin_attribute *attr,
++				    const struct bin_attribute *attr,
+ 				    struct vm_area_struct *vma)
+ {
+ 	return pci_mmap_resource(kobj, attr, vma, 1);
+ }
+ 
+ static int pci_mmap_resource_dense(struct file *filp, struct kobject *kobj,
+-				   struct bin_attribute *attr,
++				   const struct bin_attribute *attr,
+ 				   struct vm_area_struct *vma)
+ {
+ 	return pci_mmap_resource(kobj, attr, vma, 0);
+diff -rupN a/Documentation/driver-api/auxiliary_bus.rst b/Documentation/driver-api/auxiliary_bus.rst
+--- a/Documentation/driver-api/auxiliary_bus.rst	2024-11-17 23:15:08.000000000 +0100
++++ b/Documentation/driver-api/auxiliary_bus.rst	2024-11-30 19:50:50.332368387 +0100
+@@ -24,7 +24,6 @@ Auxiliary Device Creation
+ 
+ .. kernel-doc:: drivers/base/auxiliary.c
+    :identifiers: auxiliary_device_init __auxiliary_device_add
+-                 auxiliary_find_device
+ 
+ Auxiliary Device Memory Model and Lifespan
+ ------------------------------------------
+diff -rupN a/drivers/base/auxiliary.c b/drivers/base/auxiliary.c
+--- a/drivers/base/auxiliary.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/auxiliary.c	2024-11-30 19:50:50.335423790 +0100
+@@ -92,7 +92,7 @@
+  * Auxiliary devices are created and registered by a subsystem-level core
+  * device that needs to break up its functionality into smaller fragments. One
+  * way to extend the scope of an auxiliary_device is to encapsulate it within a
+- * domain- pecific structure defined by the parent device. This structure
++ * domain-specific structure defined by the parent device. This structure
+  * contains the auxiliary_device and any associated shared data/callbacks
+  * needed to establish the connection with the parent.
+  *
+@@ -336,35 +336,6 @@ int __auxiliary_device_add(struct auxili
+ EXPORT_SYMBOL_GPL(__auxiliary_device_add);
+ 
+ /**
+- * auxiliary_find_device - auxiliary device iterator for locating a particular device.
+- * @start: Device to begin with
+- * @data: Data to pass to match function
+- * @match: Callback function to check device
+- *
+- * This function returns a reference to a device that is 'found'
+- * for later use, as determined by the @match callback.
+- *
+- * The reference returned should be released with put_device().
+- *
+- * The callback should return 0 if the device doesn't match and non-zero
+- * if it does.  If the callback returns non-zero, this function will
+- * return to the caller and not iterate over any more devices.
+- */
+-struct auxiliary_device *auxiliary_find_device(struct device *start,
+-					       const void *data,
+-					       device_match_t match)
+-{
+-	struct device *dev;
+-
+-	dev = bus_find_device(&auxiliary_bus_type, start, data, match);
+-	if (!dev)
+-		return NULL;
+-
+-	return to_auxiliary_dev(dev);
+-}
+-EXPORT_SYMBOL_GPL(auxiliary_find_device);
+-
+-/**
+  * __auxiliary_driver_register - register a driver for auxiliary bus devices
+  * @auxdrv: auxiliary_driver structure
+  * @owner: owning module/driver
+diff -rupN a/drivers/base/cacheinfo.c b/drivers/base/cacheinfo.c
+--- a/drivers/base/cacheinfo.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/cacheinfo.c	2024-11-30 19:50:50.349188012 +0100
+@@ -254,11 +254,11 @@ static int of_count_cache_leaves(struct
+ {
+ 	unsigned int leaves = 0;
+ 
+-	if (of_property_read_bool(np, "cache-size"))
++	if (of_property_present(np, "cache-size"))
+ 		++leaves;
+-	if (of_property_read_bool(np, "i-cache-size"))
++	if (of_property_present(np, "i-cache-size"))
+ 		++leaves;
+-	if (of_property_read_bool(np, "d-cache-size"))
++	if (of_property_present(np, "d-cache-size"))
+ 		++leaves;
+ 
+ 	if (!leaves) {
+@@ -367,9 +367,7 @@ static int cache_shared_cpu_map_setup(un
+ 
+ 		cpumask_set_cpu(cpu, &this_leaf->shared_cpu_map);
+ 		for_each_online_cpu(i) {
+-			struct cpu_cacheinfo *sib_cpu_ci = get_cpu_cacheinfo(i);
+-
+-			if (i == cpu || !sib_cpu_ci->info_list)
++			if (i == cpu || !per_cpu_cacheinfo(i))
+ 				continue;/* skip if itself or no cacheinfo */
+ 			for (sib_index = 0; sib_index < cache_leaves(i); sib_index++) {
+ 				sib_leaf = per_cpu_cacheinfo_idx(i, sib_index);
+@@ -409,10 +407,7 @@ static void cache_shared_cpu_map_remove(
+ 	for (index = 0; index < cache_leaves(cpu); index++) {
+ 		this_leaf = per_cpu_cacheinfo_idx(cpu, index);
+ 		for_each_cpu(sibling, &this_leaf->shared_cpu_map) {
+-			struct cpu_cacheinfo *sib_cpu_ci =
+-						get_cpu_cacheinfo(sibling);
+-
+-			if (sibling == cpu || !sib_cpu_ci->info_list)
++			if (sibling == cpu || !per_cpu_cacheinfo(sibling))
+ 				continue;/* skip if itself or no cacheinfo */
+ 
+ 			for (sib_index = 0; sib_index < cache_leaves(sibling); sib_index++) {
+diff -rupN a/drivers/base/class.c b/drivers/base/class.c
+--- a/drivers/base/class.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/class.c	2024-11-30 19:50:50.349285232 +0100
+@@ -405,7 +405,7 @@ int class_for_each_device(const struct c
+ 	if (!class)
+ 		return -EINVAL;
+ 	if (!sp) {
+-		WARN(1, "%s called for class '%s' before it was initialized",
++		WARN(1, "%s called for class '%s' before it was registered",
+ 		     __func__, class->name);
+ 		return -EINVAL;
+ 	}
+@@ -453,7 +453,7 @@ struct device *class_find_device(const s
+ 	if (!class)
+ 		return NULL;
+ 	if (!sp) {
+-		WARN(1, "%s called for class '%s' before it was initialized",
++		WARN(1, "%s called for class '%s' before it was registered",
+ 		     __func__, class->name);
+ 		return NULL;
+ 	}
+diff -rupN a/drivers/base/core.c b/drivers/base/core.c
+--- a/drivers/base/core.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/core.c	2024-11-30 19:50:50.349517187 +0100
+@@ -552,7 +552,7 @@ void device_link_wait_removal(void)
+ }
+ EXPORT_SYMBOL_GPL(device_link_wait_removal);
+ 
+-static struct class devlink_class = {
++static const struct class devlink_class = {
+ 	.name = "devlink",
+ 	.dev_groups = devlink_groups,
+ 	.dev_release = devlink_dev_release,
+@@ -1971,7 +1971,7 @@ static struct device *fwnode_get_next_pa
+ 
+ /**
+  * __fw_devlink_relax_cycles - Relax and mark dependency cycles.
+- * @con: Potential consumer device.
++ * @con_handle: Potential consumer device fwnode.
+  * @sup_handle: Potential supplier's fwnode.
+  *
+  * Needs to be called with fwnode_lock and device link lock held.
+@@ -1989,10 +1989,10 @@ static struct device *fwnode_get_next_pa
+  *
+  * Return true if one or more cycles were found. Otherwise, return false.
+  */
+-static bool __fw_devlink_relax_cycles(struct device *con,
++static bool __fw_devlink_relax_cycles(struct fwnode_handle *con_handle,
+ 				 struct fwnode_handle *sup_handle)
+ {
+-	struct device *sup_dev = NULL, *par_dev = NULL;
++	struct device *sup_dev = NULL, *par_dev = NULL, *con_dev = NULL;
+ 	struct fwnode_link *link;
+ 	struct device_link *dev_link;
+ 	bool ret = false;
+@@ -2009,22 +2009,22 @@ static bool __fw_devlink_relax_cycles(st
+ 
+ 	sup_handle->flags |= FWNODE_FLAG_VISITED;
+ 
+-	sup_dev = get_dev_from_fwnode(sup_handle);
+-
+ 	/* Termination condition. */
+-	if (sup_dev == con) {
++	if (sup_handle == con_handle) {
+ 		pr_debug("----- cycle: start -----\n");
+ 		ret = true;
+ 		goto out;
+ 	}
+ 
++	sup_dev = get_dev_from_fwnode(sup_handle);
++	con_dev = get_dev_from_fwnode(con_handle);
+ 	/*
+ 	 * If sup_dev is bound to a driver and @con hasn't started binding to a
+ 	 * driver, sup_dev can't be a consumer of @con. So, no need to check
+ 	 * further.
+ 	 */
+ 	if (sup_dev && sup_dev->links.status ==  DL_DEV_DRIVER_BOUND &&
+-	    con->links.status == DL_DEV_NO_DRIVER) {
++	    con_dev && con_dev->links.status == DL_DEV_NO_DRIVER) {
+ 		ret = false;
+ 		goto out;
+ 	}
+@@ -2033,7 +2033,7 @@ static bool __fw_devlink_relax_cycles(st
+ 		if (link->flags & FWLINK_FLAG_IGNORE)
+ 			continue;
+ 
+-		if (__fw_devlink_relax_cycles(con, link->supplier)) {
++		if (__fw_devlink_relax_cycles(con_handle, link->supplier)) {
+ 			__fwnode_link_cycle(link);
+ 			ret = true;
+ 		}
+@@ -2048,7 +2048,7 @@ static bool __fw_devlink_relax_cycles(st
+ 	else
+ 		par_dev = fwnode_get_next_parent_dev(sup_handle);
+ 
+-	if (par_dev && __fw_devlink_relax_cycles(con, par_dev->fwnode)) {
++	if (par_dev && __fw_devlink_relax_cycles(con_handle, par_dev->fwnode)) {
+ 		pr_debug("%pfwf: cycle: child of %pfwf\n", sup_handle,
+ 			 par_dev->fwnode);
+ 		ret = true;
+@@ -2066,7 +2066,7 @@ static bool __fw_devlink_relax_cycles(st
+ 		    !(dev_link->flags & DL_FLAG_CYCLE))
+ 			continue;
+ 
+-		if (__fw_devlink_relax_cycles(con,
++		if (__fw_devlink_relax_cycles(con_handle,
+ 					      dev_link->supplier->fwnode)) {
+ 			pr_debug("%pfwf: cycle: depends on %pfwf\n", sup_handle,
+ 				 dev_link->supplier->fwnode);
+@@ -2114,11 +2114,6 @@ static int fw_devlink_create_devlink(str
+ 	if (link->flags & FWLINK_FLAG_IGNORE)
+ 		return 0;
+ 
+-	if (con->fwnode == link->consumer)
+-		flags = fw_devlink_get_flags(link->flags);
+-	else
+-		flags = FW_DEVLINK_FLAGS_PERMISSIVE;
+-
+ 	/*
+ 	 * In some cases, a device P might also be a supplier to its child node
+ 	 * C. However, this would defer the probe of C until the probe of P
+@@ -2139,25 +2134,23 @@ static int fw_devlink_create_devlink(str
+ 		return -EINVAL;
+ 
+ 	/*
+-	 * SYNC_STATE_ONLY device links don't block probing and supports cycles.
+-	 * So, one might expect that cycle detection isn't necessary for them.
+-	 * However, if the device link was marked as SYNC_STATE_ONLY because
+-	 * it's part of a cycle, then we still need to do cycle detection. This
+-	 * is because the consumer and supplier might be part of multiple cycles
+-	 * and we need to detect all those cycles.
++	 * Don't try to optimize by not calling the cycle detection logic under
++	 * certain conditions. There's always some corner case that won't get
++	 * detected.
+ 	 */
+-	if (!device_link_flag_is_sync_state_only(flags) ||
+-	    flags & DL_FLAG_CYCLE) {
+-		device_links_write_lock();
+-		if (__fw_devlink_relax_cycles(con, sup_handle)) {
+-			__fwnode_link_cycle(link);
+-			flags = fw_devlink_get_flags(link->flags);
+-			pr_debug("----- cycle: end -----\n");
+-			dev_info(con, "Fixed dependency cycle(s) with %pfwf\n",
+-				 sup_handle);
+-		}
+-		device_links_write_unlock();
++	device_links_write_lock();
++	if (__fw_devlink_relax_cycles(link->consumer, sup_handle)) {
++		__fwnode_link_cycle(link);
++		pr_debug("----- cycle: end -----\n");
++		pr_info("%pfwf: Fixed dependency cycle(s) with %pfwf\n",
++			link->consumer, sup_handle);
+ 	}
++	device_links_write_unlock();
++
++	if (con->fwnode == link->consumer)
++		flags = fw_devlink_get_flags(link->flags);
++	else
++		flags = FW_DEVLINK_FLAGS_PERMISSIVE;
+ 
+ 	if (sup_handle->flags & FWNODE_FLAG_NOT_DEVICE)
+ 		sup_dev = fwnode_get_next_parent_dev(sup_handle);
+@@ -2180,8 +2173,8 @@ static int fw_devlink_create_devlink(str
+ 		}
+ 
+ 		if (con != sup_dev && !device_link_add(con, sup_dev, flags)) {
+-			dev_err(con, "Failed to create device link (0x%x) with %s\n",
+-				flags, dev_name(sup_dev));
++			dev_err(con, "Failed to create device link (0x%x) with supplier %s for %pfwf\n",
++				flags, dev_name(sup_dev), link->consumer);
+ 			ret = -EINVAL;
+ 		}
+ 
+diff -rupN a/drivers/base/firmware_loader/main.c b/drivers/base/firmware_loader/main.c
+--- a/drivers/base/firmware_loader/main.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/firmware_loader/main.c	2024-11-30 19:50:50.349766675 +0100
+@@ -829,19 +829,18 @@ static void fw_log_firmware_info(const s
+ 	shash->tfm = alg;
+ 
+ 	if (crypto_shash_digest(shash, fw->data, fw->size, sha256buf) < 0)
+-		goto out_shash;
++		goto out_free;
+ 
+ 	for (int i = 0; i < SHA256_DIGEST_SIZE; i++)
+ 		sprintf(&outbuf[i * 2], "%02x", sha256buf[i]);
+ 	outbuf[SHA256_BLOCK_SIZE] = 0;
+ 	dev_dbg(device, "Loaded FW: %s, sha256: %s\n", name, outbuf);
+ 
+-out_shash:
+-	crypto_free_shash(alg);
+ out_free:
+ 	kfree(shash);
+ 	kfree(outbuf);
+ 	kfree(sha256buf);
++	crypto_free_shash(alg);
+ }
+ #else
+ static void fw_log_firmware_info(const struct firmware *fw, const char *name,
+@@ -1075,8 +1074,8 @@ EXPORT_SYMBOL_GPL(firmware_request_platf
+ 
+ /**
+  * firmware_request_cache() - cache firmware for suspend so resume can use it
+- * @name: name of firmware file
+  * @device: device for which firmware should be cached for
++ * @name: name of firmware file
+  *
+  * There are some devices with an optimization that enables the device to not
+  * require loading firmware on system reboot. This optimization may still
+diff -rupN a/drivers/base/node.c b/drivers/base/node.c
+--- a/drivers/base/node.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/node.c	2024-11-30 19:50:50.351368532 +0100
+@@ -27,7 +27,7 @@ static const struct bus_type node_subsys
+ };
+ 
+ static inline ssize_t cpumap_read(struct file *file, struct kobject *kobj,
+-				  struct bin_attribute *attr, char *buf,
++				  const struct bin_attribute *attr, char *buf,
+ 				  loff_t off, size_t count)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+@@ -45,10 +45,10 @@ static inline ssize_t cpumap_read(struct
+ 	return n;
+ }
+ 
+-static BIN_ATTR_RO(cpumap, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(cpumap, CPUMAP_FILE_MAX_BYTES);
+ 
+ static inline ssize_t cpulist_read(struct file *file, struct kobject *kobj,
+-				   struct bin_attribute *attr, char *buf,
++				   const struct bin_attribute *attr, char *buf,
+ 				   loff_t off, size_t count)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+@@ -66,7 +66,7 @@ static inline ssize_t cpulist_read(struc
+ 	return n;
+ }
+ 
+-static BIN_ATTR_RO(cpulist, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(cpulist, CPULIST_FILE_MAX_BYTES);
+ 
+ /**
+  * struct node_access_nodes - Access class device to hold user visible
+@@ -578,7 +578,7 @@ static struct attribute *node_dev_attrs[
+ 	NULL
+ };
+ 
+-static struct bin_attribute *node_dev_bin_attrs[] = {
++static const struct bin_attribute *node_dev_bin_attrs[] = {
+ 	&bin_attr_cpumap,
+ 	&bin_attr_cpulist,
+ 	NULL
+@@ -586,7 +586,7 @@ static struct bin_attribute *node_dev_bi
+ 
+ static const struct attribute_group node_dev_group = {
+ 	.attrs = node_dev_attrs,
+-	.bin_attrs = node_dev_bin_attrs
++	.bin_attrs_new = node_dev_bin_attrs,
+ };
+ 
+ static const struct attribute_group *node_dev_groups[] = {
+diff -rupN a/drivers/base/power/sysfs.c b/drivers/base/power/sysfs.c
+--- a/drivers/base/power/sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/power/sysfs.c	2024-11-30 19:50:50.335618126 +0100
+@@ -509,14 +509,6 @@ static ssize_t wakeup_last_time_ms_show(
+ 	return sysfs_emit(buf, "%lld\n", msec);
+ }
+ 
+-static inline int dpm_sysfs_wakeup_change_owner(struct device *dev, kuid_t kuid,
+-						kgid_t kgid)
+-{
+-	if (dev->power.wakeup && dev->power.wakeup->dev)
+-		return device_change_owner(dev->power.wakeup->dev, kuid, kgid);
+-	return 0;
+-}
+-
+ static DEVICE_ATTR_RO(wakeup_last_time_ms);
+ 
+ #ifdef CONFIG_PM_AUTOSLEEP
+@@ -541,6 +533,15 @@ static ssize_t wakeup_prevent_sleep_time
+ 
+ static DEVICE_ATTR_RO(wakeup_prevent_sleep_time_ms);
+ #endif /* CONFIG_PM_AUTOSLEEP */
++
++static inline int dpm_sysfs_wakeup_change_owner(struct device *dev, kuid_t kuid,
++						kgid_t kgid)
++{
++	if (dev->power.wakeup && dev->power.wakeup->dev)
++		return device_change_owner(dev->power.wakeup->dev, kuid, kgid);
++	return 0;
++}
++
+ #else /* CONFIG_PM_SLEEP */
+ static inline int dpm_sysfs_wakeup_change_owner(struct device *dev, kuid_t kuid,
+ 						kgid_t kgid)
+diff -rupN a/drivers/base/topology.c b/drivers/base/topology.c
+--- a/drivers/base/topology.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/topology.c	2024-11-30 19:50:50.351505466 +0100
+@@ -23,7 +23,7 @@ static ssize_t name##_show(struct device
+ 
+ #define define_siblings_read_func(name, mask)					\
+ static ssize_t name##_read(struct file *file, struct kobject *kobj,		\
+-			   struct bin_attribute *attr, char *buf,		\
++			   const struct bin_attribute *attr, char *buf,		\
+ 			   loff_t off, size_t count)				\
+ {										\
+ 	struct device *dev = kobj_to_dev(kobj);                                 \
+@@ -33,7 +33,7 @@ static ssize_t name##_read(struct file *
+ }										\
+ 										\
+ static ssize_t name##_list_read(struct file *file, struct kobject *kobj,	\
+-				struct bin_attribute *attr, char *buf,		\
++				const struct bin_attribute *attr, char *buf,	\
+ 				loff_t off, size_t count)			\
+ {										\
+ 	struct device *dev = kobj_to_dev(kobj);					\
+@@ -62,50 +62,50 @@ define_id_show_func(ppin, "0x%llx");
+ static DEVICE_ATTR_ADMIN_RO(ppin);
+ 
+ define_siblings_read_func(thread_siblings, sibling_cpumask);
+-static BIN_ATTR_RO(thread_siblings, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(thread_siblings_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(thread_siblings, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(thread_siblings_list, CPULIST_FILE_MAX_BYTES);
+ 
+ define_siblings_read_func(core_cpus, sibling_cpumask);
+-static BIN_ATTR_RO(core_cpus, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(core_cpus_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(core_cpus, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(core_cpus_list, CPULIST_FILE_MAX_BYTES);
+ 
+ define_siblings_read_func(core_siblings, core_cpumask);
+-static BIN_ATTR_RO(core_siblings, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(core_siblings_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(core_siblings, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(core_siblings_list, CPULIST_FILE_MAX_BYTES);
+ 
+ #ifdef TOPOLOGY_CLUSTER_SYSFS
+ define_siblings_read_func(cluster_cpus, cluster_cpumask);
+-static BIN_ATTR_RO(cluster_cpus, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(cluster_cpus_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(cluster_cpus, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(cluster_cpus_list, CPULIST_FILE_MAX_BYTES);
+ #endif
+ 
+ #ifdef TOPOLOGY_DIE_SYSFS
+ define_siblings_read_func(die_cpus, die_cpumask);
+-static BIN_ATTR_RO(die_cpus, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(die_cpus_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(die_cpus, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(die_cpus_list, CPULIST_FILE_MAX_BYTES);
+ #endif
+ 
+ define_siblings_read_func(package_cpus, core_cpumask);
+-static BIN_ATTR_RO(package_cpus, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(package_cpus_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(package_cpus, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(package_cpus_list, CPULIST_FILE_MAX_BYTES);
+ 
+ #ifdef TOPOLOGY_BOOK_SYSFS
+ define_id_show_func(book_id, "%d");
+ static DEVICE_ATTR_RO(book_id);
+ define_siblings_read_func(book_siblings, book_cpumask);
+-static BIN_ATTR_RO(book_siblings, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(book_siblings_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(book_siblings, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(book_siblings_list, CPULIST_FILE_MAX_BYTES);
+ #endif
+ 
+ #ifdef TOPOLOGY_DRAWER_SYSFS
+ define_id_show_func(drawer_id, "%d");
+ static DEVICE_ATTR_RO(drawer_id);
+ define_siblings_read_func(drawer_siblings, drawer_cpumask);
+-static BIN_ATTR_RO(drawer_siblings, CPUMAP_FILE_MAX_BYTES);
+-static BIN_ATTR_RO(drawer_siblings_list, CPULIST_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(drawer_siblings, CPUMAP_FILE_MAX_BYTES);
++static const BIN_ATTR_RO(drawer_siblings_list, CPULIST_FILE_MAX_BYTES);
+ #endif
+ 
+-static struct bin_attribute *bin_attrs[] = {
++static const struct bin_attribute *const bin_attrs[] = {
+ 	&bin_attr_core_cpus,
+ 	&bin_attr_core_cpus_list,
+ 	&bin_attr_thread_siblings,
+@@ -163,7 +163,7 @@ static umode_t topology_is_visible(struc
+ 
+ static const struct attribute_group topology_attr_group = {
+ 	.attrs = default_attrs,
+-	.bin_attrs = bin_attrs,
++	.bin_attrs_new = bin_attrs,
+ 	.is_visible = topology_is_visible,
+ 	.name = "topology"
+ };
+diff -rupN a/drivers/base/trace.h b/drivers/base/trace.h
+--- a/drivers/base/trace.h	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/base/trace.h	2024-11-30 19:50:50.333396271 +0100
+@@ -24,18 +24,18 @@ DECLARE_EVENT_CLASS(devres,
+ 		__field(struct device *, dev)
+ 		__field(const char *, op)
+ 		__field(void *, node)
+-		__field(const char *, name)
++		__string(name, name)
+ 		__field(size_t, size)
+ 	),
+ 	TP_fast_assign(
+ 		__assign_str(devname);
+ 		__entry->op = op;
+ 		__entry->node = node;
+-		__entry->name = name;
++		__assign_str(name);
+ 		__entry->size = size;
+ 	),
+ 	TP_printk("%s %3s %p %s (%zu bytes)", __get_str(devname),
+-		  __entry->op, __entry->node, __entry->name, __entry->size)
++		  __entry->op, __entry->node, __get_str(name), __entry->size)
+ );
+ 
+ DEFINE_EVENT(devres, devres_log,
+diff -rupN a/drivers/cdx/cdx.c b/drivers/cdx/cdx.c
+--- a/drivers/cdx/cdx.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/cdx/cdx.c	2024-11-30 19:50:50.347965925 +0100
+@@ -707,7 +707,7 @@ static const struct vm_operations_struct
+  * Return: true on success, false otherwise.
+  */
+ static int cdx_mmap_resource(struct file *fp, struct kobject *kobj,
+-			     struct bin_attribute *attr,
++			     const struct bin_attribute *attr,
+ 			     struct vm_area_struct *vma)
+ {
+ 	struct cdx_device *cdx_dev = to_cdx_device(kobj_to_dev(kobj));
+diff -rupN a/drivers/cxl/port.c b/drivers/cxl/port.c
+--- a/drivers/cxl/port.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/cxl/port.c	2024-11-30 19:50:50.337177991 +0100
+@@ -173,7 +173,7 @@ static ssize_t CDAT_read(struct file *fi
+ static BIN_ATTR_ADMIN_RO(CDAT, 0);
+ 
+ static umode_t cxl_port_bin_attr_is_visible(struct kobject *kobj,
+-					    struct bin_attribute *attr, int i)
++					    const struct bin_attribute *attr, int i)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+ 	struct cxl_port *port = to_cxl_port(dev);
+diff -rupN a/drivers/gpio/gpio-aspeed.c b/drivers/gpio/gpio-aspeed.c
+--- a/drivers/gpio/gpio-aspeed.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-aspeed.c	2024-11-30 19:50:50.352116240 +0100
+@@ -1102,7 +1102,7 @@ static void aspeed_gpio_irq_print_chip(s
+ 	if (rc)
+ 		return;
+ 
+-	seq_printf(p, dev_name(gpio->dev));
++	seq_puts(p, dev_name(gpio->dev));
+ }
+ 
+ static const struct irq_chip aspeed_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-aspeed-sgpio.c b/drivers/gpio/gpio-aspeed-sgpio.c
+--- a/drivers/gpio/gpio-aspeed-sgpio.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-aspeed-sgpio.c	2024-11-30 19:50:50.352020994 +0100
+@@ -420,7 +420,7 @@ static void aspeed_sgpio_irq_print_chip(
+ 	int offset;
+ 
+ 	irqd_to_aspeed_sgpio_data(d, &gpio, &bank, &bit, &offset);
+-	seq_printf(p, dev_name(gpio->dev));
++	seq_puts(p, dev_name(gpio->dev));
+ }
+ 
+ static const struct irq_chip aspeed_sgpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-ep93xx.c b/drivers/gpio/gpio-ep93xx.c
+--- a/drivers/gpio/gpio-ep93xx.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-ep93xx.c	2024-11-30 19:50:50.352212153 +0100
+@@ -249,7 +249,7 @@ static void ep93xx_irq_print_chip(struct
+ {
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(data);
+ 
+-	seq_printf(p, dev_name(gc->parent));
++	seq_puts(p, dev_name(gc->parent));
+ }
+ 
+ static const struct irq_chip gpio_eic_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-hlwd.c b/drivers/gpio/gpio-hlwd.c
+--- a/drivers/gpio/gpio-hlwd.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-hlwd.c	2024-11-30 19:50:50.352276750 +0100
+@@ -210,7 +210,7 @@ static void hlwd_gpio_irq_print_chip(str
+ 	struct hlwd_gpio *hlwd =
+ 		gpiochip_get_data(irq_data_get_irq_chip_data(data));
+ 
+-	seq_printf(p, dev_name(hlwd->dev));
++	seq_puts(p, dev_name(hlwd->dev));
+ }
+ 
+ static const struct irq_chip hlwd_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-mlxbf2.c b/drivers/gpio/gpio-mlxbf2.c
+--- a/drivers/gpio/gpio-mlxbf2.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-mlxbf2.c	2024-11-30 19:50:50.352345747 +0100
+@@ -331,7 +331,7 @@ static void mlxbf2_gpio_irq_print_chip(s
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(irqd);
+ 	struct mlxbf2_gpio_context *gs = gpiochip_get_data(gc);
+ 
+-	seq_printf(p, dev_name(gs->dev));
++	seq_puts(p, dev_name(gs->dev));
+ }
+ 
+ static const struct irq_chip mlxbf2_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-omap.c b/drivers/gpio/gpio-omap.c
+--- a/drivers/gpio/gpio-omap.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-omap.c	2024-11-30 19:50:50.352439551 +0100
+@@ -715,7 +715,7 @@ static void omap_gpio_irq_print_chip(str
+ {
+ 	struct gpio_bank *bank = omap_irq_data_get_bank(d);
+ 
+-	seq_printf(p, dev_name(bank->dev));
++	seq_puts(p, dev_name(bank->dev));
+ }
+ 
+ static const struct irq_chip omap_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-pca953x.c b/drivers/gpio/gpio-pca953x.c
+--- a/drivers/gpio/gpio-pca953x.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-pca953x.c	2024-11-30 19:50:50.352567004 +0100
+@@ -815,7 +815,7 @@ static void pca953x_irq_print_chip(struc
+ {
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(data);
+ 
+-	seq_printf(p, dev_name(gc->parent));
++	seq_puts(p, dev_name(gc->parent));
+ }
+ 
+ static const struct irq_chip pca953x_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-pl061.c b/drivers/gpio/gpio-pl061.c
+--- a/drivers/gpio/gpio-pl061.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-pl061.c	2024-11-30 19:50:50.352668058 +0100
+@@ -291,7 +291,7 @@ static void pl061_irq_print_chip(struct
+ {
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(data);
+ 
+-	seq_printf(p, dev_name(gc->parent));
++	seq_puts(p, dev_name(gc->parent));
+ }
+ 
+ static const struct irq_chip pl061_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-tegra186.c b/drivers/gpio/gpio-tegra186.c
+--- a/drivers/gpio/gpio-tegra186.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-tegra186.c	2024-11-30 19:50:50.352848859 +0100
+@@ -610,7 +610,7 @@ static void tegra186_irq_print_chip(stru
+ {
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(data);
+ 
+-	seq_printf(p, dev_name(gc->parent));
++	seq_puts(p, dev_name(gc->parent));
+ }
+ 
+ static const struct irq_chip tegra186_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-tegra.c b/drivers/gpio/gpio-tegra.c
+--- a/drivers/gpio/gpio-tegra.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-tegra.c	2024-11-30 19:50:50.352746461 +0100
+@@ -600,7 +600,7 @@ static void tegra_gpio_irq_print_chip(st
+ {
+ 	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
+ 
+-	seq_printf(s, dev_name(chip->parent));
++	seq_puts(s, dev_name(chip->parent));
+ }
+ 
+ static const struct irq_chip tegra_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-tqmx86.c b/drivers/gpio/gpio-tqmx86.c
+--- a/drivers/gpio/gpio-tqmx86.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-tqmx86.c	2024-11-30 19:50:50.352947866 +0100
+@@ -275,7 +275,7 @@ static void tqmx86_gpio_irq_print_chip(s
+ {
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+ 
+-	seq_printf(p, gc->label);
++	seq_puts(p, gc->label);
+ }
+ 
+ static const struct irq_chip tqmx86_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-visconti.c b/drivers/gpio/gpio-visconti.c
+--- a/drivers/gpio/gpio-visconti.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-visconti.c	2024-11-30 19:50:50.353013735 +0100
+@@ -142,7 +142,7 @@ static void visconti_gpio_irq_print_chip
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+ 	struct visconti_gpio *priv = gpiochip_get_data(gc);
+ 
+-	seq_printf(p, dev_name(priv->dev));
++	seq_puts(p, dev_name(priv->dev));
+ }
+ 
+ static const struct irq_chip visconti_gpio_irq_chip = {
+diff -rupN a/drivers/gpio/gpio-xgs-iproc.c b/drivers/gpio/gpio-xgs-iproc.c
+--- a/drivers/gpio/gpio-xgs-iproc.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpio/gpio-xgs-iproc.c	2024-11-30 19:50:50.353077126 +0100
+@@ -198,7 +198,7 @@ static void iproc_gpio_irq_print_chip(st
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+ 	struct iproc_gpio_chip *chip = to_iproc_gpio(gc);
+ 
+-	seq_printf(p, dev_name(chip->dev));
++	seq_puts(p, dev_name(chip->dev));
+ }
+ 
+ static const struct irq_chip iproc_gpio_irq_chip = {
+diff -rupN a/drivers/gpu/drm/amd/amdgpu/amdgpu_psp.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_psp.c
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_psp.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_psp.c	2024-11-30 19:50:50.337387797 +0100
+@@ -3999,7 +3999,7 @@ static umode_t amdgpu_flash_attr_is_visi
+ }
+ 
+ static umode_t amdgpu_bin_flash_attr_is_visible(struct kobject *kobj,
+-						struct bin_attribute *attr,
++						const struct bin_attribute *attr,
+ 						int idx)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+diff -rupN a/drivers/gpu/drm/display/drm_dp_aux_bus.c b/drivers/gpu/drm/display/drm_dp_aux_bus.c
+--- a/drivers/gpu/drm/display/drm_dp_aux_bus.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/gpu/drm/display/drm_dp_aux_bus.c	2024-11-30 19:50:50.347252452 +0100
+@@ -292,7 +292,7 @@ int of_dp_aux_populate_bus(struct drm_dp
+ 	aux_ep->dev.parent = aux->dev;
+ 	aux_ep->dev.bus = &dp_aux_bus_type;
+ 	aux_ep->dev.type = &dp_aux_device_type_type;
+-	aux_ep->dev.of_node = of_node_get(np);
++	device_set_node(&aux_ep->dev, of_fwnode_handle(of_node_get(np)));
+ 	dev_set_name(&aux_ep->dev, "aux-%s", dev_name(aux->dev));
+ 
+ 	ret = device_register(&aux_ep->dev);
+diff -rupN a/drivers/infiniband/hw/qib/qib_sysfs.c b/drivers/infiniband/hw/qib/qib_sysfs.c
+--- a/drivers/infiniband/hw/qib/qib_sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/infiniband/hw/qib/qib_sysfs.c	2024-11-30 19:50:50.337597359 +0100
+@@ -283,7 +283,7 @@ static struct bin_attribute *port_ccmgta
+ };
+ 
+ static umode_t qib_ccmgta_is_bin_visible(struct kobject *kobj,
+-				 struct bin_attribute *attr, int n)
++				 const struct bin_attribute *attr, int n)
+ {
+ 	struct qib_pportdata *ppd = qib_get_pportdata_kobj(kobj);
+ 
+diff -rupN a/drivers/irqchip/irq-gic.c b/drivers/irqchip/irq-gic.c
+--- a/drivers/irqchip/irq-gic.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/irqchip/irq-gic.c	2024-11-30 19:50:50.353176971 +0100
+@@ -400,7 +400,7 @@ static void gic_irq_print_chip(struct ir
+ 	struct gic_chip_data *gic = irq_data_get_irq_chip_data(d);
+ 
+ 	if (gic->domain->pm_dev)
+-		seq_printf(p, gic->domain->pm_dev->of_node->name);
++		seq_puts(p, gic->domain->pm_dev->of_node->name);
+ 	else
+ 		seq_printf(p, "GIC-%d", (int)(gic - &gic_data[0]));
+ }
+diff -rupN a/drivers/irqchip/irq-mvebu-pic.c b/drivers/irqchip/irq-mvebu-pic.c
+--- a/drivers/irqchip/irq-mvebu-pic.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/irqchip/irq-mvebu-pic.c	2024-11-30 19:50:50.353284563 +0100
+@@ -71,7 +71,7 @@ static void mvebu_pic_print_chip(struct
+ {
+ 	struct mvebu_pic *pic = irq_data_get_irq_chip_data(d);
+ 
+-	seq_printf(p, dev_name(&pic->pdev->dev));
++	seq_puts(p, dev_name(&pic->pdev->dev));
+ }
+ 
+ static const struct irq_chip mvebu_pic_chip = {
+diff -rupN a/drivers/irqchip/irq-versatile-fpga.c b/drivers/irqchip/irq-versatile-fpga.c
+--- a/drivers/irqchip/irq-versatile-fpga.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/irqchip/irq-versatile-fpga.c	2024-11-30 19:50:50.353344040 +0100
+@@ -69,7 +69,7 @@ static void fpga_irq_print_chip(struct i
+ {
+ 	struct fpga_irq_data *f = irq_data_get_irq_chip_data(d);
+ 
+-	seq_printf(p, irq_domain_get_of_node(f->domain)->name);
++	seq_puts(p, irq_domain_get_of_node(f->domain)->name);
+ }
+ 
+ static const struct irq_chip fpga_chip = {
+diff -rupN a/drivers/misc/ocxl/sysfs.c b/drivers/misc/ocxl/sysfs.c
+--- a/drivers/misc/ocxl/sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/misc/ocxl/sysfs.c	2024-11-30 19:50:50.340889048 +0100
+@@ -125,7 +125,7 @@ static const struct vm_operations_struct
+ };
+ 
+ static int global_mmio_mmap(struct file *filp, struct kobject *kobj,
+-			struct bin_attribute *bin_attr,
++			const struct bin_attribute *bin_attr,
+ 			struct vm_area_struct *vma)
+ {
+ 	struct ocxl_afu *afu = to_afu(kobj_to_dev(kobj));
+diff -rupN a/drivers/mtd/spi-nor/sysfs.c b/drivers/mtd/spi-nor/sysfs.c
+--- a/drivers/mtd/spi-nor/sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/mtd/spi-nor/sysfs.c	2024-11-30 19:50:50.337666462 +0100
+@@ -87,7 +87,7 @@ static umode_t spi_nor_sysfs_is_visible(
+ }
+ 
+ static umode_t spi_nor_sysfs_is_bin_visible(struct kobject *kobj,
+-					    struct bin_attribute *attr, int n)
++					    const struct bin_attribute *attr, int n)
+ {
+ 	struct spi_device *spi = to_spi_device(kobj_to_dev(kobj));
+ 	struct spi_mem *spimem = spi_get_drvdata(spi);
+diff -rupN a/drivers/nvmem/core.c b/drivers/nvmem/core.c
+--- a/drivers/nvmem/core.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/nvmem/core.c	2024-11-30 19:50:50.338344713 +0100
+@@ -298,16 +298,25 @@ static umode_t nvmem_bin_attr_get_umode(
+ }
+ 
+ static umode_t nvmem_bin_attr_is_visible(struct kobject *kobj,
+-					 struct bin_attribute *attr, int i)
++					 const struct bin_attribute *attr,
++					 int i)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+ 	struct nvmem_device *nvmem = to_nvmem_device(dev);
+ 
+-	attr->size = nvmem->size;
+-
+ 	return nvmem_bin_attr_get_umode(nvmem);
+ }
+ 
++static size_t nvmem_bin_attr_size(struct kobject *kobj,
++				  const struct bin_attribute *attr,
++				  int i)
++{
++	struct device *dev = kobj_to_dev(kobj);
++	struct nvmem_device *nvmem = to_nvmem_device(dev);
++
++	return nvmem->size;
++}
++
+ static umode_t nvmem_attr_is_visible(struct kobject *kobj,
+ 				     struct attribute *attr, int i)
+ {
+@@ -383,6 +392,7 @@ static const struct attribute_group nvme
+ 	.bin_attrs	= nvmem_bin_attributes,
+ 	.attrs		= nvmem_attrs,
+ 	.is_bin_visible = nvmem_bin_attr_is_visible,
++	.bin_size	= nvmem_bin_attr_size,
+ 	.is_visible	= nvmem_attr_is_visible,
+ };
+ 
+diff -rupN a/drivers/pci/p2pdma.c b/drivers/pci/p2pdma.c
+--- a/drivers/pci/p2pdma.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pci/p2pdma.c	2024-11-30 19:50:50.340980906 +0100
+@@ -90,7 +90,7 @@ static ssize_t published_show(struct dev
+ static DEVICE_ATTR_RO(published);
+ 
+ static int p2pmem_alloc_mmap(struct file *filp, struct kobject *kobj,
+-		struct bin_attribute *attr, struct vm_area_struct *vma)
++		const struct bin_attribute *attr, struct vm_area_struct *vma)
+ {
+ 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+ 	size_t len = vma->vm_end - vma->vm_start;
+diff -rupN a/drivers/pci/pci-sysfs.c b/drivers/pci/pci-sysfs.c
+--- a/drivers/pci/pci-sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pci/pci-sysfs.c	2024-11-30 19:50:50.344219269 +0100
+@@ -818,21 +818,20 @@ static struct bin_attribute *pci_dev_con
+ 	NULL,
+ };
+ 
+-static umode_t pci_dev_config_attr_is_visible(struct kobject *kobj,
+-					      struct bin_attribute *a, int n)
++static size_t pci_dev_config_attr_bin_size(struct kobject *kobj,
++					   const struct bin_attribute *a,
++					   int n)
+ {
+ 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+ 
+-	a->size = PCI_CFG_SPACE_SIZE;
+ 	if (pdev->cfg_size > PCI_CFG_SPACE_SIZE)
+-		a->size = PCI_CFG_SPACE_EXP_SIZE;
+-
+-	return a->attr.mode;
++		return PCI_CFG_SPACE_EXP_SIZE;
++	return PCI_CFG_SPACE_SIZE;
+ }
+ 
+ static const struct attribute_group pci_dev_config_attr_group = {
+ 	.bin_attrs = pci_dev_config_attrs,
+-	.is_bin_visible = pci_dev_config_attr_is_visible,
++	.bin_size = pci_dev_config_attr_bin_size,
+ };
+ 
+ /*
+@@ -842,7 +841,7 @@ static const struct attribute_group pci_
+ static __maybe_unused loff_t
+ pci_llseek_resource(struct file *filep,
+ 		    struct kobject *kobj __always_unused,
+-		    struct bin_attribute *attr,
++		    const struct bin_attribute *attr,
+ 		    loff_t offset, int whence)
+ {
+ 	return fixed_size_llseek(filep, offset, whence, attr->size);
+@@ -911,7 +910,7 @@ static ssize_t pci_write_legacy_io(struc
+  * memory space.
+  */
+ static int pci_mmap_legacy_mem(struct file *filp, struct kobject *kobj,
+-			       struct bin_attribute *attr,
++			       const struct bin_attribute *attr,
+ 			       struct vm_area_struct *vma)
+ {
+ 	struct pci_bus *bus = to_pci_bus(kobj_to_dev(kobj));
+@@ -931,7 +930,7 @@ static int pci_mmap_legacy_mem(struct fi
+  * memory space. Returns -ENOSYS if the operation isn't supported
+  */
+ static int pci_mmap_legacy_io(struct file *filp, struct kobject *kobj,
+-			      struct bin_attribute *attr,
++			      const struct bin_attribute *attr,
+ 			      struct vm_area_struct *vma)
+ {
+ 	struct pci_bus *bus = to_pci_bus(kobj_to_dev(kobj));
+@@ -1035,7 +1034,7 @@ void pci_remove_legacy_files(struct pci_
+  *
+  * Use the regular PCI mapping routines to map a PCI resource into userspace.
+  */
+-static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
++static int pci_mmap_resource(struct kobject *kobj, const struct bin_attribute *attr,
+ 			     struct vm_area_struct *vma, int write_combine)
+ {
+ 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+@@ -1060,14 +1059,14 @@ static int pci_mmap_resource(struct kobj
+ }
+ 
+ static int pci_mmap_resource_uc(struct file *filp, struct kobject *kobj,
+-				struct bin_attribute *attr,
++				const struct bin_attribute *attr,
+ 				struct vm_area_struct *vma)
+ {
+ 	return pci_mmap_resource(kobj, attr, vma, 0);
+ }
+ 
+ static int pci_mmap_resource_wc(struct file *filp, struct kobject *kobj,
+-				struct bin_attribute *attr,
++				const struct bin_attribute *attr,
+ 				struct vm_area_struct *vma)
+ {
+ 	return pci_mmap_resource(kobj, attr, vma, 1);
+@@ -1327,24 +1326,29 @@ static struct bin_attribute *pci_dev_rom
+ };
+ 
+ static umode_t pci_dev_rom_attr_is_visible(struct kobject *kobj,
+-					   struct bin_attribute *a, int n)
++					   const struct bin_attribute *a, int n)
+ {
+ 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+-	size_t rom_size;
+ 
+ 	/* If the device has a ROM, try to expose it in sysfs. */
+-	rom_size = pci_resource_len(pdev, PCI_ROM_RESOURCE);
+-	if (!rom_size)
++	if (!pci_resource_end(pdev, PCI_ROM_RESOURCE))
+ 		return 0;
+ 
+-	a->size = rom_size;
+-
+ 	return a->attr.mode;
+ }
+ 
++static size_t pci_dev_rom_attr_bin_size(struct kobject *kobj,
++					const struct bin_attribute *a, int n)
++{
++	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
++
++	return pci_resource_len(pdev, PCI_ROM_RESOURCE);
++}
++
+ static const struct attribute_group pci_dev_rom_attr_group = {
+ 	.bin_attrs = pci_dev_rom_attrs,
+ 	.is_bin_visible = pci_dev_rom_attr_is_visible,
++	.bin_size = pci_dev_rom_attr_bin_size,
+ };
+ 
+ static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
+diff -rupN a/drivers/pci/vpd.c b/drivers/pci/vpd.c
+--- a/drivers/pci/vpd.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pci/vpd.c	2024-11-30 19:50:50.339874191 +0100
+@@ -325,7 +325,7 @@ static struct bin_attribute *vpd_attrs[]
+ };
+ 
+ static umode_t vpd_attr_is_visible(struct kobject *kobj,
+-				   struct bin_attribute *a, int n)
++				   const struct bin_attribute *a, int n)
+ {
+ 	struct pci_dev *pdev = to_pci_dev(kobj_to_dev(kobj));
+ 
+diff -rupN a/drivers/perf/arm-ni.c b/drivers/perf/arm-ni.c
+--- a/drivers/perf/arm-ni.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/perf/arm-ni.c	2024-11-30 19:50:50.351580850 +0100
+@@ -247,7 +247,6 @@ static struct attribute *arm_ni_other_at
+ 
+ static const struct attribute_group arm_ni_other_attr_group = {
+ 	.attrs = arm_ni_other_attrs,
+-	NULL
+ };
+ 
+ static const struct attribute_group *arm_ni_attr_groups[] = {
+diff -rupN a/drivers/phy/tegra/xusb.c b/drivers/phy/tegra/xusb.c
+--- a/drivers/phy/tegra/xusb.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/phy/tegra/xusb.c	2024-11-30 19:50:50.347342775 +0100
+@@ -543,7 +543,7 @@ static int tegra_xusb_port_init(struct t
+ 
+ 	device_initialize(&port->dev);
+ 	port->dev.type = &tegra_xusb_port_type;
+-	port->dev.of_node = of_node_get(np);
++	device_set_node(&port->dev, of_fwnode_handle(of_node_get(np)));
+ 	port->dev.parent = padctl->dev;
+ 
+ 	err = dev_set_name(&port->dev, "%s-%u", name, index);
+diff -rupN a/drivers/pinctrl/bcm/pinctrl-iproc-gpio.c b/drivers/pinctrl/bcm/pinctrl-iproc-gpio.c
+--- a/drivers/pinctrl/bcm/pinctrl-iproc-gpio.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pinctrl/bcm/pinctrl-iproc-gpio.c	2024-11-30 19:50:50.353418980 +0100
+@@ -309,7 +309,7 @@ static void iproc_gpio_irq_print_chip(st
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+ 	struct iproc_gpio *chip = gpiochip_get_data(gc);
+ 
+-	seq_printf(p, dev_name(chip->dev));
++	seq_puts(p, dev_name(chip->dev));
+ }
+ 
+ static const struct irq_chip iproc_gpio_irq_chip = {
+diff -rupN a/drivers/pinctrl/mvebu/pinctrl-armada-37xx.c b/drivers/pinctrl/mvebu/pinctrl-armada-37xx.c
+--- a/drivers/pinctrl/mvebu/pinctrl-armada-37xx.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pinctrl/mvebu/pinctrl-armada-37xx.c	2024-11-30 19:50:50.353522027 +0100
+@@ -734,7 +734,7 @@ static void armada_37xx_irq_print_chip(s
+ 	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
+ 	struct armada_37xx_pinctrl *info = gpiochip_get_data(chip);
+ 
+-	seq_printf(p, info->data->name);
++	seq_puts(p, info->data->name);
+ }
+ 
+ static const struct irq_chip armada_37xx_irqchip = {
+diff -rupN a/drivers/pinctrl/pinctrl-mcp23s08.c b/drivers/pinctrl/pinctrl-mcp23s08.c
+--- a/drivers/pinctrl/pinctrl-mcp23s08.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pinctrl/pinctrl-mcp23s08.c	2024-11-30 19:50:50.353622861 +0100
+@@ -569,7 +569,7 @@ static void mcp23s08_irq_print_chip(stru
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+ 	struct mcp23s08 *mcp = gpiochip_get_data(gc);
+ 
+-	seq_printf(p, dev_name(mcp->dev));
++	seq_puts(p, dev_name(mcp->dev));
+ }
+ 
+ static const struct irq_chip mcp23s08_irq_chip = {
+diff -rupN a/drivers/pinctrl/pinctrl-stmfx.c b/drivers/pinctrl/pinctrl-stmfx.c
+--- a/drivers/pinctrl/pinctrl-stmfx.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pinctrl/pinctrl-stmfx.c	2024-11-30 19:50:50.353710733 +0100
+@@ -599,7 +599,7 @@ static void stmfx_pinctrl_irq_print_chip
+ 	struct gpio_chip *gpio_chip = irq_data_get_irq_chip_data(d);
+ 	struct stmfx_pinctrl *pctl = gpiochip_get_data(gpio_chip);
+ 
+-	seq_printf(p, dev_name(pctl->dev));
++	seq_puts(p, dev_name(pctl->dev));
+ }
+ 
+ static const struct irq_chip stmfx_pinctrl_irq_chip = {
+diff -rupN a/drivers/pinctrl/pinctrl-sx150x.c b/drivers/pinctrl/pinctrl-sx150x.c
+--- a/drivers/pinctrl/pinctrl-sx150x.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pinctrl/pinctrl-sx150x.c	2024-11-30 19:50:50.353811234 +0100
+@@ -584,7 +584,7 @@ static void sx150x_irq_print_chip(struct
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+ 	struct sx150x_pinctrl *pctl = gpiochip_get_data(gc);
+ 
+-	seq_printf(p, pctl->client->name);
++	seq_puts(p, pctl->client->name);
+ }
+ 
+ static const struct irq_chip sx150x_irq_chip = {
+diff -rupN a/drivers/pinctrl/renesas/pinctrl-rzg2l.c b/drivers/pinctrl/renesas/pinctrl-rzg2l.c
+--- a/drivers/pinctrl/renesas/pinctrl-rzg2l.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/pinctrl/renesas/pinctrl-rzg2l.c	2024-11-30 19:50:50.353978266 +0100
+@@ -2290,7 +2290,7 @@ static void rzg2l_gpio_irq_print_chip(st
+ {
+ 	struct gpio_chip *gc = irq_data_get_irq_chip_data(data);
+ 
+-	seq_printf(p, dev_name(gc->parent));
++	seq_puts(p, dev_name(gc->parent));
+ }
+ 
+ static int rzg2l_gpio_irq_set_wake(struct irq_data *data, unsigned int on)
+diff -rupN a/drivers/platform/x86/amd/hsmp.c b/drivers/platform/x86/amd/hsmp.c
+--- a/drivers/platform/x86/amd/hsmp.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/platform/x86/amd/hsmp.c	2024-11-30 19:50:50.339977062 +0100
+@@ -620,7 +620,7 @@ static int hsmp_get_tbl_dram_base(u16 so
+ }
+ 
+ static umode_t hsmp_is_sock_attr_visible(struct kobject *kobj,
+-					 struct bin_attribute *battr, int id)
++					 const struct bin_attribute *battr, int id)
+ {
+ 	if (plat_dev.proto_ver == HSMP_PROTO_VER6)
+ 		return battr->attr.mode;
+diff -rupN a/drivers/platform/x86/intel/pmt/class.c b/drivers/platform/x86/intel/pmt/class.c
+--- a/drivers/platform/x86/intel/pmt/class.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/platform/x86/intel/pmt/class.c	2024-11-30 19:50:50.343818467 +0100
+@@ -103,7 +103,7 @@ intel_pmt_read(struct file *filp, struct
+ 
+ static int
+ intel_pmt_mmap(struct file *filp, struct kobject *kobj,
+-		struct bin_attribute *attr, struct vm_area_struct *vma)
++		const struct bin_attribute *attr, struct vm_area_struct *vma)
+ {
+ 	struct intel_pmt_entry *entry = container_of(attr,
+ 						     struct intel_pmt_entry,
+diff -rupN a/drivers/platform/x86/intel/sdsi.c b/drivers/platform/x86/intel/sdsi.c
+--- a/drivers/platform/x86/intel/sdsi.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/platform/x86/intel/sdsi.c	2024-11-30 19:50:50.340100405 +0100
+@@ -541,7 +541,7 @@ static struct bin_attribute *sdsi_bin_at
+ };
+ 
+ static umode_t
+-sdsi_battr_is_visible(struct kobject *kobj, struct bin_attribute *attr, int n)
++sdsi_battr_is_visible(struct kobject *kobj, const struct bin_attribute *attr, int n)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+ 	struct sdsi_priv *priv = dev_get_drvdata(dev);
+diff -rupN a/drivers/s390/char/con3215.c b/drivers/s390/char/con3215.c
+--- a/drivers/s390/char/con3215.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/s390/char/con3215.c	2024-11-30 19:50:50.351682467 +0100
+@@ -803,7 +803,6 @@ static struct attribute *con3215_drv_att
+ 
+ static struct attribute_group con3215_drv_attr_group = {
+ 	.attrs = con3215_drv_attrs,
+-	NULL,
+ };
+ 
+ static const struct attribute_group *con3215_drv_attr_groups[] = {
+diff -rupN a/drivers/scsi/scsi_sysfs.c b/drivers/scsi/scsi_sysfs.c
+--- a/drivers/scsi/scsi_sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/scsi/scsi_sysfs.c	2024-11-30 19:50:50.340208753 +0100
+@@ -1274,7 +1274,7 @@ static umode_t scsi_sdev_attr_is_visible
+ }
+ 
+ static umode_t scsi_sdev_bin_attr_is_visible(struct kobject *kobj,
+-					     struct bin_attribute *attr, int i)
++					     const struct bin_attribute *attr, int i)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+ 	struct scsi_device *sdev = to_scsi_device(dev);
+diff -rupN a/drivers/uio/uio_hv_generic.c b/drivers/uio/uio_hv_generic.c
+--- a/drivers/uio/uio_hv_generic.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/uio/uio_hv_generic.c	2024-11-30 19:50:50.343890272 +0100
+@@ -135,7 +135,7 @@ static void hv_uio_rescind(struct vmbus_
+  * The ring buffer is allocated as contiguous memory by vmbus_open
+  */
+ static int hv_uio_ring_mmap(struct file *filp, struct kobject *kobj,
+-			    struct bin_attribute *attr,
++			    const struct bin_attribute *attr,
+ 			    struct vm_area_struct *vma)
+ {
+ 	struct vmbus_channel *channel
+diff -rupN a/drivers/usb/core/sysfs.c b/drivers/usb/core/sysfs.c
+--- a/drivers/usb/core/sysfs.c	2024-11-17 23:15:08.000000000 +0100
++++ b/drivers/usb/core/sysfs.c	2024-11-30 19:50:50.340363465 +0100
+@@ -925,7 +925,7 @@ static struct bin_attribute *dev_bin_att
+ };
+ 
+ static umode_t dev_bin_attrs_are_visible(struct kobject *kobj,
+-		struct bin_attribute *a, int n)
++		const struct bin_attribute *a, int n)
+ {
+ 	struct device *dev = kobj_to_dev(kobj);
+ 	struct usb_device *udev = to_usb_device(dev);
+diff -rupN a/fs/sysfs/file.c b/fs/sysfs/file.c
+--- a/fs/sysfs/file.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/sysfs/file.c	2024-11-30 19:50:50.346497412 +0100
+@@ -91,9 +91,12 @@ static ssize_t sysfs_kf_bin_read(struct
+ 			count = size - pos;
+ 	}
+ 
+-	if (!battr->read)
++	if (!battr->read && !battr->read_new)
+ 		return -EIO;
+ 
++	if (battr->read_new)
++		return battr->read_new(of->file, kobj, battr, buf, pos, count);
++
+ 	return battr->read(of->file, kobj, battr, buf, pos, count);
+ }
+ 
+@@ -152,9 +155,12 @@ static ssize_t sysfs_kf_bin_write(struct
+ 	if (!count)
+ 		return 0;
+ 
+-	if (!battr->write)
++	if (!battr->write && !battr->write_new)
+ 		return -EIO;
+ 
++	if (battr->write_new)
++		return battr->write_new(of->file, kobj, battr, buf, pos, count);
++
+ 	return battr->write(of->file, kobj, battr, buf, pos, count);
+ }
+ 
+@@ -315,7 +321,7 @@ int sysfs_add_file_mode_ns(struct kernfs
+ }
+ 
+ int sysfs_add_bin_file_mode_ns(struct kernfs_node *parent,
+-		const struct bin_attribute *battr, umode_t mode,
++		const struct bin_attribute *battr, umode_t mode, size_t size,
+ 		kuid_t uid, kgid_t gid, const void *ns)
+ {
+ 	const struct attribute *attr = &battr->attr;
+@@ -323,13 +329,19 @@ int sysfs_add_bin_file_mode_ns(struct ke
+ 	const struct kernfs_ops *ops;
+ 	struct kernfs_node *kn;
+ 
++	if (battr->read && battr->read_new)
++		return -EINVAL;
++
++	if (battr->write && battr->write_new)
++		return -EINVAL;
++
+ 	if (battr->mmap)
+ 		ops = &sysfs_bin_kfops_mmap;
+-	else if (battr->read && battr->write)
++	else if ((battr->read || battr->read_new) && (battr->write || battr->write_new))
+ 		ops = &sysfs_bin_kfops_rw;
+-	else if (battr->read)
++	else if (battr->read || battr->read_new)
+ 		ops = &sysfs_bin_kfops_ro;
+-	else if (battr->write)
++	else if (battr->write || battr->write_new)
+ 		ops = &sysfs_bin_kfops_wo;
+ 	else
+ 		ops = &sysfs_file_kfops_empty;
+@@ -340,7 +352,7 @@ int sysfs_add_bin_file_mode_ns(struct ke
+ #endif
+ 
+ 	kn = __kernfs_create_file(parent, attr->name, mode & 0777, uid, gid,
+-				  battr->size, ops, (void *)attr, ns, key);
++				  size, ops, (void *)attr, ns, key);
+ 	if (IS_ERR(kn)) {
+ 		if (PTR_ERR(kn) == -EEXIST)
+ 			sysfs_warn_dup(parent, attr->name);
+@@ -580,8 +592,8 @@ int sysfs_create_bin_file(struct kobject
+ 		return -EINVAL;
+ 
+ 	kobject_get_ownership(kobj, &uid, &gid);
+-	return sysfs_add_bin_file_mode_ns(kobj->sd, attr, attr->attr.mode, uid,
+-					   gid, NULL);
++	return sysfs_add_bin_file_mode_ns(kobj->sd, attr, attr->attr.mode,
++					  attr->size, uid, gid, NULL);
+ }
+ EXPORT_SYMBOL_GPL(sysfs_create_bin_file);
+ 
+diff -rupN a/fs/sysfs/group.c b/fs/sysfs/group.c
+--- a/fs/sysfs/group.c	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/sysfs/group.c	2024-11-30 19:50:50.336665531 +0100
+@@ -87,6 +87,7 @@ static int create_files(struct kernfs_no
+ 	if (grp->bin_attrs) {
+ 		for (i = 0, bin_attr = grp->bin_attrs; *bin_attr; i++, bin_attr++) {
+ 			umode_t mode = (*bin_attr)->attr.mode;
++			size_t size = (*bin_attr)->size;
+ 
+ 			if (update)
+ 				kernfs_remove_by_name(parent,
+@@ -97,6 +98,8 @@ static int create_files(struct kernfs_no
+ 				if (!mode)
+ 					continue;
+ 			}
++			if (grp->bin_size)
++				size = grp->bin_size(kobj, *bin_attr, i);
+ 
+ 			WARN(mode & ~(SYSFS_PREALLOC | 0664),
+ 			     "Attribute %s: Invalid permissions 0%o\n",
+@@ -104,7 +107,7 @@ static int create_files(struct kernfs_no
+ 
+ 			mode &= SYSFS_PREALLOC | 0664;
+ 			error = sysfs_add_bin_file_mode_ns(parent, *bin_attr,
+-							   mode, uid, gid,
++							   mode, size, uid, gid,
+ 							   NULL);
+ 			if (error)
+ 				break;
+diff -rupN a/fs/sysfs/sysfs.h b/fs/sysfs/sysfs.h
+--- a/fs/sysfs/sysfs.h	2024-11-17 23:15:08.000000000 +0100
++++ b/fs/sysfs/sysfs.h	2024-11-30 19:50:50.336336981 +0100
+@@ -31,7 +31,7 @@ int sysfs_add_file_mode_ns(struct kernfs
+ 		const struct attribute *attr, umode_t amode, kuid_t uid,
+ 		kgid_t gid, const void *ns);
+ int sysfs_add_bin_file_mode_ns(struct kernfs_node *parent,
+-		const struct bin_attribute *battr, umode_t mode,
++		const struct bin_attribute *battr, umode_t mode, size_t size,
+ 		kuid_t uid, kgid_t gid, const void *ns);
+ 
+ /*
+diff -rupN a/include/linux/auxiliary_bus.h b/include/linux/auxiliary_bus.h
+--- a/include/linux/auxiliary_bus.h	2024-11-17 23:15:08.000000000 +0100
++++ b/include/linux/auxiliary_bus.h	2024-11-30 19:50:50.333052477 +0100
+@@ -269,8 +269,4 @@ void auxiliary_driver_unregister(struct
+ #define module_auxiliary_driver(__auxiliary_driver) \
+ 	module_driver(__auxiliary_driver, auxiliary_driver_register, auxiliary_driver_unregister)
+ 
+-struct auxiliary_device *auxiliary_find_device(struct device *start,
+-					       const void *data,
+-					       device_match_t match);
+-
+ #endif /* _AUXILIARY_BUS_H_ */
+diff -rupN a/include/linux/list.h b/include/linux/list.h
+--- a/include/linux/list.h	2024-11-17 23:15:08.000000000 +0100
++++ b/include/linux/list.h	2024-11-30 19:50:50.331804569 +0100
+@@ -687,14 +687,6 @@ static inline void list_splice_tail_init
+ 	for (pos = (head)->next; !list_is_head(pos, (head)); pos = pos->next)
+ 
+ /**
+- * list_for_each_reverse - iterate backwards over a list
+- * @pos:	the &struct list_head to use as a loop cursor.
+- * @head:	the head for your list.
+- */
+-#define list_for_each_reverse(pos, head) \
+-	for (pos = (head)->prev; pos != (head); pos = pos->prev)
+-
+-/**
+  * list_for_each_rcu - Iterate over a list in an RCU-safe fashion
+  * @pos:	the &struct list_head to use as a loop cursor.
+  * @head:	the head for your list.
+diff -rupN a/include/linux/sysfs.h b/include/linux/sysfs.h
+--- a/include/linux/sysfs.h	2024-11-17 23:15:08.000000000 +0100
++++ b/include/linux/sysfs.h	2024-11-30 19:50:50.351218762 +0100
+@@ -87,6 +87,11 @@ do {							\
+  *		SYSFS_GROUP_VISIBLE() when assigning this callback to
+  *		specify separate _group_visible() and _attr_visible()
+  *		handlers.
++ * @bin_size:
++ *		Optional: Function to return the size of a binary attribute
++ *		of the group. Will be called repeatedly for each binary
++ *		attribute in the group. Overwrites the size field embedded
++ *		inside the attribute itself.
+  * @attrs:	Pointer to NULL terminated list of attributes.
+  * @bin_attrs:	Pointer to NULL terminated list of binary attributes.
+  *		Either attrs or bin_attrs or both must be provided.
+@@ -96,9 +101,15 @@ struct attribute_group {
+ 	umode_t			(*is_visible)(struct kobject *,
+ 					      struct attribute *, int);
+ 	umode_t			(*is_bin_visible)(struct kobject *,
+-						  struct bin_attribute *, int);
++						  const struct bin_attribute *, int);
++	size_t			(*bin_size)(struct kobject *,
++					    const struct bin_attribute *,
++					    int);
+ 	struct attribute	**attrs;
+-	struct bin_attribute	**bin_attrs;
++	union {
++		struct bin_attribute		**bin_attrs;
++		const struct bin_attribute	*const *bin_attrs_new;
++	};
+ };
+ 
+ #define SYSFS_PREALLOC		010000
+@@ -191,22 +202,22 @@ struct attribute_group {
+  * attributes, the group visibility is determined by the function
+  * specified to is_visible() not is_bin_visible()
+  */
+-#define DEFINE_SYSFS_BIN_GROUP_VISIBLE(name)                             \
+-	static inline umode_t sysfs_group_visible_##name(                \
+-		struct kobject *kobj, struct bin_attribute *attr, int n) \
+-	{                                                                \
+-		if (n == 0 && !name##_group_visible(kobj))               \
+-			return SYSFS_GROUP_INVISIBLE;                    \
+-		return name##_attr_visible(kobj, attr, n);               \
++#define DEFINE_SYSFS_BIN_GROUP_VISIBLE(name)                                   \
++	static inline umode_t sysfs_group_visible_##name(                      \
++		struct kobject *kobj, const struct bin_attribute *attr, int n) \
++	{                                                                      \
++		if (n == 0 && !name##_group_visible(kobj))                     \
++			return SYSFS_GROUP_INVISIBLE;                          \
++		return name##_attr_visible(kobj, attr, n);                     \
+ 	}
+ 
+-#define DEFINE_SIMPLE_SYSFS_BIN_GROUP_VISIBLE(name)                   \
+-	static inline umode_t sysfs_group_visible_##name(             \
+-		struct kobject *kobj, struct bin_attribute *a, int n) \
+-	{                                                             \
+-		if (n == 0 && !name##_group_visible(kobj))            \
+-			return SYSFS_GROUP_INVISIBLE;                 \
+-		return a->mode;                                       \
++#define DEFINE_SIMPLE_SYSFS_BIN_GROUP_VISIBLE(name)                         \
++	static inline umode_t sysfs_group_visible_##name(                   \
++		struct kobject *kobj, const struct bin_attribute *a, int n) \
++	{                                                                   \
++		if (n == 0 && !name##_group_visible(kobj))                  \
++			return SYSFS_GROUP_INVISIBLE;                       \
++		return a->mode;                                             \
+ 	}
+ 
+ #define SYSFS_GROUP_VISIBLE(fn) sysfs_group_visible_##fn
+@@ -297,11 +308,15 @@ struct bin_attribute {
+ 	struct address_space *(*f_mapping)(void);
+ 	ssize_t (*read)(struct file *, struct kobject *, struct bin_attribute *,
+ 			char *, loff_t, size_t);
++	ssize_t (*read_new)(struct file *, struct kobject *, const struct bin_attribute *,
++			    char *, loff_t, size_t);
+ 	ssize_t (*write)(struct file *, struct kobject *, struct bin_attribute *,
+ 			 char *, loff_t, size_t);
+-	loff_t (*llseek)(struct file *, struct kobject *, struct bin_attribute *,
++	ssize_t (*write_new)(struct file *, struct kobject *,
++			     const struct bin_attribute *, char *, loff_t, size_t);
++	loff_t (*llseek)(struct file *, struct kobject *, const struct bin_attribute *,
+ 			 loff_t, int);
+-	int (*mmap)(struct file *, struct kobject *, struct bin_attribute *attr,
++	int (*mmap)(struct file *, struct kobject *, const struct bin_attribute *attr,
+ 		    struct vm_area_struct *vma);
+ };
+ 
+@@ -317,25 +332,36 @@ struct bin_attribute {
+  */
+ #define sysfs_bin_attr_init(bin_attr) sysfs_attr_init(&(bin_attr)->attr)
+ 
++typedef ssize_t __sysfs_bin_rw_handler_new(struct file *, struct kobject *,
++					   const struct bin_attribute *, char *, loff_t, size_t);
++
+ /* macros to create static binary attributes easier */
+ #define __BIN_ATTR(_name, _mode, _read, _write, _size) {		\
+ 	.attr = { .name = __stringify(_name), .mode = _mode },		\
+-	.read	= _read,						\
+-	.write	= _write,						\
++	.read = _Generic(_read,						\
++		__sysfs_bin_rw_handler_new * : NULL,			\
++		default : _read						\
++	),								\
++	.read_new = _Generic(_read,					\
++		__sysfs_bin_rw_handler_new * : _read,			\
++		default : NULL						\
++	),								\
++	.write = _Generic(_write,					\
++		__sysfs_bin_rw_handler_new * : NULL,			\
++		default : _write					\
++	),								\
++	.write_new = _Generic(_write,					\
++		__sysfs_bin_rw_handler_new * : _write,			\
++		default : NULL						\
++	),								\
+ 	.size	= _size,						\
+ }
+ 
+-#define __BIN_ATTR_RO(_name, _size) {					\
+-	.attr	= { .name = __stringify(_name), .mode = 0444 },		\
+-	.read	= _name##_read,						\
+-	.size	= _size,						\
+-}
++#define __BIN_ATTR_RO(_name, _size)					\
++	__BIN_ATTR(_name, 0444, _name##_read, NULL, _size)
+ 
+-#define __BIN_ATTR_WO(_name, _size) {					\
+-	.attr	= { .name = __stringify(_name), .mode = 0200 },		\
+-	.write	= _name##_write,					\
+-	.size	= _size,						\
+-}
++#define __BIN_ATTR_WO(_name, _size)					\
++	__BIN_ATTR(_name, 0200, NULL, _name##_write, _size)
+ 
+ #define __BIN_ATTR_RW(_name, _size)					\
+ 	__BIN_ATTR(_name, 0644, _name##_read, _name##_write, _size)
+@@ -356,11 +382,8 @@ struct bin_attribute bin_attr_##_name =
+ struct bin_attribute bin_attr_##_name = __BIN_ATTR_RW(_name, _size)
+ 
+ 
+-#define __BIN_ATTR_ADMIN_RO(_name, _size) {					\
+-	.attr	= { .name = __stringify(_name), .mode = 0400 },		\
+-	.read	= _name##_read,						\
+-	.size	= _size,						\
+-}
++#define __BIN_ATTR_ADMIN_RO(_name, _size)				\
++	__BIN_ATTR(_name, 0400, _name##_read, NULL, _size)
+ 
+ #define __BIN_ATTR_ADMIN_RW(_name, _size)					\
+ 	__BIN_ATTR(_name, 0600, _name##_read, _name##_write, _size)
+@@ -371,10 +394,8 @@ struct bin_attribute bin_attr_##_name =
+ #define BIN_ATTR_ADMIN_RW(_name, _size)					\
+ struct bin_attribute bin_attr_##_name = __BIN_ATTR_ADMIN_RW(_name, _size)
+ 
+-#define __BIN_ATTR_SIMPLE_RO(_name, _mode) {				\
+-	.attr	= { .name = __stringify(_name), .mode = _mode },	\
+-	.read	= sysfs_bin_attr_simple_read,				\
+-}
++#define __BIN_ATTR_SIMPLE_RO(_name, _mode)				\
++	__BIN_ATTR(_name, _mode, sysfs_bin_attr_simple_read, NULL, 0)
+ 
+ #define BIN_ATTR_SIMPLE_RO(_name)					\
+ struct bin_attribute bin_attr_##_name = __BIN_ATTR_SIMPLE_RO(_name, 0444)
+diff -rupN a/kernel/cpu.c b/kernel/cpu.c
+--- a/kernel/cpu.c	2024-11-17 23:15:08.000000000 +0100
++++ b/kernel/cpu.c	2024-11-30 19:50:50.351839655 +0100
+@@ -2866,7 +2866,6 @@ static struct attribute *cpuhp_cpu_attrs
+ static const struct attribute_group cpuhp_cpu_attr_group = {
+ 	.attrs = cpuhp_cpu_attrs,
+ 	.name = "hotplug",
+-	NULL
+ };
+ 
+ static ssize_t states_show(struct device *dev,
+@@ -2898,7 +2897,6 @@ static struct attribute *cpuhp_cpu_root_
+ static const struct attribute_group cpuhp_cpu_root_attr_group = {
+ 	.attrs = cpuhp_cpu_root_attrs,
+ 	.name = "hotplug",
+-	NULL
+ };
+ 
+ #ifdef CONFIG_HOTPLUG_SMT
+@@ -3020,7 +3018,6 @@ static struct attribute *cpuhp_smt_attrs
+ static const struct attribute_group cpuhp_smt_attr_group = {
+ 	.attrs = cpuhp_smt_attrs,
+ 	.name = "smt",
+-	NULL
+ };
+ 
+ static int __init cpu_smt_sysfs_init(void)
+diff -rupN a/lib/devres.c b/lib/devres.c
+--- a/lib/devres.c	2024-11-17 23:15:08.000000000 +0100
++++ b/lib/devres.c	2024-11-30 19:50:50.335361824 +0100
+@@ -115,9 +115,8 @@ EXPORT_SYMBOL(devm_ioremap_wc);
+  */
+ void devm_iounmap(struct device *dev, void __iomem *addr)
+ {
+-	WARN_ON(devres_destroy(dev, devm_ioremap_release, devm_ioremap_match,
++	WARN_ON(devres_release(dev, devm_ioremap_release, devm_ioremap_match,
+ 			       (__force void *)addr));
+-	iounmap(addr);
+ }
+ EXPORT_SYMBOL(devm_iounmap);
+ 
+@@ -308,8 +307,7 @@ EXPORT_SYMBOL(devm_ioport_map);
+  */
+ void devm_ioport_unmap(struct device *dev, void __iomem *addr)
+ {
+-	ioport_unmap(addr);
+-	WARN_ON(devres_destroy(dev, devm_ioport_map_release,
++	WARN_ON(devres_release(dev, devm_ioport_map_release,
+ 			       devm_ioport_map_match, (__force void *)addr));
+ }
+ EXPORT_SYMBOL(devm_ioport_unmap);
