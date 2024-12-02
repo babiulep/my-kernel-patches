@@ -1,8 +1,11 @@
 # my-kernel-patches
 Patches for the linux kernel
 
-2024-11-30
+2024-12-02:
+- some patches make the system freeze?  
+  moved to TO_TEST
 
+2024-11-30:
 add ipu6 fix  
 add usb/thunderbolt patch (6.13)  
 add driver-core patch from GKH (6.13)  
