@@ -1,6 +1,10 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-12-23:
+- freeze because of usb bug in tree: solved  
+  patches updated for 6.13.x
+
 2024-12-02:
 - some patches make the system freeze?  
   moved to TO_TEST

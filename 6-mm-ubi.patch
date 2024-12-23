@@ -1,0 +1,107 @@
+diff -rupN a/drivers/mtd/ubi/wl.c b/drivers/mtd/ubi/wl.c
+--- a/drivers/mtd/ubi/wl.c	2024-12-08 23:03:39.000000000 +0100
++++ b/drivers/mtd/ubi/wl.c	2024-12-09 13:23:04.985542448 +0100
+@@ -1995,6 +1995,7 @@ static void protection_queue_destroy(str
+ void ubi_wl_close(struct ubi_device *ubi)
+ {
+ 	dbg_wl("close the WL sub-system");
++	unregister_reboot_notifier(&ubi->wl_reboot_notifier);
+ 	ubi_fastmap_close(ubi);
+ 	shutdown_work(ubi);
+ 	protection_queue_destroy(ubi);
+diff -rupN a/include/linux/mm.h b/include/linux/mm.h
+--- a/include/linux/mm.h	2024-12-08 23:03:39.000000000 +0100
++++ b/include/linux/mm.h	2024-12-09 13:16:57.551478802 +0100
+@@ -2923,7 +2923,7 @@ void ptlock_free(struct ptdesc *ptdesc);
+ 
+ static inline spinlock_t *ptlock_ptr(struct ptdesc *ptdesc)
+ {
+-	return ptdesc->ptl;
++	return &(ptdesc->ptl->ptl);
+ }
+ #else /* ALLOC_SPLIT_PTLOCKS */
+ static inline void ptlock_cache_init(void)
+diff -rupN a/include/linux/mm_types.h b/include/linux/mm_types.h
+--- a/include/linux/mm_types.h	2024-12-08 23:03:39.000000000 +0100
++++ b/include/linux/mm_types.h	2024-12-09 13:16:57.551478802 +0100
+@@ -434,6 +434,13 @@ FOLIO_MATCH(flags, _flags_2a);
+ FOLIO_MATCH(compound_head, _head_2a);
+ #undef FOLIO_MATCH
+ 
++#if ALLOC_SPLIT_PTLOCKS
++struct pt_lock {
++	spinlock_t ptl;
++	struct rcu_head rcu;
++};
++#endif
++
+ /**
+  * struct ptdesc -    Memory descriptor for page tables.
+  * @__page_flags:     Same as page flags. Powerpc only.
+@@ -476,7 +483,7 @@ struct ptdesc {
+ 	union {
+ 		unsigned long _pt_pad_2;
+ #if ALLOC_SPLIT_PTLOCKS
+-		spinlock_t *ptl;
++		struct pt_lock *ptl;
+ #else
+ 		spinlock_t ptl;
+ #endif
+diff -rupN a/mm/memory.c b/mm/memory.c
+--- a/mm/memory.c	2024-12-08 23:03:39.000000000 +0100
++++ b/mm/memory.c	2024-12-09 13:16:57.553375188 +0100
+@@ -6942,24 +6942,34 @@ static struct kmem_cache *page_ptl_cache
+ 
+ void __init ptlock_cache_init(void)
+ {
+-	page_ptl_cachep = kmem_cache_create("page->ptl", sizeof(spinlock_t), 0,
++	page_ptl_cachep = kmem_cache_create("page->ptl", sizeof(struct pt_lock), 0,
+ 			SLAB_PANIC, NULL);
+ }
+ 
+ bool ptlock_alloc(struct ptdesc *ptdesc)
+ {
+-	spinlock_t *ptl;
++	struct pt_lock *pt_lock;
+ 
+-	ptl = kmem_cache_alloc(page_ptl_cachep, GFP_KERNEL);
+-	if (!ptl)
++	pt_lock = kmem_cache_alloc(page_ptl_cachep, GFP_KERNEL);
++	if (!pt_lock)
+ 		return false;
+-	ptdesc->ptl = ptl;
++	ptdesc->ptl = pt_lock;
+ 	return true;
+ }
+ 
++static void ptlock_free_rcu(struct rcu_head *head)
++{
++	struct pt_lock *pt_lock;
++
++	pt_lock = container_of(head, struct pt_lock, rcu);
++	kmem_cache_free(page_ptl_cachep, pt_lock);
++}
++
+ void ptlock_free(struct ptdesc *ptdesc)
+ {
+-	kmem_cache_free(page_ptl_cachep, ptdesc->ptl);
++	struct pt_lock *pt_lock = ptdesc->ptl;
++
++	call_rcu(&pt_lock->rcu, ptlock_free_rcu);
+ }
+ #endif
+ 
+diff -rupN a/mm/userfaultfd.c b/mm/userfaultfd.c
+--- a/mm/userfaultfd.c	2024-12-08 23:03:39.000000000 +0100
++++ b/mm/userfaultfd.c	2024-12-09 13:16:57.553375188 +0100
+@@ -1177,8 +1177,8 @@ retry:
+ 	}
+ 
+ 	/* Sanity checks before the operation */
+-	if (WARN_ON_ONCE(pmd_none(*dst_pmd)) ||	WARN_ON_ONCE(pmd_none(*src_pmd)) ||
+-	    WARN_ON_ONCE(pmd_trans_huge(*dst_pmd)) || WARN_ON_ONCE(pmd_trans_huge(*src_pmd))) {
++	if (pmd_none(*dst_pmd) || pmd_none(*src_pmd) ||
++	    pmd_trans_huge(*dst_pmd) || pmd_trans_huge(*src_pmd)) {
+ 		err = -EINVAL;
+ 		goto out;
+ 	}
