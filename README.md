@@ -2,7 +2,8 @@
 Patches for the linux kernel
 
 2024-12-24:
-- added Jens Axboe Uncached Buffered I/O patch for 6.13-tip
+- added Jens Axboe Uncached Buffered I/O patch for 6.13-tip  
+  updated bore scheduler for tip branch to 5.7.14
 
 2024-12-23:
 - freeze because of usb bug in tree: solved  
