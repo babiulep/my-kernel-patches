@@ -2,6 +2,9 @@
 Patches for the linux kernel
 
 2024-12-24:
+- bore 5.9.4 for linux-tip
+
+2024-12-24:
 - added Jens Axboe Uncached Buffered I/O patch for 6.13-tip  
   updated bore scheduler for tip branch to 5.7.14
 
