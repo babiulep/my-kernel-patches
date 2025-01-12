@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-01-12:
+- update patches
+
 2024-12-24:
 - bore 5.9.4 for linux-tip
 

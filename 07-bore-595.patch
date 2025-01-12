@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 --- a/include/linux/sched/bore.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/linux/sched/bore.h	2024-12-28 20:52:11.567574948 +0100
++++ b/include/linux/sched/bore.h	2025-01-12 13:08:29.021662026 +0100
 @@ -0,0 +1,40 @@
 +
 +#include <linux/sched.h>
@@ -8,7 +8,7 @@ diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 +
 +#ifndef _LINUX_SCHED_BORE_H
 +#define _LINUX_SCHED_BORE_H
-+#define SCHED_BORE_VERSION "5.9.4"
++#define SCHED_BORE_VERSION "5.9.5"
 +
 +#ifdef CONFIG_SCHED_BORE
 +extern u8   __read_mostly sched_bore;
@@ -33,7 +33,7 @@ diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 +	void __user *buffer, size_t *lenp, loff_t *ppos);
 +
 +extern void sched_clone_bore(
-+	struct task_struct *p, struct task_struct *parent, u64 clone_flags);
++	struct task_struct *p, struct task_struct *parent, u64 clone_flags, u64 now);
 +
 +extern void reset_task_bore(struct task_struct *p);
 +extern void sched_bore_init(void);
@@ -43,8 +43,8 @@ diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 +#endif // CONFIG_SCHED_BORE
 +#endif // _LINUX_SCHED_BORE_H
 diff -rupN a/include/linux/sched.h b/include/linux/sched.h
---- a/include/linux/sched.h	2024-12-28 19:34:58.000000000 +0100
-+++ b/include/linux/sched.h	2024-12-28 20:52:11.567574948 +0100
+--- a/include/linux/sched.h	2025-01-11 17:05:03.000000000 +0100
++++ b/include/linux/sched.h	2025-01-12 13:08:29.021662026 +0100
 @@ -538,6 +538,15 @@ struct sched_statistics {
  #endif /* CONFIG_SCHEDSTATS */
  } ____cacheline_aligned;
@@ -78,8 +78,8 @@ diff -rupN a/include/linux/sched.h b/include/linux/sched.h
  	u64				slice;
  
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2024-12-28 19:34:58.000000000 +0100
-+++ b/init/Kconfig	2024-12-28 20:52:11.567574948 +0100
+--- a/init/Kconfig	2025-01-11 17:05:03.000000000 +0100
++++ b/init/Kconfig	2025-01-12 13:08:29.025662060 +0100
 @@ -1342,6 +1342,23 @@ config CHECKPOINT_RESTORE
  
  	  If unsure, say N here.
@@ -105,8 +105,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Automatic process group scheduling"
  	select CGROUPS
 diff -rupN a/kernel/fork.c b/kernel/fork.c
---- a/kernel/fork.c	2024-12-28 19:34:58.000000000 +0100
-+++ b/kernel/fork.c	2024-12-28 20:52:11.570538812 +0100
+--- a/kernel/fork.c	2025-01-12 13:08:19.303071705 +0100
++++ b/kernel/fork.c	2025-01-12 13:08:29.025662060 +0100
 @@ -112,6 +112,8 @@
  #include <asm/cacheflush.h>
  #include <asm/tlbflush.h>
@@ -116,20 +116,20 @@ diff -rupN a/kernel/fork.c b/kernel/fork.c
  #include <trace/events/sched.h>
  
  #define CREATE_TRACE_POINTS
-@@ -2501,6 +2503,10 @@ __latent_entropy struct task_struct *cop
- 	if (retval)
- 		goto bad_fork_cancel_cgroup;
+@@ -2513,6 +2515,10 @@ __latent_entropy struct task_struct *cop
+ 	p->start_time = ktime_get_ns();
+ 	p->start_boottime = ktime_get_boottime_ns();
  
 +#ifdef CONFIG_SCHED_BORE
 +	if (likely(p->pid))
-+		sched_clone_bore(p, current, clone_flags);
++		sched_clone_bore(p, current, clone_flags, p->start_time);
 +#endif // CONFIG_SCHED_BORE
  	/*
- 	 * From this point on we must avoid any synchronous user-space
- 	 * communication until we take the tasklist-lock. In particular, we do
+ 	 * Make it visible to the rest of the system, but dont wake it up yet.
+ 	 * Need tasklist lock for parent etc handling!
 diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
---- a/kernel/Kconfig.hz	2024-12-28 19:34:58.000000000 +0100
-+++ b/kernel/Kconfig.hz	2024-12-28 20:52:11.570538812 +0100
+--- a/kernel/Kconfig.hz	2025-01-11 17:05:03.000000000 +0100
++++ b/kernel/Kconfig.hz	2025-01-12 13:08:29.025662060 +0100
 @@ -55,5 +55,22 @@ config HZ
  	default 300 if HZ_300
  	default 1000 if HZ_1000
@@ -155,8 +155,8 @@ diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
  	def_bool HIGH_RES_TIMERS
 diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 --- a/kernel/sched/bore.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/bore.c	2024-12-28 20:52:11.570538812 +0100
-@@ -0,0 +1,451 @@
++++ b/kernel/sched/bore.c	2025-01-12 13:08:29.025662060 +0100
+@@ -0,0 +1,446 @@
 +/*
 + *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
 + *  Copyright (C) 2021-2024 Masahito Suzuki <firelzrd@gmail.com>
@@ -313,11 +313,9 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +#define for_each_child(p, t) \
 +	list_for_each_entry(t, &(p)->children, sibling)
 +
-+static u32 count_children_max2(struct task_struct *p) {
-+	u32 cnt = 0;
-+	struct task_struct *child;
-+	for_each_child(p, child) {if (2 <= ++cnt) break;}
-+	return cnt;
++static u32 count_entries_upto2(struct list_head *head) {
++	struct list_head *next = head->next;
++	return (next != head) + (next->next != head);
 +}
 +
 +static inline void init_task_burst_cache_lock(struct task_struct *p) {
@@ -374,7 +372,7 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +
 +	for_each_child(p, child) {
 +		dec = child;
-+		while ((dcnt = count_children_max2(dec)) == 1)
++		while ((dcnt = count_entries_upto2(&dec->children)) == 1)
 +			dec = list_first_entry(&dec->children, struct task_struct, sibling);
 +		
 +		if (!dcnt || !depth) {
@@ -418,7 +416,7 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +
 +	for (struct task_struct *next;
 +		 anc != (next = anc->real_parent) &&
-+		 	count_children_max2(anc) <= base_child_cnt;) {
++		 	count_entries_upto2(&anc->children) <= base_child_cnt;) {
 +		anc = next;
 +		base_child_cnt = 1;
 +	}
@@ -457,10 +455,9 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +	return bc->score;
 +}
 +
-+void sched_clone_bore(
-+	struct task_struct *p, struct task_struct *parent, u64 clone_flags) {
++void sched_clone_bore(struct task_struct *p,
++	struct task_struct *parent, u64 clone_flags, u64 now) {
 +	struct sched_entity *se = &p->se;
-+	u64 now;
 +	u8 penalty;
 +
 +	init_task_burst_cache_lock(p);
@@ -469,12 +466,10 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +
 +	if (clone_flags & CLONE_THREAD) {
 +		rcu_read_lock();
-+		now = jiffies_to_nsecs(jiffies);
 +		penalty = inherit_burst_tg(parent, now);
 +		rcu_read_unlock();
 +	} else {
 +		read_lock(&tasklist_lock);
-+		now = jiffies_to_nsecs(jiffies);
 +		penalty = likely(sched_burst_fork_atavistic) ?
 +			inherit_burst_topological(parent, now, clone_flags):
 +			inherit_burst_direct(parent, now, clone_flags);
@@ -609,8 +604,8 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +#endif // CONFIG_SYSCTL
 +#endif // CONFIG_SCHED_BORE
 diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
---- a/kernel/sched/core.c	2024-12-28 19:34:58.000000000 +0100
-+++ b/kernel/sched/core.c	2024-12-28 20:52:11.574538828 +0100
+--- a/kernel/sched/core.c	2025-01-11 17:05:03.000000000 +0100
++++ b/kernel/sched/core.c	2025-01-12 13:08:29.029662096 +0100
 @@ -97,6 +97,8 @@
  #include "../../io_uring/io-wq.h"
  #include "../smpboot.h"
@@ -632,8 +627,8 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  
  #ifdef CONFIG_FAIR_GROUP_SCHED
 diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
---- a/kernel/sched/debug.c	2024-12-28 19:34:58.000000000 +0100
-+++ b/kernel/sched/debug.c	2024-12-28 20:52:11.574538828 +0100
+--- a/kernel/sched/debug.c	2025-01-11 17:05:03.000000000 +0100
++++ b/kernel/sched/debug.c	2025-01-12 13:08:29.029662096 +0100
 @@ -167,7 +167,53 @@ static const struct file_operations sche
  };
  
@@ -739,8 +734,8 @@ diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2024-12-28 19:34:58.000000000 +0100
-+++ b/kernel/sched/fair.c	2024-12-28 20:52:30.538614762 +0100
+--- a/kernel/sched/fair.c	2025-01-11 17:05:03.000000000 +0100
++++ b/kernel/sched/fair.c	2025-01-12 13:08:29.029662096 +0100
 @@ -55,6 +55,8 @@
  #include "stats.h"
  #include "autogroup.h"
@@ -806,17 +801,17 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  
  void __init sched_init_granularity(void)
  {
-@@ -695,6 +718,9 @@ static s64 entity_lag(u64 avruntime, str
+@@ -697,6 +720,9 @@ static void update_entity_lag(struct cfs
  
- 	vlag = avruntime - se->vruntime;
+ 	vlag = avg_vruntime(cfs_rq) - se->vruntime;
  	limit = calc_delta_fair(max_t(u64, 2*se->slice, TICK_NSEC), se);
 +#ifdef CONFIG_SCHED_BORE
 +	limit >>= !!sched_bore;
 +#endif // CONFIG_SCHED_BORE
  
- 	return clamp(vlag, -limit, limit);
+ 	se->vlag = clamp(vlag, -limit, limit);
  }
-@@ -984,6 +1010,7 @@ struct sched_entity *__pick_last_entity(
+@@ -979,6 +1005,7 @@ struct sched_entity *__pick_last_entity(
   * Scheduling class statistics methods:
   */
  #ifdef CONFIG_SMP
@@ -824,7 +819,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  int sched_update_scaling(void)
  {
  	unsigned int factor = get_update_sysctl_factor();
-@@ -995,6 +1022,7 @@ int sched_update_scaling(void)
+@@ -990,6 +1017,7 @@ int sched_update_scaling(void)
  
  	return 0;
  }
@@ -832,7 +827,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  #endif
  #endif
  
-@@ -1225,6 +1253,10 @@ static void update_curr(struct cfs_rq *c
+@@ -1220,6 +1248,10 @@ static void update_curr(struct cfs_rq *c
  	if (unlikely(delta_exec <= 0))
  		return;
  
@@ -843,16 +838,16 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	curr->vruntime += calc_delta_fair(delta_exec, curr);
  	resched = update_deadline(cfs_rq, curr);
  	update_min_vruntime(cfs_rq);
-@@ -3876,7 +3908,7 @@ static void reweight_eevdf(struct sched_
- 	se->deadline = avruntime + vslice;
- }
+@@ -3767,7 +3799,7 @@ dequeue_load_avg(struct cfs_rq *cfs_rq,
+ 
+ static void place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags);
  
 -static void reweight_entity(struct cfs_rq *cfs_rq, struct sched_entity *se,
 +void reweight_entity(struct cfs_rq *cfs_rq, struct sched_entity *se,
  			    unsigned long weight)
  {
  	bool curr = cfs_rq->curr == se;
-@@ -5360,7 +5392,11 @@ place_entity(struct cfs_rq *cfs_rq, stru
+@@ -5251,7 +5283,11 @@ place_entity(struct cfs_rq *cfs_rq, stru
  		se->rel_deadline = 0;
  		return;
  	}
@@ -865,7 +860,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	/*
  	 * When joining the competition; the existing tasks will be,
  	 * on average, halfway through their slice, as such start tasks
-@@ -7237,6 +7273,15 @@ static bool dequeue_task_fair(struct rq
+@@ -7128,6 +7164,15 @@ static bool dequeue_task_fair(struct rq
  		util_est_dequeue(&rq->cfs, p);
  
  	util_est_update(&rq->cfs, p, flags & DEQUEUE_SLEEP);
@@ -881,7 +876,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	if (dequeue_entities(rq, &p->se, flags) < 0)
  		return false;
  
-@@ -9050,16 +9095,25 @@ static void yield_task_fair(struct rq *r
+@@ -8941,16 +8986,25 @@ static void yield_task_fair(struct rq *r
  	/*
  	 * Are we the only task in the tree?
  	 */
@@ -907,7 +902,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	/*
  	 * Tell update_rq_clock() that we've just updated,
  	 * so we don't do microscopic update in schedule()
-@@ -13134,6 +13188,9 @@ static void task_tick_fair(struct rq *rq
+@@ -13025,6 +13079,9 @@ static void task_tick_fair(struct rq *rq
  static void task_fork_fair(struct task_struct *p)
  {
  	set_task_max_allowed_capacity(p);
@@ -917,7 +912,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  }
  
  /*
-@@ -13244,6 +13301,10 @@ static void attach_task_cfs_rq(struct ta
+@@ -13135,6 +13192,10 @@ static void attach_task_cfs_rq(struct ta
  
  static void switched_from_fair(struct rq *rq, struct task_struct *p)
  {
@@ -929,16 +924,16 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  }
  
 diff -rupN a/kernel/sched/Makefile b/kernel/sched/Makefile
---- a/kernel/sched/Makefile	2024-12-28 19:34:58.000000000 +0100
-+++ b/kernel/sched/Makefile	2024-12-28 20:52:11.582538858 +0100
+--- a/kernel/sched/Makefile	2025-01-11 17:05:03.000000000 +0100
++++ b/kernel/sched/Makefile	2025-01-12 13:08:29.029662096 +0100
 @@ -32,3 +32,4 @@ obj-y += core.o
  obj-y += fair.o
  obj-y += build_policy.o
  obj-y += build_utility.o
 +obj-y += bore.o
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2024-12-28 19:34:58.000000000 +0100
-+++ b/kernel/sched/sched.h	2024-12-28 20:52:11.582538858 +0100
+--- a/kernel/sched/sched.h	2025-01-11 17:05:03.000000000 +0100
++++ b/kernel/sched/sched.h	2025-01-12 13:08:29.029662096 +0100
 @@ -2088,7 +2088,11 @@ static inline void update_sched_domain_d
  static inline void dirty_sched_domain_sysctl(int cpu) { }
  #endif
