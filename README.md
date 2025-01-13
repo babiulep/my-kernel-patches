@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-01-13:
+- update patches
+
 2025-01-12:
 - update patches
 

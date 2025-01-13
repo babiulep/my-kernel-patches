@@ -1,9 +1,9 @@
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 1/10] HID: pidff: Convert infinite length from Linux API to
- PID standard
+Subject: [PATCH v3 1/10] HID: pidff: Convert infinite length from Linux API
+ to PID standard
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:22 +0100
-Message-Id: <20241231154731.1719919-2-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:30 +0100
+Message-Id: <20250106213539.77709-2-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -27,7 +27,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  1 file changed, 6 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index 3b4ee21cd811..1b5d3db62c09 100644
+index 3b4ee21cd811..3899d72a0b02 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -301,7 +301,12 @@ static void pidff_set_effect_report(struct pidff_device *pidff,
@@ -36,7 +36,7 @@ index 3b4ee21cd811..1b5d3db62c09 100644
  		pidff->create_new_effect_type->value[0];
 -	pidff->set_effect[PID_DURATION].value[0] = effect->replay.length;
 +
-+	// Convert infinite lenght from Linux API (0)
++	// Convert infinite length from Linux API (0)
 +	// to PID standard (NULL) if needed
 +	pidff->set_effect[PID_DURATION].value[0] =
 +		effect->replay.length == 0 ? 0xffff : effect->replay.length;
@@ -48,10 +48,11 @@ index 3b4ee21cd811..1b5d3db62c09 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 2/10] HID: pidff: Do not send effect envelope if it's empty
+Subject: [PATCH v3 2/10] HID: pidff: Do not send effect envelope if it's
+ empty
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:23 +0100
-Message-Id: <20241231154731.1719919-3-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:31 +0100
+Message-Id: <20250106213539.77709-3-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -79,7 +80,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  1 file changed, 21 insertions(+), 18 deletions(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index 1b5d3db62c09..e78fd68edda3 100644
+index 3899d72a0b02..cf8163d92ea4 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -261,10 +261,19 @@ static void pidff_set_envelope_report(struct pidff_device *pidff,
@@ -154,11 +155,11 @@ index 1b5d3db62c09..e78fd68edda3 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 3/10] HID: pidff: Clamp PERIODIC effect period to device's
- logical range
+Subject: [PATCH v3 3/10] HID: pidff: Clamp PERIODIC effect period to
+ device's logical range
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:24 +0100
-Message-Id: <20241231154731.1719919-4-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:32 +0100
+Message-Id: <20250106213539.77709-4-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -177,7 +178,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  1 file changed, 35 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index e78fd68edda3..76e934649ee8 100644
+index cf8163d92ea4..7af7744e3cf2 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -205,6 +205,36 @@ static int pidff_rescale_signed(int i, struct hid_field *field)
@@ -234,10 +235,11 @@ index e78fd68edda3..76e934649ee8 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 4/10] HID: pidff: Add MISSING_DELAY quirk and its detection
+Subject: [PATCH v3 4/10] HID: pidff: Add MISSING_DELAY quirk and its
+ detection
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:25 +0100
-Message-Id: <20241231154731.1719919-5-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:33 +0100
+Message-Id: <20250106213539.77709-5-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -259,7 +261,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  2 files changed, 31 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index 76e934649ee8..4c0aa2d9ed7a 100644
+index 7af7744e3cf2..28f42f30e2b3 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -184,6 +184,8 @@ struct pidff_device {
@@ -370,10 +372,11 @@ index d11e9c9a5f15..94ad5a510639 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 5/10] HID: pidff: Add MISSING_PBO quirk and its detection
+Subject: [PATCH v3 5/10] HID: pidff: Add MISSING_PBO quirk and its
+ detection
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:26 +0100
-Message-Id: <20241231154731.1719919-6-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:34 +0100
+Message-Id: <20250106213539.77709-6-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -396,7 +399,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  2 files changed, 30 insertions(+), 17 deletions(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index 4c0aa2d9ed7a..0bc093ae1bb3 100644
+index 28f42f30e2b3..d792a07b5a5d 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -421,12 +421,19 @@ static int pidff_needs_set_periodic(struct ff_effect *effect,
@@ -503,10 +506,10 @@ index 94ad5a510639..29f0a91f505f 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 6/10] HID: pidff: Add MISSING_DEVICE_CONTROL quirk
+Subject: [PATCH v3 6/10] HID: pidff: Add MISSING_DEVICE_CONTROL quirk
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:27 +0100
-Message-Id: <20241231154731.1719919-7-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:35 +0100
+Message-Id: <20250106213539.77709-7-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -529,7 +532,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  2 files changed, 5 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index 0bc093ae1bb3..40265744019c 100644
+index d792a07b5a5d..53b16a4e54a6 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -1000,7 +1000,8 @@ static int pidff_find_special_fields(struct pidff_device *pidff)
@@ -562,11 +565,11 @@ index 29f0a91f505f..2af9db0296d1 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 7/10] HID: pidff: Add hid_pidff_init_with_quirks and export
- as GPL symbol
+Subject: [PATCH v3 7/10] HID: pidff: Add hid_pidff_init_with_quirks and
+ export as GPL symbol
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:28 +0100
-Message-Id: <20241231154731.1719919-8-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:36 +0100
+Message-Id: <20250106213539.77709-8-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -585,7 +588,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  2 files changed, 16 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index 40265744019c..c919e2db8dc0 100644
+index 53b16a4e54a6..5a328860685b 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -1299,8 +1299,9 @@ static int pidff_check_autocenter(struct pidff_device *pidff,
@@ -641,10 +644,10 @@ index 2af9db0296d1..93233c5b75a6 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 8/10] HID: pidff: Add FIX_WHEEL_DIRECTION quirk
+Subject: [PATCH v3 8/10] HID: pidff: Add FIX_WHEEL_DIRECTION quirk
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:29 +0100
-Message-Id: <20241231154731.1719919-9-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:37 +0100
+Message-Id: <20250106213539.77709-9-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -669,7 +672,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  2 files changed, 10 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index c919e2db8dc0..cc02c5d1bd04 100644
+index 5a328860685b..6b4c4ecf4943 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -136,6 +136,9 @@ static const u8 pidff_block_load_status[] = { 0x8c, 0x8d };
@@ -714,11 +717,11 @@ index 93233c5b75a6..5237f9040950 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 9/10] HID: pidff: Stop all effects before enabling
+Subject: [PATCH v3 9/10] HID: pidff: Stop all effects before enabling
  actuators
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:30 +0100
-Message-Id: <20241231154731.1719919-10-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:38 +0100
+Message-Id: <20250106213539.77709-10-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -737,7 +740,7 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  1 file changed, 7 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/hid/usbhid/hid-pidff.c b/drivers/hid/usbhid/hid-pidff.c
-index cc02c5d1bd04..d5749020549c 100644
+index 6b4c4ecf4943..25ae80f68507 100644
 --- a/drivers/hid/usbhid/hid-pidff.c
 +++ b/drivers/hid/usbhid/hid-pidff.c
 @@ -109,8 +109,9 @@ static const u8 pidff_pool[] = { 0x80, 0x83, 0xa9 };
@@ -767,10 +770,11 @@ index cc02c5d1bd04..d5749020549c 100644
 2.47.1
 
 From git@z Thu Jan  1 00:00:00 1970
-Subject: [PATCH 10/10] HID: Add hid-universal-pidff driver
+Subject: [PATCH v3 10/10] HID: Add hid-universal-pidff driver and supported
+ device ids
 From: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
-Date: Tue, 31 Dec 2024 16:47:31 +0100
-Message-Id: <20241231154731.1719919-11-tomasz.pakula.oficjalny@gmail.com>
+Date: Mon, 06 Jan 2025 22:35:39 +0100
+Message-Id: <20250106213539.77709-11-tomasz.pakula.oficjalny@gmail.com>
 MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit
@@ -797,12 +801,12 @@ Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
  drivers/hid/Kconfig               |  14 +++
  drivers/hid/Makefile              |   1 +
  drivers/hid/hid-ids.h             |  24 ++++
- drivers/hid/hid-universal-pidff.c | 177 ++++++++++++++++++++++++++++++
- 4 files changed, 216 insertions(+)
+ drivers/hid/hid-universal-pidff.c | 185 ++++++++++++++++++++++++++++++
+ 4 files changed, 224 insertions(+)
  create mode 100644 drivers/hid/hid-universal-pidff.c
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 4d2a89d65b65..ef03d80fe1b3 100644
+index 4d2a89d65b65..59d8da16f5b4 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
 @@ -1217,6 +1217,20 @@ config HID_U2FZERO
@@ -810,11 +814,11 @@ index 4d2a89d65b65..ef03d80fe1b3 100644
  	  trigger a single blink and immediately reset back to 0.
  
 +config HID_UNIVERSAL_PIDFF
-+	tristate "Extend USB PID driver compatibility and usage"
++	tristate "universal-pidff: extended USB PID driver compatibility and usage"
 +	depends on USB_HID
 +	depends on HID_PID
 +	help
-+	  Say Y here to enable extended PID support for selected devices.
++	  Extended PID support for selected devices.
 +
 +	  Contains report fixups, extended usable button range and
 +	  pidff quirk management to extend compatibility with slightly
@@ -839,7 +843,7 @@ index 24de45f3677d..919d6a146077 100644
  obj-$(CONFIG_HID_XIAOMI)	+= hid-xiaomi.o
  obj-$(CONFIG_HID_XINMO)		+= hid-xinmo.o
 diff --git a/drivers/hid/hid-ids.h b/drivers/hid/hid-ids.h
-index 1f47fda809b9..b1dbe2bbe29a 100644
+index 1f47fda809b9..205dbb4ed6a3 100644
 --- a/drivers/hid/hid-ids.h
 +++ b/drivers/hid/hid-ids.h
 @@ -261,6 +261,10 @@
@@ -857,10 +861,10 @@ index 1f47fda809b9..b1dbe2bbe29a 100644
  #define USB_VENDOR_ID_EVISION           0x320f
  #define USB_DEVICE_ID_EVISION_ICL01     0x5041
  
-+#define USB_VENDOR_ID_FFBEAST           0x045b
++#define USB_VENDOR_ID_FFBEAST		0x045b
 +#define USB_DEVICE_ID_FFBEAST_JOYSTICK	0x58f9
-+#define USB_DEVICE_ID_FFBEAST_RUDDER    0x5968
-+#define USB_DEVICE_ID_FFBEAST_WHEEL     0x59d7
++#define USB_DEVICE_ID_FFBEAST_RUDDER	0x5968
++#define USB_DEVICE_ID_FFBEAST_WHEEL	0x59d7
 +
  #define USB_VENDOR_ID_FLATFROG		0x25b5
  #define USB_DEVICE_ID_MULTITOUCH_3200	0x0002
@@ -869,16 +873,16 @@ index 1f47fda809b9..b1dbe2bbe29a 100644
  #define USB_VENDOR_ID_MONTEREY		0x0566
  #define USB_DEVICE_ID_GENIUS_KB29E	0x3004
  
-+#define USB_VENDOR_ID_MOZA		        0x346e
-+#define USB_DEVICE_ID_MOZA_R3		    0x0005
-+#define USB_DEVICE_ID_MOZA_R5		    0x0004
-+#define USB_DEVICE_ID_MOZA_R9		    0x0002
-+#define USB_DEVICE_ID_MOZA_R12		    0x0006
-+#define USB_DEVICE_ID_MOZA_R16_R21	    0x0000
-+#define USB_DEVICE_ID_MOZA_R3_ALT	    0x0015
-+#define USB_DEVICE_ID_MOZA_R5_ALT	    0x0014
-+#define USB_DEVICE_ID_MOZA_R9_ALT	    0x0012
-+#define USB_DEVICE_ID_MOZA_R12_ALT	    0x0016
++#define USB_VENDOR_ID_MOZA		0x346e
++#define USB_DEVICE_ID_MOZA_R3		0x0005
++#define USB_DEVICE_ID_MOZA_R5		0x0004
++#define USB_DEVICE_ID_MOZA_R9		0x0002
++#define USB_DEVICE_ID_MOZA_R12		0x0006
++#define USB_DEVICE_ID_MOZA_R16_R21	0x0000
++#define USB_DEVICE_ID_MOZA_R3_ALT	0x0015
++#define USB_DEVICE_ID_MOZA_R5_ALT	0x0014
++#define USB_DEVICE_ID_MOZA_R9_ALT	0x0012
++#define USB_DEVICE_ID_MOZA_R12_ALT	0x0016
 +#define USB_DEVICE_ID_MOZA_R16_R21_ALT	0x0010
 +
  #define USB_VENDOR_ID_MSI		0x1770
@@ -888,7 +892,7 @@ index 1f47fda809b9..b1dbe2bbe29a 100644
  #define USB_DEVICE_ID_VELLEMAN_K8061_FIRST	0x8061
  #define USB_DEVICE_ID_VELLEMAN_K8061_LAST	0x8068
  
-+#define USB_VENDOR_ID_VRS       0x0483
++#define USB_VENDOR_ID_VRS	0x0483
 +#define USB_DEVICE_ID_VRS_DFP	0xa355
 +
  #define USB_VENDOR_ID_VTL		0x0306
@@ -896,10 +900,10 @@ index 1f47fda809b9..b1dbe2bbe29a 100644
  
 diff --git a/drivers/hid/hid-universal-pidff.c b/drivers/hid/hid-universal-pidff.c
 new file mode 100644
-index 000000000000..6906cfe4ef39
+index 000000000000..df0206f5e77d
 --- /dev/null
 +++ b/drivers/hid/hid-universal-pidff.c
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,185 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +/*
 + * HID UNIVERSAL PIDFF
@@ -987,8 +991,16 @@ index 000000000000..6906cfe4ef39
 +		goto err;
 +	}
 +
-+	u32 quirks = id->driver_data;
-+	error = hid_pidff_init_with_quirks(hdev, quirks);
++	// Check if HID_PID support is enabled
++	int (*init_function)(struct hid_device *, __u32);
++	init_function = hid_pidff_init_with_quirks;
++
++	if (!init_function) {
++		hid_warn(hdev, "HID_PID support not enabled!\n");
++		return 0;
++	}
++
++	error = init_function(hdev, id->driver_data);
 +	if (error) {
 +		hid_warn(hdev, "Force Feedback initialization failed\n");
 +		goto err;
@@ -1024,9 +1036,9 @@ index 000000000000..6906cfe4ef39
 +	// Remove fuzz and deadzone from the second joystick axis
 +	if (hdev->vendor == USB_VENDOR_ID_FFBEAST &&
 +	    hdev->product == USB_DEVICE_ID_FFBEAST_JOYSTICK)
-+		input_set_abs_params(input, ABS_X,
-+			input->absinfo[ABS_X].minimum,
-+			input->absinfo[ABS_X].maximum, 0, 0);
++		input_set_abs_params(input, ABS_Y,
++			input->absinfo[ABS_Y].minimum,
++			input->absinfo[ABS_Y].maximum, 0, 0);
 +
 +	return 0;
 +}

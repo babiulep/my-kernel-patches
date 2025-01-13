@@ -1,6 +1,98 @@
+diff -rupN a/drivers/acpi/acpi_video.c b/drivers/acpi/acpi_video.c
+--- a/drivers/acpi/acpi_video.c	2025-01-11 17:05:03.000000000 +0100
++++ b/drivers/acpi/acpi_video.c	2025-01-13 10:03:56.079648920 +0100
+@@ -610,16 +610,29 @@ acpi_video_device_lcd_get_level_current(
+ 	return 0;
+ }
+ 
++/*
++ *  Arg:
++ *	device	: video output device (LCD, CRT, ..)
++ *	edid    : address for returned EDID pointer
++ *	length  : _DDC length to request (must be a multiple of 128)
++ *
++ *  Return Value:
++ *	Length of EDID (positive value) or error (negative value)
++ *
++ *  Get EDID from ACPI _DDC. On success, a pointer to the EDID data is written
++ *  to the edid address, and the length of the EDID is returned. The caller is
++ *  responsible for freeing the edid pointer.
++ */
++
+ static int
+-acpi_video_device_EDID(struct acpi_video_device *device,
+-		       union acpi_object **edid, int length)
++acpi_video_device_EDID(struct acpi_video_device *device, void **edid, int length)
+ {
+-	int status;
++	acpi_status status;
+ 	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+ 	union acpi_object *obj;
+ 	union acpi_object arg0 = { ACPI_TYPE_INTEGER };
+ 	struct acpi_object_list args = { 1, &arg0 };
+-
++	int ret;
+ 
+ 	*edid = NULL;
+ 
+@@ -636,16 +649,17 @@ acpi_video_device_EDID(struct acpi_video
+ 
+ 	obj = buffer.pointer;
+ 
+-	if (obj && obj->type == ACPI_TYPE_BUFFER)
+-		*edid = obj;
+-	else {
++	if (obj && obj->type == ACPI_TYPE_BUFFER) {
++		*edid = kmemdup(obj->buffer.pointer, obj->buffer.length, GFP_KERNEL);
++		ret = *edid ? obj->buffer.length : -ENOMEM;
++	} else {
+ 		acpi_handle_debug(device->dev->handle,
+ 				 "Invalid _DDC data for length %d\n", length);
+-		status = -EFAULT;
+-		kfree(obj);
++		ret = -EFAULT;
+ 	}
+ 
+-	return status;
++	kfree(obj);
++	return ret;
+ }
+ 
+ /* bus */
+@@ -1435,9 +1449,7 @@ int acpi_video_get_edid(struct acpi_devi
+ {
+ 	struct acpi_video_bus *video;
+ 	struct acpi_video_device *video_device;
+-	union acpi_object *buffer = NULL;
+-	acpi_status status;
+-	int i, length;
++	int i, length, ret;
+ 
+ 	if (!device || !acpi_driver_data(device))
+ 		return -EINVAL;
+@@ -1477,16 +1489,10 @@ int acpi_video_get_edid(struct acpi_devi
+ 		}
+ 
+ 		for (length = 512; length > 0; length -= 128) {
+-			status = acpi_video_device_EDID(video_device, &buffer,
+-							length);
+-			if (ACPI_SUCCESS(status))
+-				break;
++			ret = acpi_video_device_EDID(video_device, edid, length);
++			if (ret > 0)
++				return ret;
+ 		}
+-		if (!length)
+-			continue;
+-
+-		*edid = buffer->buffer.pointer;
+-		return length;
+ 	}
+ 
+ 	return -ENODEV;
 diff -rupN a/drivers/gpu/drm/amd/display/dc/link/protocols/link_edp_panel_control.c b/drivers/gpu/drm/amd/display/dc/link/protocols/link_edp_panel_control.c
 --- a/drivers/gpu/drm/amd/display/dc/link/protocols/link_edp_panel_control.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/drivers/gpu/drm/amd/display/dc/link/protocols/link_edp_panel_control.c	2025-01-12 13:07:49.877326566 +0100
++++ b/drivers/gpu/drm/amd/display/dc/link/protocols/link_edp_panel_control.c	2025-01-13 10:03:56.075648891 +0100
 @@ -187,7 +187,8 @@ bool edp_set_backlight_level_nits(struct
  			(uint8_t *)(target_luminance),
  			sizeof(struct target_luminance_value)) != DC_OK)
@@ -13,7 +105,7 @@ diff -rupN a/drivers/gpu/drm/amd/display/dc/link/protocols/link_edp_panel_contro
  		*(uint16_t *)&dpcd_backlight_set.backlight_transition_time_ms = (uint16_t)transition_time_in_ms;
 diff -rupN a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
 --- a/drivers/gpu/drm/drm_edid.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/drivers/gpu/drm/drm_edid.c	2025-01-12 13:07:49.877326566 +0100
++++ b/drivers/gpu/drm/drm_edid.c	2025-01-13 10:03:56.075648891 +0100
 @@ -94,6 +94,8 @@ static int oui(u8 first, u8 second, u8 t
  #define EDID_QUIRK_NON_DESKTOP			(1 << 12)
  /* Cap the DSC target bitrate to 15bpp */
@@ -103,9 +195,21 @@ diff -rupN a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
  		if (!newmode)
  			continue;
  
+diff -rupN a/drivers/gpu/drm/nouveau/nouveau_acpi.c b/drivers/gpu/drm/nouveau/nouveau_acpi.c
+--- a/drivers/gpu/drm/nouveau/nouveau_acpi.c	2025-01-11 17:05:03.000000000 +0100
++++ b/drivers/gpu/drm/nouveau/nouveau_acpi.c	2025-01-13 10:03:56.079648920 +0100
+@@ -384,7 +384,7 @@ nouveau_acpi_edid(struct drm_device *dev
+ 	if (ret < 0)
+ 		return NULL;
+ 
+-	return kmemdup(edid, EDID_LENGTH, GFP_KERNEL);
++	return edid;
+ }
+ 
+ bool nouveau_acpi_video_backlight_use_native(void)
 diff -rupN a/drivers/hid/hid-ids.h b/drivers/hid/hid-ids.h
---- a/drivers/hid/hid-ids.h	2025-01-12 13:07:25.302517970 +0100
-+++ b/drivers/hid/hid-ids.h	2025-01-12 13:07:49.881326600 +0100
+--- a/drivers/hid/hid-ids.h	2025-01-13 10:03:23.183401089 +0100
++++ b/drivers/hid/hid-ids.h	2025-01-13 10:03:56.075648891 +0100
 @@ -210,6 +210,7 @@
  #define USB_DEVICE_ID_ASUSTEK_ROG_NKEY_KEYBOARD2	0x19b6
  #define USB_DEVICE_ID_ASUSTEK_ROG_NKEY_KEYBOARD3	0x1a30
@@ -116,7 +220,7 @@ diff -rupN a/drivers/hid/hid-ids.h b/drivers/hid/hid-ids.h
  #define USB_DEVICE_ID_ASUSTEK_ROG_CLAYMORE_II_KEYBOARD	0x196b
 diff -rupN a/kernel/fork.c b/kernel/fork.c
 --- a/kernel/fork.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/kernel/fork.c	2025-01-12 13:07:49.881326600 +0100
++++ b/kernel/fork.c	2025-01-13 10:03:56.075648891 +0100
 @@ -1511,12 +1511,13 @@ struct file *get_task_exe_file(struct ta
  	struct file *exe_file = NULL;
  	struct mm_struct *mm;
@@ -137,7 +241,7 @@ diff -rupN a/kernel/fork.c b/kernel/fork.c
  }
 diff -rupN a/kernel/kprobes.c b/kernel/kprobes.c
 --- a/kernel/kprobes.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/kernel/kprobes.c	2025-01-12 13:07:49.881326600 +0100
++++ b/kernel/kprobes.c	2025-01-13 10:03:56.075648891 +0100
 @@ -1566,16 +1566,25 @@ static int check_kprobe_address_safe(str
  	if (ret)
  		return ret;
@@ -204,7 +308,7 @@ diff -rupN a/kernel/kprobes.c b/kernel/kprobes.c
  	return ret;
 diff -rupN a/kernel/sched/ext.c b/kernel/sched/ext.c
 --- a/kernel/sched/ext.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/kernel/sched/ext.c	2025-01-12 13:07:49.885326634 +0100
++++ b/kernel/sched/ext.c	2025-01-13 10:03:56.075648891 +0100
 @@ -5206,9 +5206,9 @@ static void scx_dump_task(struct seq_buf
  		  scx_get_task_state(p), p->scx.flags & ~SCX_TASK_STATE_MASK,
  		  p->scx.dsq_flags, ops_state & SCX_OPSS_STATE_MASK,
@@ -219,7 +323,7 @@ diff -rupN a/kernel/sched/ext.c b/kernel/sched/ext.c
  	if (SCX_HAS_OP(dump_task)) {
 diff -rupN a/scripts/package/PKGBUILD b/scripts/package/PKGBUILD
 --- a/scripts/package/PKGBUILD	2025-01-11 17:05:03.000000000 +0100
-+++ b/scripts/package/PKGBUILD	2025-01-12 13:07:49.885326634 +0100
++++ b/scripts/package/PKGBUILD	2025-01-13 10:03:56.075648891 +0100
 @@ -91,6 +91,11 @@ _package-headers() {
  		"${srctree}/scripts/package/install-extmod-build" "${builddir}"
  	fi
@@ -234,7 +338,7 @@ diff -rupN a/scripts/package/PKGBUILD b/scripts/package/PKGBUILD
  	cp System.map "${builddir}/System.map"
 diff -rupN a/sound/pci/hda/patch_realtek.c b/sound/pci/hda/patch_realtek.c
 --- a/sound/pci/hda/patch_realtek.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/sound/pci/hda/patch_realtek.c	2025-01-12 13:07:49.889326668 +0100
++++ b/sound/pci/hda/patch_realtek.c	2025-01-13 10:03:56.079648920 +0100
 @@ -10641,6 +10641,8 @@ static const struct hda_quirk alc269_fix
  	SND_PCI_QUIRK(0x1043, 0x1e1f, "ASUS Vivobook 15 X1504VAP", ALC2XX_FIXUP_HEADSET_MIC),
  	SND_PCI_QUIRK(0x1043, 0x1e51, "ASUS Zephyrus M15", ALC294_FIXUP_ASUS_GU502_PINS),

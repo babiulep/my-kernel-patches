@@ -1,7 +1,11 @@
-From bbefc2ff28b883c124cab7a436a7eb7d1fa51006 Mon Sep 17 00:00:00 2001
+From git@z Thu Jan  1 00:00:00 1970
+Subject: [PATCH v2] PCI/bwctrl: Fix NULL pointer deref on unbind and bind
 From: Lukas Wunner <lukas@wunner.de>
-Date: Thu, 2 Jan 2025 22:20:35 +0100
-Subject: PCI/bwctrl: Fix NULL pointer deref on unbind and bind
+Date: Mon, 06 Jan 2025 12:26:35 +0100
+Message-Id: <ae2b02c9cfbefff475b6e132b0aa962aaccbd7b2.1736162539.git.lukas@wunner.de>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
 
 The interrupt handler for bandwidth notifications, pcie_bwnotif_irq(),
 dereferences a "data" pointer.
@@ -32,81 +36,83 @@ issue.
 While at it, drop a stray but harmless no_free_ptr() invocation when
 assigning the "data" pointer in pcie_bwnotif_probe().
 
+Ilpo points out that the locking on unbind and bind needs to be symmetric,
+so move the call to pcie_bwnotif_disable() inside the critical section
+protected by pcie_bwctrl_setspeed_rwsem and pcie_bwctrl_lbms_rwsem.
+
 Evert reports a hang on shutdown of an ASUS ROG Strix SCAR 17 G733PYV.
 The issue is no longer reproducible with the present commit.
 
-Evert found that attaching a USB-C monitor prevented the hang.  The machine
-contains an ASMedia USB 3.2 controller below a hotplug-capable Root Port.
-So one possible explanation is that the controller gets hot-removed on
-shutdown unless something is connected.  And the ensuing hotplug interrupt
-occurs exactly when the bandwidth controller is unregistering.  The precise
-cause could not be determined because the screen had already turned black
-when the hang occurred.
+Evert found that attaching a USB-C monitor prevented the hang.  The
+machine contains an ASMedia USB 3.2 controller below a hotplug-capable
+Root Port.  So one possible explanation is that the controller gets
+hot-removed on shutdown unless something is connected.  And the ensuing
+hotplug interrupt occurs exactly when the bandwidth controller is
+unregistering.  The precise cause could not be determined because the
+screen had already turned black when the hang occurred.
 
-Link: https://lore.kernel.org/r/0ee5faf5395cad8d29fb66e1ec444c8d882a4201.1735852688.git.lukas@wunner.de
 Fixes: 665745f27487 ("PCI/bwctrl: Re-add BW notification portdrv as PCIe BW controller")
 Reported-by: Evert Vorster <evorster@gmail.com>
 Closes: https://bugzilla.kernel.org/show_bug.cgi?id=219629
 Signed-off-by: Lukas Wunner <lukas@wunner.de>
-Signed-off-by: Bjorn Helgaas <bhelgaas@google.com>
 Tested-by: Evert Vorster <evorster@gmail.com>
+Reviewed-by: Ilpo Järvinen <ilpo.jarvinen@linux.intel.com>
 ---
- drivers/pci/pcie/bwctrl.c | 25 +++++++++++++++++--------
- 1 file changed, 17 insertions(+), 8 deletions(-)
+Changes v1 -> v2 (in response to Ilpo's review):
+ Move request_irq() inside critical section on bind.
+ Move free_irq() + pcie_bwnotif_disable() inside critical section on unbind.
+ Amend commit message with a paragraph explaining these changes.
+
+ drivers/pci/pcie/bwctrl.c | 25 ++++++++++++++++---------
+ 1 file changed, 16 insertions(+), 9 deletions(-)
 
 diff --git a/drivers/pci/pcie/bwctrl.c b/drivers/pci/pcie/bwctrl.c
-index b59cacc740fa24..7cd821183900b7 100644
+index b59cacc740fa..0a5e7efbce2c 100644
 --- a/drivers/pci/pcie/bwctrl.c
 +++ b/drivers/pci/pcie/bwctrl.c
-@@ -303,17 +303,18 @@ static int pcie_bwnotif_probe(struct pcie_device *srv)
+@@ -303,14 +303,17 @@ static int pcie_bwnotif_probe(struct pcie_device *srv)
  	if (ret)
  		return ret;
  
 -	ret = devm_request_irq(&srv->device, srv->irq, pcie_bwnotif_irq,
 -			       IRQF_SHARED, "PCIe bwctrl", srv);
-+	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem)
-+		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem)
+-	if (ret)
+-		return ret;
+-
+ 	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem) {
+ 		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem) {
+-			port->link_bwctrl = no_free_ptr(data);
 +			port->link_bwctrl = data;
 +
-+	ret = request_irq(srv->irq, pcie_bwnotif_irq, IRQF_SHARED,
-+			  "PCIe bwctrl", srv);
- 	if (ret)
--		return ret;
-+		goto err_reset_data;
- 
--	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem) {
--		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem) {
--			port->link_bwctrl = no_free_ptr(data);
-+	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem)
-+		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem)
- 			pcie_bwnotif_enable(srv);
--		}
--	}
- 
- 	pci_dbg(port, "enabled with IRQ %d\n", srv->irq);
- 
-@@ -323,6 +324,12 @@ static int pcie_bwnotif_probe(struct pcie_device *srv)
- 		port->link_bwctrl->cdev = NULL;
- 
- 	return 0;
++			ret = request_irq(srv->irq, pcie_bwnotif_irq,
++					  IRQF_SHARED, "PCIe bwctrl", srv);
++			if (ret) {
++				port->link_bwctrl = NULL;
++				return ret;
++			}
 +
-+err_reset_data:
-+	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem)
-+		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem)
-+			port->link_bwctrl = NULL;
-+	return ret;
+ 			pcie_bwnotif_enable(srv);
+ 		}
+ 	}
+@@ -331,11 +334,15 @@ static void pcie_bwnotif_remove(struct pcie_device *srv)
+ 
+ 	pcie_cooling_device_unregister(data->cdev);
+ 
+-	pcie_bwnotif_disable(srv->port);
++	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem) {
++		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem) {
++			pcie_bwnotif_disable(srv->port);
++
++			free_irq(srv->irq, srv);
+ 
+-	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem)
+-		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem)
+ 			srv->port->link_bwctrl = NULL;
++		}
++	}
  }
  
- static void pcie_bwnotif_remove(struct pcie_device *srv)
-@@ -333,6 +340,8 @@ static void pcie_bwnotif_remove(struct pcie_device *srv)
- 
- 	pcie_bwnotif_disable(srv->port);
- 
-+	free_irq(srv->irq, srv);
-+
- 	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem)
- 		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem)
- 			srv->port->link_bwctrl = NULL;
+ static int pcie_bwnotif_suspend(struct pcie_device *srv)
 -- 
-cgit 1.2.3-korg
+2.43.0
 
