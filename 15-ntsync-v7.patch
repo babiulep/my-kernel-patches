@@ -1,6 +1,6 @@
 diff -rupN a/Documentation/userspace-api/index.rst b/Documentation/userspace-api/index.rst
---- a/Documentation/userspace-api/index.rst	2025-01-11 17:05:03.000000000 +0100
-+++ b/Documentation/userspace-api/index.rst	2025-01-12 14:03:19.003528116 +0100
+--- a/Documentation/userspace-api/index.rst	2025-01-15 19:59:21.000000000 +0100
++++ b/Documentation/userspace-api/index.rst	2025-01-15 20:14:11.370525108 +0100
 @@ -63,6 +63,7 @@ Everything else
     vduse
     futex2
@@ -11,7 +11,7 @@ diff -rupN a/Documentation/userspace-api/index.rst b/Documentation/userspace-api
  
 diff -rupN a/Documentation/userspace-api/ntsync.rst b/Documentation/userspace-api/ntsync.rst
 --- a/Documentation/userspace-api/ntsync.rst	1970-01-01 01:00:00.000000000 +0100
-+++ b/Documentation/userspace-api/ntsync.rst	2025-01-12 14:03:19.003528116 +0100
++++ b/Documentation/userspace-api/ntsync.rst	2025-01-15 20:14:11.370525108 +0100
 @@ -0,0 +1,385 @@
 +===================================
 +NT synchronization primitive driver
@@ -399,8 +399,8 @@ diff -rupN a/Documentation/userspace-api/ntsync.rst b/Documentation/userspace-ap
 +  ``objs`` and in ``alert``. If this is attempted, the function fails
 +  with ``EINVAL``.
 diff -rupN a/drivers/misc/Kconfig b/drivers/misc/Kconfig
---- a/drivers/misc/Kconfig	2025-01-11 17:05:03.000000000 +0100
-+++ b/drivers/misc/Kconfig	2025-01-12 14:03:19.003528116 +0100
+--- a/drivers/misc/Kconfig	2025-01-15 19:59:21.000000000 +0100
++++ b/drivers/misc/Kconfig	2025-01-15 20:14:11.385614793 +0100
 @@ -517,7 +517,6 @@ config OPEN_DICE
  
  config NTSYNC
@@ -410,8 +410,8 @@ diff -rupN a/drivers/misc/Kconfig b/drivers/misc/Kconfig
  	  This module provides kernel support for emulation of Windows NT
  	  synchronization primitives. It is not a hardware driver.
 diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
---- a/drivers/misc/ntsync.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/drivers/misc/ntsync.c	2025-01-12 14:03:19.000992431 +0100
+--- a/drivers/misc/ntsync.c	2025-01-15 19:59:21.000000000 +0100
++++ b/drivers/misc/ntsync.c	2025-01-15 20:17:14.374502065 +0100
 @@ -6,11 +6,17 @@
   */
  
@@ -836,16 +836,18 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
  
  	if (!ret && put_user(prev_count, user_args))
  		ret = -EFAULT;
-@@ -97,6 +437,220 @@ static int ntsync_sem_post(struct ntsync
+@@ -97,13 +437,229 @@ static int ntsync_sem_post(struct ntsync
  	return ret;
  }
  
+-static int ntsync_obj_release(struct inode *inode, struct file *file)
 +/*
 + * Actually change the mutex state, returning -EPERM if not the owner.
 + */
 +static int unlock_mutex_state(struct ntsync_obj *mutex,
 +			      const struct ntsync_mutex_args *args)
-+{
+ {
+-	struct ntsync_obj *obj = file->private_data;
 +	ntsync_assert_held(mutex);
 +
 +	if (mutex->u.mutex.owner != args->owner)
@@ -997,7 +999,7 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
 +		return -EINVAL;
 +
 +	all = ntsync_lock_obj(dev, sem);
-+
+ 
 +	args.count = sem->u.sem.count;
 +	args.max = sem->u.sem.max;
 +
@@ -1054,10 +1056,19 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
 +	return 0;
 +}
 +
- static int ntsync_obj_release(struct inode *inode, struct file *file)
- {
- 	struct ntsync_obj *obj = file->private_data;
-@@ -114,8 +668,24 @@ static long ntsync_obj_ioctl(struct file
++static void ntsync_free_obj(struct ntsync_obj *obj)
++{
+ 	fput(obj->dev->file);
+ 	kfree(obj);
++}
+ 
++static int ntsync_obj_release(struct inode *inode, struct file *file)
++{
++	ntsync_free_obj(file->private_data);
+ 	return 0;
+ }
+ 
+@@ -114,8 +670,24 @@ static long ntsync_obj_ioctl(struct file
  	void __user *argp = (void __user *)parm;
  
  	switch (cmd) {
@@ -1084,7 +1095,7 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
  	default:
  		return -ENOIOCTLCMD;
  	}
-@@ -140,6 +710,9 @@ static struct ntsync_obj *ntsync_alloc_o
+@@ -140,6 +712,9 @@ static struct ntsync_obj *ntsync_alloc_o
  	obj->dev = dev;
  	get_file(dev->file);
  	spin_lock_init(&obj->lock);
@@ -1094,7 +1105,7 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
  
  	return obj;
  }
-@@ -165,7 +738,6 @@ static int ntsync_obj_get_fd(struct ntsy
+@@ -165,7 +740,6 @@ static int ntsync_obj_get_fd(struct ntsy
  
  static int ntsync_create_sem(struct ntsync_device *dev, void __user *argp)
  {
@@ -1102,14 +1113,19 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
  	struct ntsync_sem_args args;
  	struct ntsync_obj *sem;
  	int fd;
-@@ -182,12 +754,398 @@ static int ntsync_create_sem(struct ntsy
+@@ -182,12 +756,402 @@ static int ntsync_create_sem(struct ntsy
  	sem->u.sem.count = args.count;
  	sem->u.sem.max = args.max;
  	fd = ntsync_obj_get_fd(sem);
 -	if (fd < 0) {
-+	if (fd < 0)
- 		kfree(sem);
+-		kfree(sem);
 -		return fd;
++
++        fd = ntsync_obj_get_fd(sem);
++        if (fd < 0) {
++		ntsync_free_obj(sem);
++                return fd;
++        }
 +
 +	return fd;
 +}
@@ -1170,15 +1186,15 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
 +	if (file->f_op != &ntsync_obj_fops) {
 +		fput(file);
 +		return NULL;
-+	}
-+
+ 	}
+ 
+-	return put_user(fd, &user_args->sem);
 +	obj = file->private_data;
 +	if (obj->dev != dev) {
 +		fput(file);
 +		return NULL;
- 	}
- 
--	return put_user(fd, &user_args->sem);
++	}
++
 +	return obj;
 +}
 +
@@ -1504,7 +1520,7 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
  }
  
  static int ntsync_char_open(struct inode *inode, struct file *file)
-@@ -198,6 +1156,8 @@ static int ntsync_char_open(struct inode
+@@ -198,6 +1162,8 @@ static int ntsync_char_open(struct inode
  	if (!dev)
  		return -ENOMEM;
  
@@ -1513,7 +1529,7 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
  	file->private_data = dev;
  	dev->file = file;
  	return nonseekable_open(inode, file);
-@@ -219,8 +1179,16 @@ static long ntsync_char_ioctl(struct fil
+@@ -219,8 +1185,16 @@ static long ntsync_char_ioctl(struct fil
  	void __user *argp = (void __user *)parm;
  
  	switch (cmd) {
@@ -1531,8 +1547,8 @@ diff -rupN a/drivers/misc/ntsync.c b/drivers/misc/ntsync.c
  		return -ENOIOCTLCMD;
  	}
 diff -rupN a/include/uapi/linux/ntsync.h b/include/uapi/linux/ntsync.h
---- a/include/uapi/linux/ntsync.h	2025-01-11 17:05:03.000000000 +0100
-+++ b/include/uapi/linux/ntsync.h	2025-01-12 14:03:19.000992431 +0100
+--- a/include/uapi/linux/ntsync.h	2025-01-15 19:59:21.000000000 +0100
++++ b/include/uapi/linux/ntsync.h	2025-01-15 20:14:11.385614793 +0100
 @@ -11,13 +11,49 @@
  #include <linux/types.h>
  
@@ -1587,9 +1603,9 @@ diff -rupN a/include/uapi/linux/ntsync.h b/include/uapi/linux/ntsync.h
  
  #endif
 diff -rupN a/MAINTAINERS b/MAINTAINERS
---- a/MAINTAINERS	2025-01-12 14:04:04.427888493 +0100
-+++ b/MAINTAINERS	2025-01-12 14:03:19.003528116 +0100
-@@ -16721,6 +16721,15 @@ T:	git https://github.com/Paragon-Softwa
+--- a/MAINTAINERS	2025-01-15 19:59:21.000000000 +0100
++++ b/MAINTAINERS	2025-01-15 20:14:11.385614793 +0100
+@@ -16722,6 +16722,15 @@ T:	git https://github.com/Paragon-Softwa
  F:	Documentation/filesystems/ntfs3.rst
  F:	fs/ntfs3/
  
@@ -1607,17 +1623,17 @@ diff -rupN a/MAINTAINERS b/MAINTAINERS
  L:	linux-m68k@lists.linux-m68k.org
 diff -rupN a/tools/testing/selftests/drivers/ntsync/config b/tools/testing/selftests/drivers/ntsync/config
 --- a/tools/testing/selftests/drivers/ntsync/config	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/drivers/ntsync/config	2025-01-12 14:03:19.000992431 +0100
++++ b/tools/testing/selftests/drivers/ntsync/config	2025-01-15 20:14:11.385614793 +0100
 @@ -0,0 +1 @@
 +CONFIG_WINESYNC=y
 diff -rupN a/tools/testing/selftests/drivers/ntsync/.gitignore b/tools/testing/selftests/drivers/ntsync/.gitignore
 --- a/tools/testing/selftests/drivers/ntsync/.gitignore	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/drivers/ntsync/.gitignore	2025-01-12 14:03:19.000992431 +0100
++++ b/tools/testing/selftests/drivers/ntsync/.gitignore	2025-01-15 20:14:11.385614793 +0100
 @@ -0,0 +1 @@
 +ntsync
 diff -rupN a/tools/testing/selftests/drivers/ntsync/Makefile b/tools/testing/selftests/drivers/ntsync/Makefile
 --- a/tools/testing/selftests/drivers/ntsync/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/drivers/ntsync/Makefile	2025-01-12 14:03:19.000992431 +0100
++++ b/tools/testing/selftests/drivers/ntsync/Makefile	2025-01-15 20:14:11.385614793 +0100
 @@ -0,0 +1,7 @@
 +# SPDX-LICENSE-IDENTIFIER: GPL-2.0-only
 +TEST_GEN_PROGS := ntsync
@@ -1628,7 +1644,7 @@ diff -rupN a/tools/testing/selftests/drivers/ntsync/Makefile b/tools/testing/sel
 +include ../../lib.mk
 diff -rupN a/tools/testing/selftests/drivers/ntsync/ntsync.c b/tools/testing/selftests/drivers/ntsync/ntsync.c
 --- a/tools/testing/selftests/drivers/ntsync/ntsync.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/drivers/ntsync/ntsync.c	2025-01-12 14:03:19.000992431 +0100
++++ b/tools/testing/selftests/drivers/ntsync/ntsync.c	2025-01-15 20:14:11.389614812 +0100
 @@ -0,0 +1,1343 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +/*
@@ -2974,8 +2990,8 @@ diff -rupN a/tools/testing/selftests/drivers/ntsync/ntsync.c b/tools/testing/sel
 +
 +TEST_HARNESS_MAIN
 diff -rupN a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
---- a/tools/testing/selftests/Makefile	2025-01-12 14:04:04.427888493 +0100
-+++ b/tools/testing/selftests/Makefile	2025-01-12 14:03:19.000992431 +0100
+--- a/tools/testing/selftests/Makefile	2025-01-15 19:59:21.000000000 +0100
++++ b/tools/testing/selftests/Makefile	2025-01-15 20:14:11.385614793 +0100
 @@ -18,6 +18,7 @@ TARGETS += devices/error_logs
  TARGETS += devices/probe
  TARGETS += dmabuf-heaps

@@ -1,6 +1,6 @@
 diff -rupN a/Documentation/netlink/specs/ovpn.yaml b/Documentation/netlink/specs/ovpn.yaml
 --- a/Documentation/netlink/specs/ovpn.yaml	1970-01-01 01:00:00.000000000 +0100
-+++ b/Documentation/netlink/specs/ovpn.yaml	2025-01-12 13:11:26.423184426 +0100
++++ b/Documentation/netlink/specs/ovpn.yaml	2025-01-15 20:25:07.180791149 +0100
 @@ -0,0 +1,372 @@
 +# SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
 +#
@@ -375,8 +375,8 @@ diff -rupN a/Documentation/netlink/specs/ovpn.yaml b/Documentation/netlink/specs
 +    -
 +      name: peers
 diff -rupN a/Documentation/netlink/specs/rt_link.yaml b/Documentation/netlink/specs/rt_link.yaml
---- a/Documentation/netlink/specs/rt_link.yaml	2025-01-11 17:05:03.000000000 +0100
-+++ b/Documentation/netlink/specs/rt_link.yaml	2025-01-12 13:11:26.423184426 +0100
+--- a/Documentation/netlink/specs/rt_link.yaml	2025-01-15 19:59:21.000000000 +0100
++++ b/Documentation/netlink/specs/rt_link.yaml	2025-01-15 20:25:07.180791149 +0100
 @@ -926,6 +926,12 @@ definitions:
      entries:
        - name: none
@@ -390,21 +390,7 @@ diff -rupN a/Documentation/netlink/specs/rt_link.yaml b/Documentation/netlink/sp
  
  attribute-sets:
    -
-@@ -2166,6 +2172,13 @@ attribute-sets:
-         name: peer-scrub
-         type: u32
-         enum: netkit-scrub
-+  -
-+    name: linkinfo-ovpn-attrs
-+    attributes:
-+      -
-+        name: mode
-+        type: u8
-+        enum: ovpn-mode
- 
- sub-messages:
-   -
-@@ -2207,6 +2220,9 @@ sub-messages:
+@@ -2207,6 +2213,9 @@ sub-messages:
        -
          value: netkit
          attribute-set: linkinfo-netkit-attrs
@@ -415,8 +401,8 @@ diff -rupN a/Documentation/netlink/specs/rt_link.yaml b/Documentation/netlink/sp
      name: linkinfo-member-data-msg
      formats:
 diff -rupN a/drivers/net/Kconfig b/drivers/net/Kconfig
---- a/drivers/net/Kconfig	2025-01-11 17:05:03.000000000 +0100
-+++ b/drivers/net/Kconfig	2025-01-12 13:11:26.423184426 +0100
+--- a/drivers/net/Kconfig	2025-01-15 19:59:21.000000000 +0100
++++ b/drivers/net/Kconfig	2025-01-15 20:25:07.180791149 +0100
 @@ -115,6 +115,21 @@ config WIREGUARD_DEBUG
  
  	  Say N here unless you know what you're doing.
@@ -440,8 +426,8 @@ diff -rupN a/drivers/net/Kconfig b/drivers/net/Kconfig
  	tristate "EQL (serial line load balancing) support"
  	help
 diff -rupN a/drivers/net/Makefile b/drivers/net/Makefile
---- a/drivers/net/Makefile	2025-01-11 17:05:03.000000000 +0100
-+++ b/drivers/net/Makefile	2025-01-12 13:11:26.423184426 +0100
+--- a/drivers/net/Makefile	2025-01-15 19:59:21.000000000 +0100
++++ b/drivers/net/Makefile	2025-01-15 20:25:07.180791149 +0100
 @@ -11,6 +11,7 @@ obj-$(CONFIG_IPVLAN) += ipvlan/
  obj-$(CONFIG_IPVTAP) += ipvlan/
  obj-$(CONFIG_DUMMY) += dummy.o
@@ -452,7 +438,7 @@ diff -rupN a/drivers/net/Makefile b/drivers/net/Makefile
  obj-$(CONFIG_MACSEC) += macsec.o
 diff -rupN a/drivers/net/ovpn/bind.c b/drivers/net/ovpn/bind.c
 --- a/drivers/net/ovpn/bind.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/bind.c	2025-01-12 13:11:26.423184426 +0100
++++ b/drivers/net/ovpn/bind.c	2025-01-15 20:25:07.180791149 +0100
 @@ -0,0 +1,55 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
@@ -511,7 +497,7 @@ diff -rupN a/drivers/net/ovpn/bind.c b/drivers/net/ovpn/bind.c
 +}
 diff -rupN a/drivers/net/ovpn/bind.h b/drivers/net/ovpn/bind.h
 --- a/drivers/net/ovpn/bind.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/bind.h	2025-01-12 13:11:26.423184426 +0100
++++ b/drivers/net/ovpn/bind.h	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,101 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -616,7 +602,7 @@ diff -rupN a/drivers/net/ovpn/bind.h b/drivers/net/ovpn/bind.h
 +#endif /* _NET_OVPN_OVPNBIND_H_ */
 diff -rupN a/drivers/net/ovpn/crypto_aead.c b/drivers/net/ovpn/crypto_aead.c
 --- a/drivers/net/ovpn/crypto_aead.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/crypto_aead.c	2025-01-12 13:11:26.423184426 +0100
++++ b/drivers/net/ovpn/crypto_aead.c	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,382 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
@@ -1002,7 +988,7 @@ diff -rupN a/drivers/net/ovpn/crypto_aead.c b/drivers/net/ovpn/crypto_aead.c
 +}
 diff -rupN a/drivers/net/ovpn/crypto_aead.h b/drivers/net/ovpn/crypto_aead.h
 --- a/drivers/net/ovpn/crypto_aead.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/crypto_aead.h	2025-01-12 13:11:26.423184426 +0100
++++ b/drivers/net/ovpn/crypto_aead.h	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,33 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -1039,7 +1025,7 @@ diff -rupN a/drivers/net/ovpn/crypto_aead.h b/drivers/net/ovpn/crypto_aead.h
 +#endif /* _NET_OVPN_OVPNAEAD_H_ */
 diff -rupN a/drivers/net/ovpn/crypto.c b/drivers/net/ovpn/crypto.c
 --- a/drivers/net/ovpn/crypto.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/crypto.c	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/crypto.c	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,211 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
@@ -1254,7 +1240,7 @@ diff -rupN a/drivers/net/ovpn/crypto.c b/drivers/net/ovpn/crypto.c
 +}
 diff -rupN a/drivers/net/ovpn/crypto.h b/drivers/net/ovpn/crypto.h
 --- a/drivers/net/ovpn/crypto.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/crypto.h	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/crypto.h	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,145 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -1403,7 +1389,7 @@ diff -rupN a/drivers/net/ovpn/crypto.h b/drivers/net/ovpn/crypto.h
 +#endif /* _NET_OVPN_OVPNCRYPTO_H_ */
 diff -rupN a/drivers/net/ovpn/io.c b/drivers/net/ovpn/io.c
 --- a/drivers/net/ovpn/io.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/io.c	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/io.c	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,446 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
@@ -1853,7 +1839,7 @@ diff -rupN a/drivers/net/ovpn/io.c b/drivers/net/ovpn/io.c
 +}
 diff -rupN a/drivers/net/ovpn/io.h b/drivers/net/ovpn/io.h
 --- a/drivers/net/ovpn/io.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/io.h	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/io.h	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,34 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* OpenVPN data channel offload
@@ -1891,7 +1877,7 @@ diff -rupN a/drivers/net/ovpn/io.h b/drivers/net/ovpn/io.h
 +#endif /* _NET_OVPN_OVPN_H_ */
 diff -rupN a/drivers/net/ovpn/main.c b/drivers/net/ovpn/main.c
 --- a/drivers/net/ovpn/main.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/main.c	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/main.c	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,350 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
@@ -2245,7 +2231,7 @@ diff -rupN a/drivers/net/ovpn/main.c b/drivers/net/ovpn/main.c
 +MODULE_LICENSE("GPL");
 diff -rupN a/drivers/net/ovpn/main.h b/drivers/net/ovpn/main.h
 --- a/drivers/net/ovpn/main.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/main.h	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/main.h	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,14 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -2263,7 +2249,7 @@ diff -rupN a/drivers/net/ovpn/main.h b/drivers/net/ovpn/main.h
 +#endif /* _NET_OVPN_MAIN_H_ */
 diff -rupN a/drivers/net/ovpn/Makefile b/drivers/net/ovpn/Makefile
 --- a/drivers/net/ovpn/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/Makefile	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/Makefile	2025-01-15 20:25:07.184791169 +0100
 @@ -0,0 +1,22 @@
 +# SPDX-License-Identifier: GPL-2.0
 +#
@@ -2289,8 +2275,8 @@ diff -rupN a/drivers/net/ovpn/Makefile b/drivers/net/ovpn/Makefile
 +ovpn-y += udp.o
 diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 --- a/drivers/net/ovpn/netlink.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/netlink.c	2025-01-12 13:11:26.427184461 +0100
-@@ -0,0 +1,1178 @@
++++ b/drivers/net/ovpn/netlink.c	2025-01-15 20:25:07.188791188 +0100
+@@ -0,0 +1,1183 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
 + *
@@ -2321,11 +2307,13 @@ diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 + *			     a netlink message is targeting
 + * @net: network namespace where to look for the interface
 + * @info: generic netlink info from the user request
++ * @tracker: tracker object to be used for the netdev reference acquisition
 + *
 + * Return: the ovpn private data, if found, or an error otherwise
 + */
 +static struct ovpn_priv *
-+ovpn_get_dev_from_attrs(struct net *net, const struct genl_info *info)
++ovpn_get_dev_from_attrs(struct net *net, const struct genl_info *info,
++			netdevice_tracker *tracker)
 +{
 +	struct ovpn_priv *ovpn;
 +	struct net_device *dev;
@@ -2354,7 +2342,7 @@ diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 +	}
 +
 +	ovpn = netdev_priv(dev);
-+	netdev_hold(dev, &ovpn->dev_tracker, GFP_KERNEL);
++	netdev_hold(dev, tracker, GFP_ATOMIC);
 +	rcu_read_unlock();
 +
 +	return ovpn;
@@ -2363,8 +2351,9 @@ diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 +int ovpn_nl_pre_doit(const struct genl_split_ops *ops, struct sk_buff *skb,
 +		     struct genl_info *info)
 +{
++	netdevice_tracker *tracker = (netdevice_tracker *)&info->user_ptr[1];
 +	struct ovpn_priv *ovpn = ovpn_get_dev_from_attrs(genl_info_net(info),
-+							 info);
++							 info, tracker);
 +
 +	if (IS_ERR(ovpn))
 +		return PTR_ERR(ovpn);
@@ -2377,10 +2366,11 @@ diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 +void ovpn_nl_post_doit(const struct genl_split_ops *ops, struct sk_buff *skb,
 +		       struct genl_info *info)
 +{
++	netdevice_tracker *tracker = (netdevice_tracker *)&info->user_ptr[1];
 +	struct ovpn_priv *ovpn = info->user_ptr[0];
 +
 +	if (ovpn)
-+		netdev_put(ovpn->dev, &ovpn->dev_tracker);
++		netdev_put(ovpn->dev, tracker);
 +}
 +
 +static int ovpn_nl_attr_sockaddr_remote(struct nlattr **attrs,
@@ -2932,10 +2922,11 @@ diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 +{
 +	const struct genl_info *info = genl_info_dump(cb);
 +	int bkt, last_idx = cb->args[1], dumped = 0;
++	netdevice_tracker tracker;
 +	struct ovpn_priv *ovpn;
 +	struct ovpn_peer *peer;
 +
-+	ovpn = ovpn_get_dev_from_attrs(sock_net(cb->skb->sk), info);
++	ovpn = ovpn_get_dev_from_attrs(sock_net(cb->skb->sk), info, &tracker);
 +	if (IS_ERR(ovpn))
 +		return PTR_ERR(ovpn);
 +
@@ -2979,7 +2970,7 @@ diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 +	}
 +
 +out:
-+	netdev_put(ovpn->dev, &ovpn->dev_tracker);
++	netdev_put(ovpn->dev, &tracker);
 +
 +	/* sum up peers dumped in this message, so that at the next invocation
 +	 * we can continue from where we left
@@ -3471,7 +3462,7 @@ diff -rupN a/drivers/net/ovpn/netlink.c b/drivers/net/ovpn/netlink.c
 +}
 diff -rupN a/drivers/net/ovpn/netlink-gen.c b/drivers/net/ovpn/netlink-gen.c
 --- a/drivers/net/ovpn/netlink-gen.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/netlink-gen.c	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/netlink-gen.c	2025-01-15 20:25:07.188791188 +0100
 @@ -0,0 +1,213 @@
 +// SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause)
 +/* Do not edit directly, auto-generated from: */
@@ -3688,7 +3679,7 @@ diff -rupN a/drivers/net/ovpn/netlink-gen.c b/drivers/net/ovpn/netlink-gen.c
 +};
 diff -rupN a/drivers/net/ovpn/netlink-gen.h b/drivers/net/ovpn/netlink-gen.h
 --- a/drivers/net/ovpn/netlink-gen.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/netlink-gen.h	2025-01-12 13:11:26.427184461 +0100
++++ b/drivers/net/ovpn/netlink-gen.h	2025-01-15 20:25:07.188791188 +0100
 @@ -0,0 +1,41 @@
 +/* SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause) */
 +/* Do not edit directly, auto-generated from: */
@@ -3733,7 +3724,7 @@ diff -rupN a/drivers/net/ovpn/netlink-gen.h b/drivers/net/ovpn/netlink-gen.h
 +#endif /* _LINUX_OVPN_GEN_H */
 diff -rupN a/drivers/net/ovpn/netlink.h b/drivers/net/ovpn/netlink.h
 --- a/drivers/net/ovpn/netlink.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/netlink.h	2025-01-12 13:11:26.431184495 +0100
++++ b/drivers/net/ovpn/netlink.h	2025-01-15 20:25:07.188791188 +0100
 @@ -0,0 +1,18 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -3755,8 +3746,8 @@ diff -rupN a/drivers/net/ovpn/netlink.h b/drivers/net/ovpn/netlink.h
 +#endif /* _NET_OVPN_NETLINK_H_ */
 diff -rupN a/drivers/net/ovpn/ovpnstruct.h b/drivers/net/ovpn/ovpnstruct.h
 --- a/drivers/net/ovpn/ovpnstruct.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/ovpnstruct.h	2025-01-12 13:11:26.431184495 +0100
-@@ -0,0 +1,57 @@
++++ b/drivers/net/ovpn/ovpnstruct.h	2025-01-15 20:25:07.188791188 +0100
+@@ -0,0 +1,54 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
 + *
@@ -3771,7 +3762,6 @@ diff -rupN a/drivers/net/ovpn/ovpnstruct.h b/drivers/net/ovpn/ovpnstruct.h
 +
 +#include <linux/workqueue.h>
 +#include <net/gro_cells.h>
-+#include <net/net_trackers.h>
 +#include <uapi/linux/if_link.h>
 +#include <uapi/linux/ovpn.h>
 +
@@ -3792,7 +3782,6 @@ diff -rupN a/drivers/net/ovpn/ovpnstruct.h b/drivers/net/ovpn/ovpnstruct.h
 +/**
 + * struct ovpn_priv - per ovpn interface state
 + * @dev: the actual netdev representing the tunnel
-+ * @dev_tracker: reference tracker for associated dev
 + * @registered: whether dev is still registered with netdev or not
 + * @mode: device operation mode (i.e. p2p, mp, ..)
 + * @lock: protect this object
@@ -3803,7 +3792,6 @@ diff -rupN a/drivers/net/ovpn/ovpnstruct.h b/drivers/net/ovpn/ovpnstruct.h
 + */
 +struct ovpn_priv {
 +	struct net_device *dev;
-+	netdevice_tracker dev_tracker;
 +	bool registered;
 +	enum ovpn_mode mode;
 +	spinlock_t lock; /* protect writing to the ovpn_priv object */
@@ -3816,8 +3804,8 @@ diff -rupN a/drivers/net/ovpn/ovpnstruct.h b/drivers/net/ovpn/ovpnstruct.h
 +#endif /* _NET_OVPN_OVPNSTRUCT_H_ */
 diff -rupN a/drivers/net/ovpn/peer.c b/drivers/net/ovpn/peer.c
 --- a/drivers/net/ovpn/peer.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/peer.c	2025-01-12 13:11:26.431184495 +0100
-@@ -0,0 +1,1256 @@
++++ b/drivers/net/ovpn/peer.c	2025-01-15 20:25:07.188791188 +0100
+@@ -0,0 +1,1269 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
 + *
@@ -3922,7 +3910,7 @@ diff -rupN a/drivers/net/ovpn/peer.c b/drivers/net/ovpn/peer.c
 +		return ERR_PTR(ret);
 +	}
 +
-+	netdev_hold(ovpn->dev, &ovpn->dev_tracker, GFP_KERNEL);
++	netdev_hold(ovpn->dev, &peer->dev_tracker, GFP_KERNEL);
 +
 +	return peer;
 +}
@@ -4137,7 +4125,7 @@ diff -rupN a/drivers/net/ovpn/peer.c b/drivers/net/ovpn/peer.c
 +	spin_lock_bh(&peer->lock);
 +	ovpn_bind_reset(peer, NULL);
 +	spin_unlock_bh(&peer->lock);
-+	netdev_put(peer->ovpn->dev, &peer->ovpn->dev_tracker);
++	netdev_put(peer->ovpn->dev, &peer->dev_tracker);
 +	call_rcu(&peer->rcu, ovpn_peer_release_rcu);
 +}
 +
@@ -4458,6 +4446,21 @@ diff -rupN a/drivers/net/ovpn/peer.c b/drivers/net/ovpn/peer.c
 +	return peer;
 +}
 +
++static void ovpn_peer_remove_work(struct work_struct *work)
++{
++	struct ovpn_peer *peer = container_of(work, struct ovpn_peer,
++					      remove_work);
++
++	/* the peer has been unhashed and is being deactivated - we can
++	 * now switch off the socket and drop its reference
++	 */
++	if (peer->sock)
++		ovpn_socket_release(peer->sock);
++
++	/* reference from ovpn->peer or hashtable dropped */
++	ovpn_peer_put(peer);
++}
++
 +static void ovpn_peer_remove(struct ovpn_peer *peer,
 +			     enum ovpn_del_peer_reason reason)
 +{
@@ -4481,11 +4484,9 @@ diff -rupN a/drivers/net/ovpn/peer.c b/drivers/net/ovpn/peer.c
 +
 +	peer->delete_reason = reason;
 +	ovpn_nl_peer_del_notify(peer);
-+	if (peer->sock)
-+		ovpn_socket_release(peer->sock);
 +
-+	/* reference from ovpn->peer or hashtable dropped */
-+	ovpn_peer_put(peer);
++	INIT_WORK(&peer->remove_work, ovpn_peer_remove_work);
++	schedule_work(&peer->remove_work);
 +}
 +
 +/**
@@ -5076,8 +5077,8 @@ diff -rupN a/drivers/net/ovpn/peer.c b/drivers/net/ovpn/peer.c
 +}
 diff -rupN a/drivers/net/ovpn/peer.h b/drivers/net/ovpn/peer.h
 --- a/drivers/net/ovpn/peer.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/peer.h	2025-01-12 13:11:26.431184495 +0100
-@@ -0,0 +1,159 @@
++++ b/drivers/net/ovpn/peer.h	2025-01-15 20:25:07.188791188 +0100
+@@ -0,0 +1,164 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* OpenVPN data channel offload
 + *
@@ -5094,11 +5095,13 @@ diff -rupN a/drivers/net/ovpn/peer.h b/drivers/net/ovpn/peer.h
 +#include <net/strparser.h>
 +
 +#include "crypto.h"
++#include "socket.h"
 +#include "stats.h"
 +
 +/**
 + * struct ovpn_peer - the main remote peer object
 + * @ovpn: main openvpn instance this peer belongs to
++ * @dev_tracker: reference tracker for associated dev
 + * @id: unique identifier
 + * @vpn_addrs: IP addresses assigned over the tunnel
 + * @vpn_addrs.ipv4: IPv4 assigned to peer on the tunnel
@@ -5136,10 +5139,12 @@ diff -rupN a/drivers/net/ovpn/peer.h b/drivers/net/ovpn/peer.h
 + * @lock: protects binding to peer (bind) and keepalive* fields
 + * @refcount: reference counter
 + * @rcu: used to free peer in an RCU safe way
++ * @remove_work: deferred release work, for code that may sleep
 + * @keepalive_work: used to schedule keepalive sending
 + */
 +struct ovpn_peer {
 +	struct ovpn_priv *ovpn;
++	netdevice_tracker dev_tracker;
 +	u32 id;
 +	struct {
 +		struct in_addr ipv4;
@@ -5186,6 +5191,7 @@ diff -rupN a/drivers/net/ovpn/peer.h b/drivers/net/ovpn/peer.h
 +	spinlock_t lock; /* protects bind  and keepalive* */
 +	struct kref refcount;
 +	struct rcu_head rcu;
++	struct work_struct remove_work;
 +	struct work_struct keepalive_work;
 +};
 +
@@ -5239,7 +5245,7 @@ diff -rupN a/drivers/net/ovpn/peer.h b/drivers/net/ovpn/peer.h
 +#endif /* _NET_OVPN_OVPNPEER_H_ */
 diff -rupN a/drivers/net/ovpn/pktid.c b/drivers/net/ovpn/pktid.c
 --- a/drivers/net/ovpn/pktid.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/pktid.c	2025-01-12 13:11:26.431184495 +0100
++++ b/drivers/net/ovpn/pktid.c	2025-01-15 20:25:07.188791188 +0100
 @@ -0,0 +1,129 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
@@ -5372,7 +5378,7 @@ diff -rupN a/drivers/net/ovpn/pktid.c b/drivers/net/ovpn/pktid.c
 +}
 diff -rupN a/drivers/net/ovpn/pktid.h b/drivers/net/ovpn/pktid.h
 --- a/drivers/net/ovpn/pktid.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/pktid.h	2025-01-12 13:11:26.431184495 +0100
++++ b/drivers/net/ovpn/pktid.h	2025-01-15 20:25:07.188791188 +0100
 @@ -0,0 +1,87 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -5463,7 +5469,7 @@ diff -rupN a/drivers/net/ovpn/pktid.h b/drivers/net/ovpn/pktid.h
 +#endif /* _NET_OVPN_OVPNPKTID_H_ */
 diff -rupN a/drivers/net/ovpn/proto.h b/drivers/net/ovpn/proto.h
 --- a/drivers/net/ovpn/proto.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/proto.h	2025-01-12 13:11:26.431184495 +0100
++++ b/drivers/net/ovpn/proto.h	2025-01-15 20:25:07.188791188 +0100
 @@ -0,0 +1,118 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -5585,7 +5591,7 @@ diff -rupN a/drivers/net/ovpn/proto.h b/drivers/net/ovpn/proto.h
 +#endif /* _NET_OVPN_OVPNPROTO_H_ */
 diff -rupN a/drivers/net/ovpn/skb.h b/drivers/net/ovpn/skb.h
 --- a/drivers/net/ovpn/skb.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/skb.h	2025-01-12 13:11:26.431184495 +0100
++++ b/drivers/net/ovpn/skb.h	2025-01-15 20:25:07.188791188 +0100
 @@ -0,0 +1,60 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -5649,8 +5655,8 @@ diff -rupN a/drivers/net/ovpn/skb.h b/drivers/net/ovpn/skb.h
 +#endif /* _NET_OVPN_SKB_H_ */
 diff -rupN a/drivers/net/ovpn/socket.c b/drivers/net/ovpn/socket.c
 --- a/drivers/net/ovpn/socket.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/socket.c	2025-01-12 13:11:26.431184495 +0100
-@@ -0,0 +1,237 @@
++++ b/drivers/net/ovpn/socket.c	2025-01-15 20:25:07.192791208 +0100
+@@ -0,0 +1,204 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
 + *
@@ -5672,31 +5678,16 @@ diff -rupN a/drivers/net/ovpn/socket.c b/drivers/net/ovpn/socket.c
 +#include "tcp.h"
 +#include "udp.h"
 +
-+/**
-+ * ovpn_socket_release_kref - kref_put callback
-+ * @kref: the kref object
-+ *
-+ * This function releases the lock_sock which was previously
-+ * acquired by kref_put_sock() in ovpn_socket_put()
-+ */
 +static void ovpn_socket_release_kref(struct kref *kref)
-+	__releases(sock->sock->sk)
 +{
 +	struct ovpn_socket *sock = container_of(kref, struct ovpn_socket,
 +						refcount);
 +
-+	/* UDP sockets are detached in this kref callback because
-+	 * we now know for sure that all concurrent users have
-+	 * finally gone (refcounter dropped to 0).
-+	 *
-+	 * Moreover, detachment is performed under lock to prevent
-+	 * a concurrent ovpn_socket_new() call with the same socket
-+	 * to find the socket still attached but with refcounter 0.
-+	 */
 +	if (sock->sock->sk->sk_protocol == IPPROTO_UDP)
-+		ovpn_udp_socket_detach(sock->sock);
++		ovpn_udp_socket_detach(sock);
++	else if (sock->sock->sk->sk_protocol == IPPROTO_TCP)
++		ovpn_tcp_socket_detach(sock);
 +
-+	bh_unlock_sock(sock->sock->sk);
 +	sockfd_put(sock->sock);
 +	kfree_rcu(sock, rcu);
 +}
@@ -5705,32 +5696,12 @@ diff -rupN a/drivers/net/ovpn/socket.c b/drivers/net/ovpn/socket.c
 + * ovpn_socket_put - decrease reference counter
 + * @sock: the socket whose reference counter should be decreased
 + *
-+ * Decreases the refcounter and, if it reached zero, acquires the
-+ * socket lock and calls the release callback.
-+ * This particular behaviour allows the callback to operate under
-+ * lock while atomically getting the refconter to 0.
-+ *
 + * This function is only used internally. Users willing to release
 + * references to the ovpn_socket should use ovpn_socket_release()
 + */
 +static void ovpn_socket_put(struct ovpn_socket *sock)
 +{
-+	kref_put_sock(&sock->refcount, ovpn_socket_release_kref,
-+		      sock->sock->sk);
-+}
-+
-+static void ovpn_socket_release_work(struct work_struct *work)
-+{
-+	struct ovpn_socket *sock = container_of(work, struct ovpn_socket, work);
-+
-+	lock_sock(sock->sock->sk);
-+	/* TCP sockets are owned by one user only, therefore we can
-+	 * detach here in the release routine, without waiting for the
-+	 * refcounter to drop to 0.
-+	 */
-+	ovpn_tcp_socket_detach(sock->sock);
-+	release_sock(sock->sock->sk);
-+	ovpn_socket_put(sock);
++	kref_put(&sock->refcount, ovpn_socket_release_kref);
 +}
 +
 +/**
@@ -5740,27 +5711,27 @@ diff -rupN a/drivers/net/ovpn/socket.c b/drivers/net/ovpn/socket.c
 + * This function should be invoked when the user is shutting
 + * down and wants to drop its link to the socket.
 + *
-+ * In case of UDP, the socket is owned by multiple users concurrently,
-+ * therefore the release consists only in decreasing the refcounter.
-+ * Once the refcounter reaches 0, the socket can be fully detached and
-+ * released. In turn, the detach routine will drop a reference to the
++ * In case of UDP, the detach routine will drop a reference to the
 + * ovpn netdev, pointed by the ovpn_socket.
 + *
-+ * In case of TCP, the socket is owned by one user only, therefore it
-+ * can be immediately detached. Releasing the socket will cause dropping
++ * In case of TCP, releasing the socket will cause dropping
 + * the refcounter for the peer it is linked to, thus allowing the peer
 + * disappear as well.
-+ * NOTE: TCP socket detach is performed in a scheduled work because this
-+ * code may sleep.
++ *
++ * NOTE: this function may sleep
 + */
 +void ovpn_socket_release(struct ovpn_socket *sock)
 +{
-+	if (sock->sock->sk->sk_protocol == IPPROTO_UDP) {
-+		ovpn_socket_put(sock);
-+	} else if (sock->sock->sk->sk_protocol == IPPROTO_TCP) {
-+		INIT_WORK(&sock->work, ovpn_socket_release_work);
-+		schedule_work(&sock->work);
-+	}
++	/* Drop the reference while holding the sock lock to avoid
++	 * concurrent ovpn_socket_new call to mess up with a partially
++	 * detached socket.
++	 *
++	 * Holding the lock ensures that a socket with refcnt 0 is fully
++	 * detached before it can be picked by a concurrent reader.
++	 */
++	lock_sock(sock->sock->sk);
++	ovpn_socket_put(sock);
++	release_sock(sock->sock->sk);
 +}
 +
 +static bool ovpn_socket_hold(struct ovpn_socket *sock)
@@ -5768,51 +5739,17 @@ diff -rupN a/drivers/net/ovpn/socket.c b/drivers/net/ovpn/socket.c
 +	return kref_get_unless_zero(&sock->refcount);
 +}
 +
-+static struct ovpn_socket *ovpn_socket_get(struct socket *sock)
-+{
-+	struct ovpn_socket *ovpn_sock;
-+
-+	ovpn_sock = rcu_dereference_sk_user_data(sock->sk);
-+	if (!ovpn_sock || WARN_ON(!ovpn_socket_hold(ovpn_sock)))
-+		ovpn_sock = NULL;
-+
-+	return ovpn_sock;
-+}
-+
 +static int ovpn_socket_attach(struct socket *sock, struct ovpn_peer *peer)
 +{
-+	int ret = -EOPNOTSUPP;
-+
 +	if (!sock || !peer)
 +		return -EINVAL;
 +
 +	if (sock->sk->sk_protocol == IPPROTO_UDP)
-+		ret = ovpn_udp_socket_attach(sock, peer->ovpn);
++		return ovpn_udp_socket_attach(sock, peer->ovpn);
 +	else if (sock->sk->sk_protocol == IPPROTO_TCP)
-+		ret = ovpn_tcp_socket_attach(sock, peer);
++		return ovpn_tcp_socket_attach(sock, peer);
 +
-+	return ret;
-+}
-+
-+/* Retrieve the corresponding ovpn object from a UDP socket
-+ * rcu_read_lock must be held on entry
-+ */
-+struct ovpn_priv *ovpn_from_udp_sock(struct sock *sk)
-+{
-+	struct ovpn_socket *ovpn_sock;
-+
-+	if (unlikely(READ_ONCE(udp_sk(sk)->encap_type) != UDP_ENCAP_OVPNINUDP))
-+		return NULL;
-+
-+	ovpn_sock = rcu_dereference_sk_user_data(sk);
-+	if (unlikely(!ovpn_sock))
-+		return NULL;
-+
-+	/* make sure that sk matches our stored transport socket */
-+	if (unlikely(!ovpn_sock->sock || sk != ovpn_sock->sock->sk))
-+		return NULL;
-+
-+	return ovpn_sock->ovpn;
++	return -EOPNOTSUPP;
 +}
 +
 +/**
@@ -5829,34 +5766,76 @@ diff -rupN a/drivers/net/ovpn/socket.c b/drivers/net/ovpn/socket.c
 +
 +	lock_sock(sock->sk);
 +
-+	ret = ovpn_socket_attach(sock, peer);
-+	if (ret < 0 && ret != -EALREADY)
-+		goto err_release;
-+
-+	/* if this socket is already owned by this interface, just increase the
-+	 * refcounter and use it as expected.
-+	 *
-+	 * Since UDP sockets can be used to talk to multiple remote endpoints,
-+	 * openvpn normally instantiates only one socket and shares it among all
-+	 * its peers. For this reason, when we find out that a socket is already
-+	 * used for some other peer in *this* instance, we can happily increase
-+	 * its refcounter and use it normally.
++	/* a TCP socket can only be owned by a single peer, therefore there
++	 * can't be any other user
 +	 */
-+	if (ret == -EALREADY) {
-+		/* caller is expected to increase the sock refcounter before
-+		 * passing it to this function. For this reason we drop it if
-+		 * not needed, like when this socket is already owned.
-+		 */
-+		ovpn_sock = ovpn_socket_get(sock);
-+		release_sock(sock->sk);
-+		sockfd_put(sock);
-+		return ovpn_sock;
++	if (sock->sk->sk_protocol == IPPROTO_TCP && sock->sk->sk_user_data) {
++		ovpn_sock = ERR_PTR(-EBUSY);
++		goto sock_release;
 +	}
++
++	/* a UDP socket can be shared across multiple peers, but we must make
++	 * sure it is not owned by something else
++	 */
++	if (sock->sk->sk_protocol == IPPROTO_UDP) {
++		u8 type = READ_ONCE(udp_sk(sock->sk)->encap_type);
++
++		/* socket owned by other encapsulation module */
++		if (type && type != UDP_ENCAP_OVPNINUDP) {
++			ovpn_sock = ERR_PTR(-EBUSY);
++			goto sock_release;
++		}
++
++		rcu_read_lock();
++		ovpn_sock = rcu_dereference_sk_user_data(sock->sk);
++		if (ovpn_sock) {
++			/* socket owned by another ovpn instance, we can't use it */
++			if (ovpn_sock->ovpn != peer->ovpn) {
++				ovpn_sock = ERR_PTR(-EBUSY);
++				rcu_read_unlock();
++				goto sock_release;
++			}
++
++			/* this socket is already owned by this instance,
++			 * therefore we can increase the refcounter and
++			 * use it as expected
++			 */
++			if (WARN_ON(!ovpn_socket_hold(ovpn_sock))) {
++				/* this should never happen because setting
++				 * the refcnt to 0 and detaching the socket
++				 * is expected to be atomic
++				 */
++				ovpn_sock = ERR_PTR(-EAGAIN);
++				rcu_read_unlock();
++				goto sock_release;
++			}
++
++			/* caller is expected to increase the sock
++			 * refcounter before passing it to this
++			 * function. For this reason we drop it if
++			 * not needed, like when this socket is already
++			 * owned.
++			 */
++			sockfd_put(sock);
++			rcu_read_unlock();
++			goto sock_release;
++		}
++		rcu_read_unlock();
++	}
++
++	/* socket is not owned: attach to this ovpn instance */
 +
 +	ovpn_sock = kzalloc(sizeof(*ovpn_sock), GFP_KERNEL);
 +	if (!ovpn_sock) {
-+		ret = -ENOMEM;
-+		goto err_detach;
++		ovpn_sock = ERR_PTR(-ENOMEM);
++		goto sock_release;
++	}
++
++	ret = ovpn_socket_attach(sock, peer);
++	if (ret < 0) {
++		kfree(ovpn_sock);
++		ovpn_sock = ERR_PTR(ret);
++		goto sock_release;
 +	}
 +
 +	ovpn_sock->sock = sock;
@@ -5868,30 +5847,24 @@ diff -rupN a/drivers/net/ovpn/socket.c b/drivers/net/ovpn/socket.c
 +	if (sock->sk->sk_protocol == IPPROTO_TCP) {
 +		ovpn_sock->peer = peer;
 +		ovpn_peer_hold(peer);
-+	} else {
++	} else if (sock->sk->sk_protocol == IPPROTO_UDP) {
 +		/* in UDP we only link the ovpn instance since the socket is
 +		 * shared among multiple peers
 +		 */
 +		ovpn_sock->ovpn = peer->ovpn;
-+		netdev_hold(peer->ovpn->dev, &peer->ovpn->dev_tracker,
++		netdev_hold(peer->ovpn->dev, &ovpn_sock->dev_tracker,
 +			    GFP_KERNEL);
 +	}
 +
 +	rcu_assign_sk_user_data(sock->sk, ovpn_sock);
++sock_release:
 +	release_sock(sock->sk);
-+
 +	return ovpn_sock;
-+err_detach:
-+	if (sock->sk->sk_protocol == IPPROTO_UDP)
-+		ovpn_udp_socket_detach(sock);
-+err_release:
-+	release_sock(sock->sk);
-+	return ERR_PTR(ret);
 +}
 diff -rupN a/drivers/net/ovpn/socket.h b/drivers/net/ovpn/socket.h
 --- a/drivers/net/ovpn/socket.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/socket.h	2025-01-12 13:11:26.431184495 +0100
-@@ -0,0 +1,45 @@
++++ b/drivers/net/ovpn/socket.h	2025-01-15 20:25:07.192791208 +0100
+@@ -0,0 +1,49 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
 + *
@@ -5914,6 +5887,7 @@ diff -rupN a/drivers/net/ovpn/socket.h b/drivers/net/ovpn/socket.h
 +/**
 + * struct ovpn_socket - a kernel socket referenced in the ovpn code
 + * @ovpn: ovpn instance owning this socket (UDP only)
++ * @dev_tracker: reference tracker for associated dev (UDP only)
 + * @peer: unique peer transmitting over this socket (TCP only)
 + * @sock: the low level sock object
 + * @refcount: amount of contexts currently referencing this object
@@ -5922,7 +5896,10 @@ diff -rupN a/drivers/net/ovpn/socket.h b/drivers/net/ovpn/socket.h
 + */
 +struct ovpn_socket {
 +	union {
-+		struct ovpn_priv *ovpn;
++		struct {
++			struct ovpn_priv *ovpn;
++			netdevice_tracker dev_tracker;
++		};
 +		struct ovpn_peer *peer;
 +	};
 +
@@ -5939,7 +5916,7 @@ diff -rupN a/drivers/net/ovpn/socket.h b/drivers/net/ovpn/socket.h
 +#endif /* _NET_OVPN_SOCK_H_ */
 diff -rupN a/drivers/net/ovpn/stats.c b/drivers/net/ovpn/stats.c
 --- a/drivers/net/ovpn/stats.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/stats.c	2025-01-12 13:11:26.431184495 +0100
++++ b/drivers/net/ovpn/stats.c	2025-01-15 20:25:07.192791208 +0100
 @@ -0,0 +1,21 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
@@ -5964,7 +5941,7 @@ diff -rupN a/drivers/net/ovpn/stats.c b/drivers/net/ovpn/stats.c
 +}
 diff -rupN a/drivers/net/ovpn/stats.h b/drivers/net/ovpn/stats.h
 --- a/drivers/net/ovpn/stats.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/stats.h	2025-01-12 13:11:26.431184495 +0100
++++ b/drivers/net/ovpn/stats.h	2025-01-15 20:25:07.192791208 +0100
 @@ -0,0 +1,47 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -6015,8 +5992,8 @@ diff -rupN a/drivers/net/ovpn/stats.h b/drivers/net/ovpn/stats.h
 +#endif /* _NET_OVPN_OVPNSTATS_H_ */
 diff -rupN a/drivers/net/ovpn/tcp.c b/drivers/net/ovpn/tcp.c
 --- a/drivers/net/ovpn/tcp.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/tcp.c	2025-01-12 13:11:26.435184528 +0100
-@@ -0,0 +1,567 @@
++++ b/drivers/net/ovpn/tcp.c	2025-01-15 20:25:07.192791208 +0100
+@@ -0,0 +1,565 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
 + *
@@ -6203,16 +6180,11 @@ diff -rupN a/drivers/net/ovpn/tcp.c b/drivers/net/ovpn/tcp.c
 +	return ret;
 +}
 +
-+void ovpn_tcp_socket_detach(struct socket *sock)
++void ovpn_tcp_socket_detach(struct ovpn_socket *ovpn_sock)
 +{
-+	struct ovpn_socket *ovpn_sock;
-+	struct ovpn_peer *peer;
++	struct ovpn_peer *peer = ovpn_sock->peer;
++	struct socket *sock = ovpn_sock->sock;
 +
-+	ovpn_sock = rcu_dereference_sk_user_data(sock->sk);
-+	if (WARN_ON(!ovpn_sock))
-+		return;
-+
-+	peer = ovpn_sock->peer;
 +	strp_stop(&peer->tcp.strp);
 +
 +	skb_queue_purge(&peer->tcp.user_queue);
@@ -6277,8 +6249,11 @@ diff -rupN a/drivers/net/ovpn/tcp.c b/drivers/net/ovpn/tcp.c
 +		peer->tcp.out_msg.offset += ret;
 +	} while (peer->tcp.out_msg.len > 0);
 +
-+	if (!peer->tcp.out_msg.len)
++	if (!peer->tcp.out_msg.len) {
++		preempt_disable();
 +		dev_sw_netstats_tx_add(peer->ovpn->dev, 1, skb->len);
++		preempt_enable();
++	}
 +
 +	kfree_skb(peer->tcp.out_msg.skb);
 +	peer->tcp.out_msg.skb = NULL;
@@ -6586,7 +6561,7 @@ diff -rupN a/drivers/net/ovpn/tcp.c b/drivers/net/ovpn/tcp.c
 +}
 diff -rupN a/drivers/net/ovpn/tcp.h b/drivers/net/ovpn/tcp.h
 --- a/drivers/net/ovpn/tcp.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/tcp.h	2025-01-12 13:11:26.435184528 +0100
++++ b/drivers/net/ovpn/tcp.h	2025-01-15 20:25:07.192791208 +0100
 @@ -0,0 +1,33 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
@@ -6610,7 +6585,7 @@ diff -rupN a/drivers/net/ovpn/tcp.h b/drivers/net/ovpn/tcp.h
 +void __init ovpn_tcp_init(void);
 +
 +int ovpn_tcp_socket_attach(struct socket *sock, struct ovpn_peer *peer);
-+void ovpn_tcp_socket_detach(struct socket *sock);
++void ovpn_tcp_socket_detach(struct ovpn_socket *ovpn_sock);
 +
 +/* Prepare skb and enqueue it for sending to peer.
 + *
@@ -6623,8 +6598,8 @@ diff -rupN a/drivers/net/ovpn/tcp.h b/drivers/net/ovpn/tcp.h
 +#endif /* _NET_OVPN_TCP_H_ */
 diff -rupN a/drivers/net/ovpn/udp.c b/drivers/net/ovpn/udp.c
 --- a/drivers/net/ovpn/udp.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/udp.c	2025-01-12 13:11:26.435184528 +0100
-@@ -0,0 +1,392 @@
++++ b/drivers/net/ovpn/udp.c	2025-01-15 20:25:07.192791208 +0100
+@@ -0,0 +1,421 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel offload
 + *
@@ -6654,6 +6629,27 @@ diff -rupN a/drivers/net/ovpn/udp.c b/drivers/net/ovpn/udp.c
 +#include "socket.h"
 +#include "udp.h"
 +
++/* Retrieve the corresponding ovpn object from a UDP socket
++ * rcu_read_lock must be held on entry
++ */
++static struct ovpn_socket *ovpn_socket_from_udp_sock(struct sock *sk)
++{
++	struct ovpn_socket *ovpn_sock;
++
++	if (unlikely(READ_ONCE(udp_sk(sk)->encap_type) != UDP_ENCAP_OVPNINUDP))
++		return NULL;
++
++	ovpn_sock = rcu_dereference_sk_user_data(sk);
++	if (unlikely(!ovpn_sock))
++		return NULL;
++
++	/* make sure that sk matches our stored transport socket */
++	if (unlikely(!ovpn_sock->sock || sk != ovpn_sock->sock->sk))
++		return NULL;
++
++	return ovpn_sock;
++}
++
 +/**
 + * ovpn_udp_encap_recv - Start processing a received UDP packet.
 + * @sk: socket over which the packet was received
@@ -6669,12 +6665,20 @@ diff -rupN a/drivers/net/ovpn/udp.c b/drivers/net/ovpn/udp.c
 + */
 +static int ovpn_udp_encap_recv(struct sock *sk, struct sk_buff *skb)
 +{
++	struct ovpn_socket *ovpn_sock;
 +	struct ovpn_priv *ovpn;
 +	struct ovpn_peer *peer;
 +	u32 peer_id;
 +	u8 opcode;
 +
-+	ovpn = ovpn_from_udp_sock(sk);
++	ovpn_sock = ovpn_socket_from_udp_sock(sk);
++	if (unlikely(!ovpn_sock)) {
++		net_err_ratelimited("ovpn: %s invoked on non ovpn socket\n",
++				    __func__);
++		goto drop_noovpn;
++	}
++
++	ovpn = ovpn_sock->ovpn;
 +	if (unlikely(!ovpn)) {
 +		net_err_ratelimited("ovpn: cannot obtain ovpn object from UDP socket\n");
 +		goto drop_noovpn;
@@ -7005,22 +7009,22 @@ diff -rupN a/drivers/net/ovpn/udp.c b/drivers/net/ovpn/udp.c
 +
 +/**
 + * ovpn_udp_socket_detach - clean udp-tunnel status for this socket
-+ * @sock: the socket to clean
++ * @ovpn_sock: the socket to clean
 + */
-+void ovpn_udp_socket_detach(struct socket *sock)
++void ovpn_udp_socket_detach(struct ovpn_socket *ovpn_sock)
 +{
-+	struct ovpn_priv *ovpn = ovpn_from_udp_sock(sock->sk);
 +	struct udp_tunnel_sock_cfg cfg = { };
 +
-+	if (ovpn)
++	if (ovpn_sock->ovpn)
 +		/* drop reference to netdev held in sk_user_data */
-+		netdev_put(ovpn->dev, &ovpn->dev_tracker);
-+	setup_udp_tunnel_sock(sock_net(sock->sk), sock, &cfg);
++		netdev_put(ovpn_sock->ovpn->dev, &ovpn_sock->dev_tracker);
++	setup_udp_tunnel_sock(sock_net(ovpn_sock->sock->sk), ovpn_sock->sock,
++			      &cfg);
 +}
 diff -rupN a/drivers/net/ovpn/udp.h b/drivers/net/ovpn/udp.h
 --- a/drivers/net/ovpn/udp.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/net/ovpn/udp.h	2025-01-12 13:11:26.435184528 +0100
-@@ -0,0 +1,23 @@
++++ b/drivers/net/ovpn/udp.h	2025-01-15 20:25:07.192791208 +0100
+@@ -0,0 +1,22 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*  OpenVPN data channel offload
 + *
@@ -7039,53 +7043,13 @@ diff -rupN a/drivers/net/ovpn/udp.h b/drivers/net/ovpn/udp.h
 +struct socket;
 +
 +int ovpn_udp_socket_attach(struct socket *sock, struct ovpn_priv *ovpn);
-+void ovpn_udp_socket_detach(struct socket *sock);
++void ovpn_udp_socket_detach(struct ovpn_socket *ovpn_sock);
 +void ovpn_udp_send_skb(struct ovpn_peer *peer, struct sk_buff *skb);
-+struct ovpn_priv *ovpn_from_udp_sock(struct sock *sk);
 +
 +#endif /* _NET_OVPN_UDP_H_ */
-diff -rupN a/include/linux/kref.h b/include/linux/kref.h
---- a/include/linux/kref.h	2025-01-11 17:05:03.000000000 +0100
-+++ b/include/linux/kref.h	2025-01-12 13:11:26.435184528 +0100
-@@ -90,6 +90,17 @@ static inline int kref_put_lock(struct k
- 	return 0;
- }
- 
-+static inline int kref_put_sock(struct kref *kref,
-+				void (*release)(struct kref *kref),
-+				struct sock *sock)
-+{
-+	if (refcount_dec_and_lock_sock(&kref->refcount, sock)) {
-+		release(kref);
-+		return 1;
-+	}
-+	return 0;
-+}
-+
- /**
-  * kref_get_unless_zero - Increment refcount for object unless it is zero.
-  * @kref: object.
-diff -rupN a/include/linux/refcount.h b/include/linux/refcount.h
---- a/include/linux/refcount.h	2025-01-11 17:05:03.000000000 +0100
-+++ b/include/linux/refcount.h	2025-01-12 13:11:26.435184528 +0100
-@@ -100,6 +100,7 @@
- #include <linux/spinlock_types.h>
- 
- struct mutex;
-+struct sock;
- 
- #define REFCOUNT_INIT(n)	{ .refs = ATOMIC_INIT(n), }
- #define REFCOUNT_MAX		INT_MAX
-@@ -358,4 +359,6 @@ extern __must_check bool refcount_dec_an
- extern __must_check bool refcount_dec_and_lock_irqsave(refcount_t *r,
- 						       spinlock_t *lock,
- 						       unsigned long *flags) __cond_acquires(lock);
-+extern __must_check bool refcount_dec_and_lock_sock(refcount_t *r,
-+						    struct sock *sock);
- #endif /* _LINUX_REFCOUNT_H */
 diff -rupN a/include/linux/skbuff.h b/include/linux/skbuff.h
---- a/include/linux/skbuff.h	2025-01-11 17:05:03.000000000 +0100
-+++ b/include/linux/skbuff.h	2025-01-12 13:11:26.439184564 +0100
+--- a/include/linux/skbuff.h	2025-01-15 19:59:21.000000000 +0100
++++ b/include/linux/skbuff.h	2025-01-15 20:25:07.196791228 +0100
 @@ -4133,6 +4133,8 @@ int skb_splice_bits(struct sk_buff *skb,
  		    unsigned int flags);
  int skb_send_sock_locked(struct sock *sk, struct sk_buff *skb, int offset,
@@ -7096,8 +7060,8 @@ diff -rupN a/include/linux/skbuff.h b/include/linux/skbuff.h
  void skb_copy_and_csum_dev(const struct sk_buff *skb, u8 *to);
  unsigned int skb_zerocopy_headlen(const struct sk_buff *from);
 diff -rupN a/include/uapi/linux/if_link.h b/include/uapi/linux/if_link.h
---- a/include/uapi/linux/if_link.h	2025-01-11 17:05:03.000000000 +0100
-+++ b/include/uapi/linux/if_link.h	2025-01-12 13:11:26.439184564 +0100
+--- a/include/uapi/linux/if_link.h	2025-01-15 19:59:21.000000000 +0100
++++ b/include/uapi/linux/if_link.h	2025-01-15 20:25:07.196791228 +0100
 @@ -1976,4 +1976,19 @@ enum {
  
  #define IFLA_DSA_MAX	(__IFLA_DSA_MAX - 1)
@@ -7120,7 +7084,7 @@ diff -rupN a/include/uapi/linux/if_link.h b/include/uapi/linux/if_link.h
  #endif /* _UAPI_LINUX_IF_LINK_H */
 diff -rupN a/include/uapi/linux/ovpn.h b/include/uapi/linux/ovpn.h
 --- a/include/uapi/linux/ovpn.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/uapi/linux/ovpn.h	2025-01-12 13:11:26.439184564 +0100
++++ b/include/uapi/linux/ovpn.h	2025-01-15 20:25:07.196791228 +0100
 @@ -0,0 +1,111 @@
 +/* SPDX-License-Identifier: ((GPL-2.0 WITH Linux-syscall-note) OR BSD-3-Clause) */
 +/* Do not edit directly, auto-generated from: */
@@ -7234,8 +7198,8 @@ diff -rupN a/include/uapi/linux/ovpn.h b/include/uapi/linux/ovpn.h
 +
 +#endif /* _UAPI_LINUX_OVPN_H */
 diff -rupN a/include/uapi/linux/udp.h b/include/uapi/linux/udp.h
---- a/include/uapi/linux/udp.h	2025-01-11 17:05:03.000000000 +0100
-+++ b/include/uapi/linux/udp.h	2025-01-12 13:11:26.439184564 +0100
+--- a/include/uapi/linux/udp.h	2025-01-15 19:59:21.000000000 +0100
++++ b/include/uapi/linux/udp.h	2025-01-15 20:25:07.196791228 +0100
 @@ -43,5 +43,6 @@ struct udphdr {
  #define UDP_ENCAP_GTP1U		5 /* 3GPP TS 29.060 */
  #define UDP_ENCAP_RXRPC		6
@@ -7243,59 +7207,10 @@ diff -rupN a/include/uapi/linux/udp.h b/include/uapi/linux/udp.h
 +#define UDP_ENCAP_OVPNINUDP	8 /* OpenVPN traffic */
  
  #endif /* _UAPI_LINUX_UDP_H */
-diff -rupN a/lib/refcount.c b/lib/refcount.c
---- a/lib/refcount.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/lib/refcount.c	2025-01-12 13:11:26.439184564 +0100
-@@ -7,6 +7,7 @@
- #include <linux/refcount.h>
- #include <linux/spinlock.h>
- #include <linux/bug.h>
-+#include <net/sock.h>
- 
- #define REFCOUNT_WARN(str)	WARN_ONCE(1, "refcount_t: " str ".\n")
- 
-@@ -157,6 +158,37 @@ bool refcount_dec_and_lock(refcount_t *r
- EXPORT_SYMBOL(refcount_dec_and_lock);
- 
- /**
-+ * refcount_dec_and_lock_sock - return holding locked sock if able to decrement
-+ *				refcount to 0
-+ * @r: the refcount
-+ * @sock: the sock to be locked
-+ *
-+ * Similar to atomic_dec_and_lock(), it will WARN on underflow and fail to
-+ * decrement when saturated at REFCOUNT_SATURATED.
-+ *
-+ * Provides release memory ordering, such that prior loads and stores are done
-+ * before, and provides a control dependency such that free() must come after.
-+ * See the comment on top.
-+ *
-+ * Return: true and hold sock if able to decrement refcount to 0, false
-+ *	   otherwise
-+ */
-+bool refcount_dec_and_lock_sock(refcount_t *r, struct sock *sock)
-+{
-+	if (refcount_dec_not_one(r))
-+		return false;
-+
-+	bh_lock_sock(sock);
-+	if (!refcount_dec_and_test(r)) {
-+		bh_unlock_sock(sock);
-+		return false;
-+	}
-+
-+	return true;
-+}
-+EXPORT_SYMBOL(refcount_dec_and_lock_sock);
-+
-+/**
-  * refcount_dec_and_lock_irqsave - return holding spinlock with disabled
-  *                                 interrupts if able to decrement refcount to 0
-  * @r: the refcount
 diff -rupN a/MAINTAINERS b/MAINTAINERS
---- a/MAINTAINERS	2025-01-11 17:05:03.000000000 +0100
-+++ b/MAINTAINERS	2025-01-12 13:11:26.447184632 +0100
-@@ -17559,6 +17559,17 @@ F:	arch/openrisc/
+--- a/MAINTAINERS	2025-01-15 19:59:21.000000000 +0100
++++ b/MAINTAINERS	2025-01-15 20:25:07.204791266 +0100
+@@ -17560,6 +17560,17 @@ F:	arch/openrisc/
  F:	drivers/irqchip/irq-ompic.c
  F:	drivers/irqchip/irq-or1k-*
  
@@ -7314,8 +7229,8 @@ diff -rupN a/MAINTAINERS b/MAINTAINERS
  M:	Pravin B Shelar <pshelar@ovn.org>
  L:	netdev@vger.kernel.org
 diff -rupN a/net/core/skbuff.c b/net/core/skbuff.c
---- a/net/core/skbuff.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/net/core/skbuff.c	2025-01-12 13:11:26.451184667 +0100
+--- a/net/core/skbuff.c	2025-01-15 19:59:21.000000000 +0100
++++ b/net/core/skbuff.c	2025-01-15 20:25:07.208791286 +0100
 @@ -3267,7 +3267,7 @@ static int sendmsg_unlocked(struct sock
  
  typedef int (*sendmsg_func)(struct sock *sk, struct msghdr *msg);
@@ -7369,8 +7284,8 @@ diff -rupN a/net/core/skbuff.c b/net/core/skbuff.c
  
  /**
 diff -rupN a/net/ipv6/af_inet6.c b/net/ipv6/af_inet6.c
---- a/net/ipv6/af_inet6.c	2025-01-11 17:05:03.000000000 +0100
-+++ b/net/ipv6/af_inet6.c	2025-01-12 13:11:26.451184667 +0100
+--- a/net/ipv6/af_inet6.c	2025-01-15 19:59:21.000000000 +0100
++++ b/net/ipv6/af_inet6.c	2025-01-15 20:25:07.208791286 +0100
 @@ -715,6 +715,7 @@ const struct proto_ops inet6_stream_ops
  #endif
  	.set_rcvlowat	   = tcp_set_rcvlowat,
@@ -7380,8 +7295,8 @@ diff -rupN a/net/ipv6/af_inet6.c b/net/ipv6/af_inet6.c
  const struct proto_ops inet6_dgram_ops = {
  	.family		   = PF_INET6,
 diff -rupN a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
---- a/tools/testing/selftests/Makefile	2025-01-11 17:05:03.000000000 +0100
-+++ b/tools/testing/selftests/Makefile	2025-01-12 13:11:26.451184667 +0100
+--- a/tools/testing/selftests/Makefile	2025-01-15 19:59:21.000000000 +0100
++++ b/tools/testing/selftests/Makefile	2025-01-15 20:25:07.208791286 +0100
 @@ -68,6 +68,7 @@ TARGETS += net/hsr
  TARGETS += net/mptcp
  TARGETS += net/netfilter
@@ -7392,7 +7307,7 @@ diff -rupN a/tools/testing/selftests/Makefile b/tools/testing/selftests/Makefile
  TARGETS += net/tcp_ao
 diff -rupN a/tools/testing/selftests/net/ovpn/config b/tools/testing/selftests/net/ovpn/config
 --- a/tools/testing/selftests/net/ovpn/config	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/config	2025-01-12 13:11:26.451184667 +0100
++++ b/tools/testing/selftests/net/ovpn/config	2025-01-15 20:25:07.208791286 +0100
 @@ -0,0 +1,10 @@
 +CONFIG_NET=y
 +CONFIG_INET=y
@@ -7406,7 +7321,7 @@ diff -rupN a/tools/testing/selftests/net/ovpn/config b/tools/testing/selftests/n
 +CONFIG_OVPN=m
 diff -rupN a/tools/testing/selftests/net/ovpn/data64.key b/tools/testing/selftests/net/ovpn/data64.key
 --- a/tools/testing/selftests/net/ovpn/data64.key	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/data64.key	2025-01-12 13:11:26.455184701 +0100
++++ b/tools/testing/selftests/net/ovpn/data64.key	2025-01-15 20:25:07.212791306 +0100
 @@ -0,0 +1,5 @@
 +jRqMACN7d7/aFQNT8S7jkrBD8uwrgHbG5OQZP2eu4R1Y7tfpS2bf5RHv06Vi163CGoaIiTX99R3B
 +ia9ycAH8Wz1+9PWv51dnBLur9jbShlgZ2QHLtUc4a/gfT7zZwULXuuxdLnvR21DDeMBaTbkgbai9
@@ -7415,13 +7330,13 @@ diff -rupN a/tools/testing/selftests/net/ovpn/data64.key b/tools/testing/selftes
 +BofkPJUBFY+YQcfZNM5Dgrw3i+Bpmpq/gpdg5w==
 diff -rupN a/tools/testing/selftests/net/ovpn/.gitignore b/tools/testing/selftests/net/ovpn/.gitignore
 --- a/tools/testing/selftests/net/ovpn/.gitignore	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/.gitignore	2025-01-12 13:11:26.455184701 +0100
++++ b/tools/testing/selftests/net/ovpn/.gitignore	2025-01-15 20:25:07.212791306 +0100
 @@ -0,0 +1,2 @@
 +# SPDX-License-Identifier: GPL-2.0+
 +ovpn-cli
 diff -rupN a/tools/testing/selftests/net/ovpn/Makefile b/tools/testing/selftests/net/ovpn/Makefile
 --- a/tools/testing/selftests/net/ovpn/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/Makefile	2025-01-12 13:11:26.455184701 +0100
++++ b/tools/testing/selftests/net/ovpn/Makefile	2025-01-15 20:25:07.212791306 +0100
 @@ -0,0 +1,17 @@
 +# SPDX-License-Identifier: GPL-2.0
 +# Copyright (C) 2020-2024 OpenVPN, Inc.
@@ -7442,8 +7357,8 @@ diff -rupN a/tools/testing/selftests/net/ovpn/Makefile b/tools/testing/selftests
 +include ../../lib.mk
 diff -rupN a/tools/testing/selftests/net/ovpn/ovpn-cli.c b/tools/testing/selftests/net/ovpn/ovpn-cli.c
 --- a/tools/testing/selftests/net/ovpn/ovpn-cli.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/ovpn-cli.c	2025-01-12 13:11:26.455184701 +0100
-@@ -0,0 +1,2366 @@
++++ b/tools/testing/selftests/net/ovpn/ovpn-cli.c	2025-01-15 20:25:07.212791306 +0100
+@@ -0,0 +1,2367 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*  OpenVPN data channel accelerator
 + *
@@ -7489,7 +7404,8 @@ diff -rupN a/tools/testing/selftests/net/ovpn/ovpn-cli.c b/tools/testing/selftes
 +#define nla_nest_start(_msg, _type) \
 +	nla_nest_start(_msg, (_type) | NLA_F_NESTED)
 +
-+uint64_t nla_get_uint(struct nlattr *attr)
++/* libnl < 3.11.0 does not implement nla_get_uint() */
++uint64_t ovpn_nla_get_uint(struct nlattr *attr)
 +{
 +	if (nla_len(attr) == sizeof(uint32_t))
 +		return nla_get_u32(attr);
@@ -8287,35 +8203,35 @@ diff -rupN a/tools/testing/selftests/net/ovpn/ovpn-cli.c b/tools/testing/selftes
 +
 +	if (pattrs[OVPN_A_PEER_VPN_RX_BYTES])
 +		fprintf(stderr, "\tVPN RX bytes: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_VPN_RX_BYTES]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_VPN_RX_BYTES]));
 +
 +	if (pattrs[OVPN_A_PEER_VPN_TX_BYTES])
 +		fprintf(stderr, "\tVPN TX bytes: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_VPN_TX_BYTES]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_VPN_TX_BYTES]));
 +
 +	if (pattrs[OVPN_A_PEER_VPN_RX_PACKETS])
 +		fprintf(stderr, "\tVPN RX packets: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_VPN_RX_PACKETS]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_VPN_RX_PACKETS]));
 +
 +	if (pattrs[OVPN_A_PEER_VPN_TX_PACKETS])
 +		fprintf(stderr, "\tVPN TX packets: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_VPN_TX_PACKETS]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_VPN_TX_PACKETS]));
 +
 +	if (pattrs[OVPN_A_PEER_LINK_RX_BYTES])
 +		fprintf(stderr, "\tLINK RX bytes: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_LINK_RX_BYTES]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_LINK_RX_BYTES]));
 +
 +	if (pattrs[OVPN_A_PEER_LINK_TX_BYTES])
 +		fprintf(stderr, "\tLINK TX bytes: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_LINK_TX_BYTES]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_LINK_TX_BYTES]));
 +
 +	if (pattrs[OVPN_A_PEER_LINK_RX_PACKETS])
 +		fprintf(stderr, "\tLINK RX packets: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_LINK_RX_PACKETS]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_LINK_RX_PACKETS]));
 +
 +	if (pattrs[OVPN_A_PEER_LINK_TX_PACKETS])
 +		fprintf(stderr, "\tLINK TX packets: %" PRIu64 "\n",
-+			nla_get_uint(pattrs[OVPN_A_PEER_LINK_TX_PACKETS]));
++			ovpn_nla_get_uint(pattrs[OVPN_A_PEER_LINK_TX_PACKETS]));
 +
 +	return NL_SKIP;
 +}
@@ -9812,7 +9728,7 @@ diff -rupN a/tools/testing/selftests/net/ovpn/ovpn-cli.c b/tools/testing/selftes
 +}
 diff -rupN a/tools/testing/selftests/net/ovpn/tcp_peers.txt b/tools/testing/selftests/net/ovpn/tcp_peers.txt
 --- a/tools/testing/selftests/net/ovpn/tcp_peers.txt	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/tcp_peers.txt	2025-01-12 13:11:26.455184701 +0100
++++ b/tools/testing/selftests/net/ovpn/tcp_peers.txt	2025-01-15 20:25:07.212791306 +0100
 @@ -0,0 +1,5 @@
 +1 5.5.5.2
 +2 5.5.5.3
@@ -9821,7 +9737,7 @@ diff -rupN a/tools/testing/selftests/net/ovpn/tcp_peers.txt b/tools/testing/self
 +5 5.5.5.6
 diff -rupN a/tools/testing/selftests/net/ovpn/test-chachapoly.sh b/tools/testing/selftests/net/ovpn/test-chachapoly.sh
 --- a/tools/testing/selftests/net/ovpn/test-chachapoly.sh	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/test-chachapoly.sh	2025-01-12 13:11:26.455184701 +0100
++++ b/tools/testing/selftests/net/ovpn/test-chachapoly.sh	2025-01-15 20:25:07.212791306 +0100
 @@ -0,0 +1,9 @@
 +#!/bin/bash
 +# SPDX-License-Identifier: GPL-2.0
@@ -9834,7 +9750,7 @@ diff -rupN a/tools/testing/selftests/net/ovpn/test-chachapoly.sh b/tools/testing
 +source test.sh
 diff -rupN a/tools/testing/selftests/net/ovpn/test-float.sh b/tools/testing/selftests/net/ovpn/test-float.sh
 --- a/tools/testing/selftests/net/ovpn/test-float.sh	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/test-float.sh	2025-01-12 13:11:26.455184701 +0100
++++ b/tools/testing/selftests/net/ovpn/test-float.sh	2025-01-15 20:25:07.212791306 +0100
 @@ -0,0 +1,9 @@
 +#!/bin/bash
 +# SPDX-License-Identifier: GPL-2.0
@@ -9847,8 +9763,8 @@ diff -rupN a/tools/testing/selftests/net/ovpn/test-float.sh b/tools/testing/self
 +source test.sh
 diff -rupN a/tools/testing/selftests/net/ovpn/test.sh b/tools/testing/selftests/net/ovpn/test.sh
 --- a/tools/testing/selftests/net/ovpn/test.sh	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/test.sh	2025-01-12 13:11:26.455184701 +0100
-@@ -0,0 +1,182 @@
++++ b/tools/testing/selftests/net/ovpn/test.sh	2025-01-15 20:25:07.216791324 +0100
+@@ -0,0 +1,185 @@
 +#!/bin/bash
 +# SPDX-License-Identifier: GPL-2.0
 +# Copyright (C) 2020-2024 OpenVPN, Inc.
@@ -9956,6 +9872,8 @@ diff -rupN a/tools/testing/selftests/net/ovpn/test.sh b/tools/testing/selftests/
 +	add_peer ${p}
 +done
 +
++sleep 5
++
 +for p in $(seq 1 ${NUM_PEERS}); do
 +	ip netns exec peer0 ${OVPN_CLI} set_peer tun0 ${p} 60 120
 +	ip netns exec peer${p} ${OVPN_CLI} set_peer tun${p} ${p} 60 120
@@ -9988,6 +9906,7 @@ diff -rupN a/tools/testing/selftests/net/ovpn/test.sh b/tools/testing/selftests/
 +done
 +
 +sleep 1
++
 +echo "Querying all peers:"
 +ip netns exec peer0 ${OVPN_CLI} get_peer tun0
 +ip netns exec peer1 ${OVPN_CLI} get_peer tun1
@@ -10033,7 +9952,7 @@ diff -rupN a/tools/testing/selftests/net/ovpn/test.sh b/tools/testing/selftests/
 +modprobe -r ovpn || true
 diff -rupN a/tools/testing/selftests/net/ovpn/test-tcp.sh b/tools/testing/selftests/net/ovpn/test-tcp.sh
 --- a/tools/testing/selftests/net/ovpn/test-tcp.sh	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/test-tcp.sh	2025-01-12 13:11:26.455184701 +0100
++++ b/tools/testing/selftests/net/ovpn/test-tcp.sh	2025-01-15 20:25:07.216791324 +0100
 @@ -0,0 +1,9 @@
 +#!/bin/bash
 +# SPDX-License-Identifier: GPL-2.0
@@ -10046,7 +9965,7 @@ diff -rupN a/tools/testing/selftests/net/ovpn/test-tcp.sh b/tools/testing/selfte
 +source test.sh
 diff -rupN a/tools/testing/selftests/net/ovpn/udp_peers.txt b/tools/testing/selftests/net/ovpn/udp_peers.txt
 --- a/tools/testing/selftests/net/ovpn/udp_peers.txt	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/net/ovpn/udp_peers.txt	2025-01-12 13:11:26.459184734 +0100
++++ b/tools/testing/selftests/net/ovpn/udp_peers.txt	2025-01-15 20:25:07.216791324 +0100
 @@ -0,0 +1,5 @@
 +1 10.10.1.2 1 5.5.5.2
 +2 10.10.2.2 1 5.5.5.3
