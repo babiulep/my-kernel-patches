@@ -1,0 +1,974 @@
+diff -rupN a/kernel/locking/lockdep.c b/kernel/locking/lockdep.c
+--- a/kernel/locking/lockdep.c	2025-02-27 19:33:49.000000000 +0100
++++ b/kernel/locking/lockdep.c	2025-02-27 19:50:05.144548724 +0100
+@@ -1240,7 +1240,7 @@ out_unlock:
+ restore_irqs:
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lockdep_register_key);
++EXPORT_SYMBOL(lockdep_register_key);
+ 
+ /* Check whether a key has been registered as a dynamic key. */
+ static bool is_dynamic_key(const struct lock_class_key *key)
+@@ -4408,7 +4408,7 @@ void lockdep_hardirqs_on_prepare(void)
+ 	__trace_hardirqs_on_caller();
+ 	lockdep_recursion_finish();
+ }
+-EXPORT_SYMBOL_GPL(lockdep_hardirqs_on_prepare);
++EXPORT_SYMBOL(lockdep_hardirqs_on_prepare);
+ 
+ void noinstr lockdep_hardirqs_on(unsigned long ip)
+ {
+@@ -4472,7 +4472,7 @@ skip_checks:
+ 	trace->hardirq_enable_event = ++trace->irq_events;
+ 	debug_atomic_inc(hardirqs_on_events);
+ }
+-EXPORT_SYMBOL_GPL(lockdep_hardirqs_on);
++EXPORT_SYMBOL(lockdep_hardirqs_on);
+ 
+ /*
+  * Hardirqs were disabled:
+@@ -4514,7 +4514,7 @@ void noinstr lockdep_hardirqs_off(unsign
+ 		debug_atomic_inc(redundant_hardirqs_off);
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(lockdep_hardirqs_off);
++EXPORT_SYMBOL(lockdep_hardirqs_off);
+ 
+ /*
+  * Softirqs will be enabled:
+@@ -4992,13 +4992,13 @@ void lockdep_init_map_type(struct lockde
+ 		raw_local_irq_restore(flags);
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(lockdep_init_map_type);
++EXPORT_SYMBOL(lockdep_init_map_type);
+ 
+ struct lock_class_key __lockdep_no_validate__;
+-EXPORT_SYMBOL_GPL(__lockdep_no_validate__);
++EXPORT_SYMBOL(__lockdep_no_validate__);
+ 
+ struct lock_class_key __lockdep_no_track__;
+-EXPORT_SYMBOL_GPL(__lockdep_no_track__);
++EXPORT_SYMBOL(__lockdep_no_track__);
+ 
+ #ifdef CONFIG_PROVE_LOCKING
+ void lockdep_set_lock_cmp_fn(struct lockdep_map *lock, lock_cmp_fn cmp_fn,
+@@ -5024,7 +5024,7 @@ void lockdep_set_lock_cmp_fn(struct lock
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lockdep_set_lock_cmp_fn);
++EXPORT_SYMBOL(lockdep_set_lock_cmp_fn);
+ #endif
+ 
+ static void
+@@ -5738,7 +5738,7 @@ void lock_set_class(struct lockdep_map *
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_set_class);
++EXPORT_SYMBOL(lock_set_class);
+ 
+ void lock_downgrade(struct lockdep_map *lock, unsigned long ip)
+ {
+@@ -5755,7 +5755,7 @@ void lock_downgrade(struct lockdep_map *
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_downgrade);
++EXPORT_SYMBOL(lock_downgrade);
+ 
+ /* NMI context !!! */
+ static void verify_lock_unused(struct lockdep_map *lock, struct held_lock *hlock, int subclass)
+@@ -5807,7 +5807,7 @@ bool read_lock_is_recursive(void)
+ 	       !IS_ENABLED(CONFIG_QUEUED_RWLOCKS) ||
+ 	       in_interrupt();
+ }
+-EXPORT_SYMBOL_GPL(read_lock_is_recursive);
++EXPORT_SYMBOL(read_lock_is_recursive);
+ 
+ /*
+  * We are not always called with irqs disabled - do that here,
+@@ -5853,7 +5853,7 @@ void lock_acquire(struct lockdep_map *lo
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_acquire);
++EXPORT_SYMBOL(lock_acquire);
+ 
+ void lock_release(struct lockdep_map *lock, unsigned long ip)
+ {
+@@ -5874,7 +5874,7 @@ void lock_release(struct lockdep_map *lo
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_release);
++EXPORT_SYMBOL(lock_release);
+ 
+ /*
+  * lock_sync() - A special annotation for synchronize_{s,}rcu()-like API.
+@@ -5902,7 +5902,7 @@ void lock_sync(struct lockdep_map *lock,
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_sync);
++EXPORT_SYMBOL(lock_sync);
+ 
+ noinstr int lock_is_held_type(const struct lockdep_map *lock, int read)
+ {
+@@ -5926,7 +5926,7 @@ noinstr int lock_is_held_type(const stru
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(lock_is_held_type);
++EXPORT_SYMBOL(lock_is_held_type);
+ NOKPROBE_SYMBOL(lock_is_held_type);
+ 
+ struct pin_cookie lock_pin_lock(struct lockdep_map *lock)
+@@ -5947,7 +5947,7 @@ struct pin_cookie lock_pin_lock(struct l
+ 
+ 	return cookie;
+ }
+-EXPORT_SYMBOL_GPL(lock_pin_lock);
++EXPORT_SYMBOL(lock_pin_lock);
+ 
+ void lock_repin_lock(struct lockdep_map *lock, struct pin_cookie cookie)
+ {
+@@ -5964,7 +5964,7 @@ void lock_repin_lock(struct lockdep_map
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_repin_lock);
++EXPORT_SYMBOL(lock_repin_lock);
+ 
+ void lock_unpin_lock(struct lockdep_map *lock, struct pin_cookie cookie)
+ {
+@@ -5981,7 +5981,7 @@ void lock_unpin_lock(struct lockdep_map
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_unpin_lock);
++EXPORT_SYMBOL(lock_unpin_lock);
+ 
+ #ifdef CONFIG_LOCK_STAT
+ static void print_lock_contention_bug(struct task_struct *curr,
+@@ -6126,7 +6126,7 @@ void lock_contended(struct lockdep_map *
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_contended);
++EXPORT_SYMBOL(lock_contended);
+ 
+ void lock_acquired(struct lockdep_map *lock, unsigned long ip)
+ {
+@@ -6144,7 +6144,7 @@ void lock_acquired(struct lockdep_map *l
+ 	lockdep_recursion_finish();
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(lock_acquired);
++EXPORT_SYMBOL(lock_acquired);
+ #endif
+ 
+ /*
+@@ -6598,7 +6598,7 @@ void lockdep_unregister_key(struct lock_
+ 	/* Wait until is_dynamic_key() has finished accessing k->hash_entry. */
+ 	synchronize_rcu();
+ }
+-EXPORT_SYMBOL_GPL(lockdep_unregister_key);
++EXPORT_SYMBOL(lockdep_unregister_key);
+ 
+ void __init lockdep_init(void)
+ {
+@@ -6701,7 +6701,7 @@ void debug_check_no_locks_freed(const vo
+ 	}
+ 	raw_local_irq_restore(flags);
+ }
+-EXPORT_SYMBOL_GPL(debug_check_no_locks_freed);
++EXPORT_SYMBOL(debug_check_no_locks_freed);
+ 
+ static void print_held_locks_bug(void)
+ {
+@@ -6730,7 +6730,7 @@ void debug_check_no_locks_held(void)
+ 	if (unlikely(current->lockdep_depth > 0))
+ 		print_held_locks_bug();
+ }
+-EXPORT_SYMBOL_GPL(debug_check_no_locks_held);
++EXPORT_SYMBOL(debug_check_no_locks_held);
+ 
+ #ifdef __KERNEL__
+ void debug_show_all_locks(void)
+@@ -6756,7 +6756,7 @@ void debug_show_all_locks(void)
+ 	pr_warn("\n");
+ 	pr_warn("=============================================\n\n");
+ }
+-EXPORT_SYMBOL_GPL(debug_show_all_locks);
++EXPORT_SYMBOL(debug_show_all_locks);
+ #endif
+ 
+ /*
+@@ -6771,7 +6771,7 @@ void debug_show_held_locks(struct task_s
+ 	}
+ 	lockdep_print_held_locks(task);
+ }
+-EXPORT_SYMBOL_GPL(debug_show_held_locks);
++EXPORT_SYMBOL(debug_show_held_locks);
+ 
+ asmlinkage __visible void lockdep_sys_exit(void)
+ {
+@@ -6848,4 +6848,4 @@ void lockdep_rcu_suspicious(const char *
+ 	nbcon_cpu_emergency_exit();
+ 	warn_rcu_exit(rcu);
+ }
+-EXPORT_SYMBOL_GPL(lockdep_rcu_suspicious);
++EXPORT_SYMBOL(lockdep_rcu_suspicious);
+diff -rupN a/kernel/locking/mutex.c b/kernel/locking/mutex.c
+--- a/kernel/locking/mutex.c	2025-02-27 19:33:49.000000000 +0100
++++ b/kernel/locking/mutex.c	2025-02-27 19:50:05.146680034 +0100
+@@ -784,28 +784,28 @@ mutex_lock_nested(struct mutex *lock, un
+ 	__mutex_lock(lock, TASK_UNINTERRUPTIBLE, subclass, NULL, _RET_IP_);
+ }
+ 
+-EXPORT_SYMBOL_GPL(mutex_lock_nested);
++EXPORT_SYMBOL(mutex_lock_nested);
+ 
+ void __sched
+ _mutex_lock_nest_lock(struct mutex *lock, struct lockdep_map *nest)
+ {
+ 	__mutex_lock(lock, TASK_UNINTERRUPTIBLE, 0, nest, _RET_IP_);
+ }
+-EXPORT_SYMBOL_GPL(_mutex_lock_nest_lock);
++EXPORT_SYMBOL(_mutex_lock_nest_lock);
+ 
+ int __sched
+ mutex_lock_killable_nested(struct mutex *lock, unsigned int subclass)
+ {
+ 	return __mutex_lock(lock, TASK_KILLABLE, subclass, NULL, _RET_IP_);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_killable_nested);
++EXPORT_SYMBOL(mutex_lock_killable_nested);
+ 
+ int __sched
+ mutex_lock_interruptible_nested(struct mutex *lock, unsigned int subclass)
+ {
+ 	return __mutex_lock(lock, TASK_INTERRUPTIBLE, subclass, NULL, _RET_IP_);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_interruptible_nested);
++EXPORT_SYMBOL(mutex_lock_interruptible_nested);
+ 
+ void __sched
+ mutex_lock_io_nested(struct mutex *lock, unsigned int subclass)
+@@ -819,7 +819,7 @@ mutex_lock_io_nested(struct mutex *lock,
+ 			    subclass, NULL, _RET_IP_, NULL, 0);
+ 	io_schedule_finish(token);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_io_nested);
++EXPORT_SYMBOL(mutex_lock_io_nested);
+ 
+ static inline int
+ ww_mutex_deadlock_injection(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
+@@ -860,7 +860,7 @@ ww_mutex_lock(struct ww_mutex *lock, str
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(ww_mutex_lock);
++EXPORT_SYMBOL(ww_mutex_lock);
+ 
+ int __sched
+ ww_mutex_lock_interruptible(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
+@@ -876,7 +876,7 @@ ww_mutex_lock_interruptible(struct ww_mu
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(ww_mutex_lock_interruptible);
++EXPORT_SYMBOL(ww_mutex_lock_interruptible);
+ 
+ #endif
+ 
+@@ -1011,7 +1011,7 @@ void __sched mutex_lock_io(struct mutex
+ 	mutex_lock(lock);
+ 	io_schedule_finish(token);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_io);
++EXPORT_SYMBOL(mutex_lock_io);
+ 
+ static noinline void __sched
+ __mutex_lock_slowpath(struct mutex *lock)
+diff -rupN a/kernel/locking/mutex-debug.c b/kernel/locking/mutex-debug.c
+--- a/kernel/locking/mutex-debug.c	2025-02-27 19:33:49.000000000 +0100
++++ b/kernel/locking/mutex-debug.c	2025-02-27 19:50:05.147485424 +0100
+@@ -99,7 +99,7 @@ int __devm_mutex_init(struct device *dev
+ {
+ 	return devm_add_action_or_reset(dev, devm_mutex_release, lock);
+ }
+-EXPORT_SYMBOL_GPL(__devm_mutex_init);
++EXPORT_SYMBOL(__devm_mutex_init);
+ 
+ /***
+  * mutex_destroy - mark a mutex unusable
+@@ -115,4 +115,4 @@ void mutex_destroy(struct mutex *lock)
+ 	lock->magic = NULL;
+ }
+ 
+-EXPORT_SYMBOL_GPL(mutex_destroy);
++EXPORT_SYMBOL(mutex_destroy);
+diff -rupN a/kernel/locking/rtmutex_api.c b/kernel/locking/rtmutex_api.c
+--- a/kernel/locking/rtmutex_api.c	2025-02-27 19:33:49.000000000 +0100
++++ b/kernel/locking/rtmutex_api.c	2025-02-27 19:50:05.148035334 +0100
+@@ -51,13 +51,13 @@ void __sched rt_mutex_lock_nested(struct
+ {
+ 	__rt_mutex_lock_common(lock, TASK_UNINTERRUPTIBLE, NULL, subclass);
+ }
+-EXPORT_SYMBOL_GPL(rt_mutex_lock_nested);
++EXPORT_SYMBOL(rt_mutex_lock_nested);
+ 
+ void __sched _rt_mutex_lock_nest_lock(struct rt_mutex *lock, struct lockdep_map *nest_lock)
+ {
+ 	__rt_mutex_lock_common(lock, TASK_UNINTERRUPTIBLE, nest_lock, 0);
+ }
+-EXPORT_SYMBOL_GPL(_rt_mutex_lock_nest_lock);
++EXPORT_SYMBOL(_rt_mutex_lock_nest_lock);
+ 
+ #else /* !CONFIG_DEBUG_LOCK_ALLOC */
+ 
+@@ -70,7 +70,7 @@ void __sched rt_mutex_lock(struct rt_mut
+ {
+ 	__rt_mutex_lock_common(lock, TASK_UNINTERRUPTIBLE, NULL, 0);
+ }
+-EXPORT_SYMBOL_GPL(rt_mutex_lock);
++EXPORT_SYMBOL(rt_mutex_lock);
+ #endif
+ 
+ /**
+@@ -86,7 +86,7 @@ int __sched rt_mutex_lock_interruptible(
+ {
+ 	return __rt_mutex_lock_common(lock, TASK_INTERRUPTIBLE, NULL, 0);
+ }
+-EXPORT_SYMBOL_GPL(rt_mutex_lock_interruptible);
++EXPORT_SYMBOL(rt_mutex_lock_interruptible);
+ 
+ /**
+  * rt_mutex_lock_killable - lock a rt_mutex killable
+@@ -101,7 +101,7 @@ int __sched rt_mutex_lock_killable(struc
+ {
+ 	return __rt_mutex_lock_common(lock, TASK_KILLABLE, NULL, 0);
+ }
+-EXPORT_SYMBOL_GPL(rt_mutex_lock_killable);
++EXPORT_SYMBOL(rt_mutex_lock_killable);
+ 
+ /**
+  * rt_mutex_trylock - try to lock a rt_mutex
+@@ -128,7 +128,7 @@ int __sched rt_mutex_trylock(struct rt_m
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(rt_mutex_trylock);
++EXPORT_SYMBOL(rt_mutex_trylock);
+ 
+ /**
+  * rt_mutex_unlock - unlock a rt_mutex
+@@ -140,7 +140,7 @@ void __sched rt_mutex_unlock(struct rt_m
+ 	mutex_release(&lock->dep_map, _RET_IP_);
+ 	__rt_mutex_unlock(&lock->rtmutex);
+ }
+-EXPORT_SYMBOL_GPL(rt_mutex_unlock);
++EXPORT_SYMBOL(rt_mutex_unlock);
+ 
+ /*
+  * Futex variants, must not use fastpath.
+@@ -217,7 +217,7 @@ void __sched __rt_mutex_init(struct rt_m
+ 	__rt_mutex_base_init(&lock->rtmutex);
+ 	lockdep_init_map_wait(&lock->dep_map, name, key, 0, LD_WAIT_SLEEP);
+ }
+-EXPORT_SYMBOL_GPL(__rt_mutex_init);
++EXPORT_SYMBOL(__rt_mutex_init);
+ 
+ /**
+  * rt_mutex_init_proxy_locked - initialize and lock a rt_mutex on behalf of a
+@@ -528,28 +528,28 @@ void __sched mutex_lock_nested(struct mu
+ {
+ 	__mutex_lock_common(lock, TASK_UNINTERRUPTIBLE, subclass, NULL, _RET_IP_);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_nested);
++EXPORT_SYMBOL(mutex_lock_nested);
+ 
+ void __sched _mutex_lock_nest_lock(struct mutex *lock,
+ 				   struct lockdep_map *nest_lock)
+ {
+ 	__mutex_lock_common(lock, TASK_UNINTERRUPTIBLE, 0, nest_lock, _RET_IP_);
+ }
+-EXPORT_SYMBOL_GPL(_mutex_lock_nest_lock);
++EXPORT_SYMBOL(_mutex_lock_nest_lock);
+ 
+ int __sched mutex_lock_interruptible_nested(struct mutex *lock,
+ 					    unsigned int subclass)
+ {
+ 	return __mutex_lock_common(lock, TASK_INTERRUPTIBLE, subclass, NULL, _RET_IP_);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_interruptible_nested);
++EXPORT_SYMBOL(mutex_lock_interruptible_nested);
+ 
+ int __sched mutex_lock_killable_nested(struct mutex *lock,
+ 					    unsigned int subclass)
+ {
+ 	return __mutex_lock_common(lock, TASK_KILLABLE, subclass, NULL, _RET_IP_);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_killable_nested);
++EXPORT_SYMBOL(mutex_lock_killable_nested);
+ 
+ void __sched mutex_lock_io_nested(struct mutex *lock, unsigned int subclass)
+ {
+@@ -561,7 +561,7 @@ void __sched mutex_lock_io_nested(struct
+ 	__mutex_lock_common(lock, TASK_UNINTERRUPTIBLE, subclass, NULL, _RET_IP_);
+ 	io_schedule_finish(token);
+ }
+-EXPORT_SYMBOL_GPL(mutex_lock_io_nested);
++EXPORT_SYMBOL(mutex_lock_io_nested);
+ 
+ #else /* CONFIG_DEBUG_LOCK_ALLOC */
+ 
+diff -rupN a/kernel/rcu/tree.c b/kernel/rcu/tree.c
+--- a/kernel/rcu/tree.c	2025-02-27 19:33:49.000000000 +0100
++++ b/kernel/rcu/tree.c	2025-02-27 19:50:05.148548738 +0100
+@@ -717,7 +717,7 @@ notrace bool rcu_is_watching(void)
+ 	preempt_enable_notrace();
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(rcu_is_watching);
++EXPORT_SYMBOL(rcu_is_watching);
+ 
+ /*
+  * If a holdout task is actually running, request an urgent quiescent
+diff -rupN a/kernel/rcu/update.c b/kernel/rcu/update.c
+--- a/kernel/rcu/update.c	2025-02-27 19:33:49.000000000 +0100
++++ b/kernel/rcu/update.c	2025-02-27 19:50:05.150724084 +0100
+@@ -143,7 +143,7 @@ bool rcu_gp_is_normal(void)
+ 	return READ_ONCE(rcu_normal) &&
+ 	       rcu_scheduler_active != RCU_SCHEDULER_INIT;
+ }
+-EXPORT_SYMBOL_GPL(rcu_gp_is_normal);
++EXPORT_SYMBOL(rcu_gp_is_normal);
+ 
+ static atomic_t rcu_async_hurry_nesting = ATOMIC_INIT(1);
+ /*
+@@ -155,7 +155,7 @@ bool rcu_async_should_hurry(void)
+ 	return !IS_ENABLED(CONFIG_RCU_LAZY) ||
+ 	       atomic_read(&rcu_async_hurry_nesting);
+ }
+-EXPORT_SYMBOL_GPL(rcu_async_should_hurry);
++EXPORT_SYMBOL(rcu_async_should_hurry);
+ 
+ /**
+  * rcu_async_hurry - Make future async RCU callbacks not lazy.
+@@ -168,7 +168,7 @@ void rcu_async_hurry(void)
+ 	if (IS_ENABLED(CONFIG_RCU_LAZY))
+ 		atomic_inc(&rcu_async_hurry_nesting);
+ }
+-EXPORT_SYMBOL_GPL(rcu_async_hurry);
++EXPORT_SYMBOL(rcu_async_hurry);
+ 
+ /**
+  * rcu_async_relax - Make future async RCU callbacks lazy.
+@@ -181,7 +181,7 @@ void rcu_async_relax(void)
+ 	if (IS_ENABLED(CONFIG_RCU_LAZY))
+ 		atomic_dec(&rcu_async_hurry_nesting);
+ }
+-EXPORT_SYMBOL_GPL(rcu_async_relax);
++EXPORT_SYMBOL(rcu_async_relax);
+ 
+ static atomic_t rcu_expedited_nesting = ATOMIC_INIT(1);
+ /*
+@@ -195,7 +195,7 @@ bool rcu_gp_is_expedited(void)
+ {
+ 	return rcu_expedited || atomic_read(&rcu_expedited_nesting);
+ }
+-EXPORT_SYMBOL_GPL(rcu_gp_is_expedited);
++EXPORT_SYMBOL(rcu_gp_is_expedited);
+ 
+ /**
+  * rcu_expedite_gp - Expedite future RCU grace periods
+@@ -208,7 +208,7 @@ void rcu_expedite_gp(void)
+ {
+ 	atomic_inc(&rcu_expedited_nesting);
+ }
+-EXPORT_SYMBOL_GPL(rcu_expedite_gp);
++EXPORT_SYMBOL(rcu_expedite_gp);
+ 
+ /**
+  * rcu_unexpedite_gp - Cancel prior rcu_expedite_gp() invocation
+@@ -223,7 +223,7 @@ void rcu_unexpedite_gp(void)
+ {
+ 	atomic_dec(&rcu_expedited_nesting);
+ }
+-EXPORT_SYMBOL_GPL(rcu_unexpedite_gp);
++EXPORT_SYMBOL(rcu_unexpedite_gp);
+ 
+ static bool rcu_boot_ended __read_mostly;
+ 
+@@ -246,7 +246,7 @@ bool rcu_inkernel_boot_has_ended(void)
+ {
+ 	return rcu_boot_ended;
+ }
+-EXPORT_SYMBOL_GPL(rcu_inkernel_boot_has_ended);
++EXPORT_SYMBOL(rcu_inkernel_boot_has_ended);
+ 
+ #endif /* #ifndef CONFIG_TINY_RCU */
+ 
+@@ -289,7 +289,7 @@ struct lockdep_map rcu_lock_map = {
+ 	.wait_type_outer = LD_WAIT_FREE,
+ 	.wait_type_inner = LD_WAIT_CONFIG, /* PREEMPT_RT implies PREEMPT_RCU */
+ };
+-EXPORT_SYMBOL_GPL(rcu_lock_map);
++EXPORT_SYMBOL(rcu_lock_map);
+ 
+ static struct lock_class_key rcu_bh_lock_key;
+ struct lockdep_map rcu_bh_lock_map = {
+@@ -298,7 +298,7 @@ struct lockdep_map rcu_bh_lock_map = {
+ 	.wait_type_outer = LD_WAIT_FREE,
+ 	.wait_type_inner = LD_WAIT_CONFIG, /* PREEMPT_RT makes BH preemptible. */
+ };
+-EXPORT_SYMBOL_GPL(rcu_bh_lock_map);
++EXPORT_SYMBOL(rcu_bh_lock_map);
+ 
+ static struct lock_class_key rcu_sched_lock_key;
+ struct lockdep_map rcu_sched_lock_map = {
+@@ -307,20 +307,20 @@ struct lockdep_map rcu_sched_lock_map =
+ 	.wait_type_outer = LD_WAIT_FREE,
+ 	.wait_type_inner = LD_WAIT_SPIN,
+ };
+-EXPORT_SYMBOL_GPL(rcu_sched_lock_map);
++EXPORT_SYMBOL(rcu_sched_lock_map);
+ 
+ // Tell lockdep when RCU callbacks are being invoked.
+ static struct lock_class_key rcu_callback_key;
+ struct lockdep_map rcu_callback_map =
+ 	STATIC_LOCKDEP_MAP_INIT("rcu_callback", &rcu_callback_key);
+-EXPORT_SYMBOL_GPL(rcu_callback_map);
++EXPORT_SYMBOL(rcu_callback_map);
+ 
+ noinstr int notrace debug_lockdep_rcu_enabled(void)
+ {
+ 	return rcu_scheduler_active != RCU_SCHEDULER_INACTIVE && READ_ONCE(debug_locks) &&
+ 	       current->lockdep_recursion == 0;
+ }
+-EXPORT_SYMBOL_GPL(debug_lockdep_rcu_enabled);
++EXPORT_SYMBOL(debug_lockdep_rcu_enabled);
+ 
+ /**
+  * rcu_read_lock_held() - might we be in RCU read-side critical section?
+@@ -350,7 +350,7 @@ int rcu_read_lock_held(void)
+ 		return ret;
+ 	return lock_is_held(&rcu_lock_map);
+ }
+-EXPORT_SYMBOL_GPL(rcu_read_lock_held);
++EXPORT_SYMBOL(rcu_read_lock_held);
+ 
+ /**
+  * rcu_read_lock_bh_held() - might we be in RCU-bh read-side critical section?
+@@ -375,7 +375,7 @@ int rcu_read_lock_bh_held(void)
+ 		return ret;
+ 	return in_softirq() || irqs_disabled();
+ }
+-EXPORT_SYMBOL_GPL(rcu_read_lock_bh_held);
++EXPORT_SYMBOL(rcu_read_lock_bh_held);
+ 
+ int rcu_read_lock_any_held(void)
+ {
+@@ -389,7 +389,7 @@ int rcu_read_lock_any_held(void)
+ 		return 1;
+ 	return !preemptible();
+ }
+-EXPORT_SYMBOL_GPL(rcu_read_lock_any_held);
++EXPORT_SYMBOL(rcu_read_lock_any_held);
+ 
+ #endif /* #ifdef CONFIG_DEBUG_LOCK_ALLOC */
+ 
+@@ -406,7 +406,7 @@ void wakeme_after_rcu(struct rcu_head *h
+ 	rcu = container_of(head, struct rcu_synchronize, head);
+ 	complete(&rcu->completion);
+ }
+-EXPORT_SYMBOL_GPL(wakeme_after_rcu);
++EXPORT_SYMBOL(wakeme_after_rcu);
+ 
+ void __wait_rcu_gp(bool checktiny, unsigned int state, int n, call_rcu_func_t *crcu_array,
+ 		   struct rcu_synchronize *rs_array)
+@@ -445,27 +445,27 @@ void __wait_rcu_gp(bool checktiny, unsig
+ 		}
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(__wait_rcu_gp);
++EXPORT_SYMBOL(__wait_rcu_gp);
+ 
+ void finish_rcuwait(struct rcuwait *w)
+ {
+ 	rcu_assign_pointer(w->task, NULL);
+ 	__set_current_state(TASK_RUNNING);
+ }
+-EXPORT_SYMBOL_GPL(finish_rcuwait);
++EXPORT_SYMBOL(finish_rcuwait);
+ 
+ #ifdef CONFIG_DEBUG_OBJECTS_RCU_HEAD
+ void init_rcu_head(struct rcu_head *head)
+ {
+ 	debug_object_init(head, &rcuhead_debug_descr);
+ }
+-EXPORT_SYMBOL_GPL(init_rcu_head);
++EXPORT_SYMBOL(init_rcu_head);
+ 
+ void destroy_rcu_head(struct rcu_head *head)
+ {
+ 	debug_object_free(head, &rcuhead_debug_descr);
+ }
+-EXPORT_SYMBOL_GPL(destroy_rcu_head);
++EXPORT_SYMBOL(destroy_rcu_head);
+ 
+ static bool rcuhead_is_static_object(void *addr)
+ {
+@@ -486,7 +486,7 @@ void init_rcu_head_on_stack(struct rcu_h
+ {
+ 	debug_object_init_on_stack(head, &rcuhead_debug_descr);
+ }
+-EXPORT_SYMBOL_GPL(init_rcu_head_on_stack);
++EXPORT_SYMBOL(init_rcu_head_on_stack);
+ 
+ /**
+  * destroy_rcu_head_on_stack() - destroy on-stack rcu_head for debugobjects
+@@ -503,13 +503,13 @@ void destroy_rcu_head_on_stack(struct rc
+ {
+ 	debug_object_free(head, &rcuhead_debug_descr);
+ }
+-EXPORT_SYMBOL_GPL(destroy_rcu_head_on_stack);
++EXPORT_SYMBOL(destroy_rcu_head_on_stack);
+ 
+ const struct debug_obj_descr rcuhead_debug_descr = {
+ 	.name = "rcu_head",
+ 	.is_static_object = rcuhead_is_static_object,
+ };
+-EXPORT_SYMBOL_GPL(rcuhead_debug_descr);
++EXPORT_SYMBOL(rcuhead_debug_descr);
+ #endif /* #ifdef CONFIG_DEBUG_OBJECTS_RCU_HEAD */
+ 
+ #if defined(CONFIG_TREE_RCU) || defined(CONFIG_RCU_TRACE)
+@@ -519,7 +519,7 @@ void do_trace_rcu_torture_read(const cha
+ {
+ 	trace_rcu_torture_read(rcutorturename, rhp, secs, c_old, c);
+ }
+-EXPORT_SYMBOL_GPL(do_trace_rcu_torture_read);
++EXPORT_SYMBOL(do_trace_rcu_torture_read);
+ #else
+ #define do_trace_rcu_torture_read(rcutorturename, rhp, secs, c_old, c) \
+ 	do { } while (0)
+@@ -535,11 +535,11 @@ long torture_sched_setaffinity(pid_t pid
+ 	WARN_ONCE(dowarn && ret, "%s: sched_setaffinity(%d) returned %d\n", __func__, pid, ret);
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(torture_sched_setaffinity);
++EXPORT_SYMBOL(torture_sched_setaffinity);
+ #endif
+ 
+ int rcu_cpu_stall_notifiers __read_mostly; // !0 = provide stall notifiers (rarely useful)
+-EXPORT_SYMBOL_GPL(rcu_cpu_stall_notifiers);
++EXPORT_SYMBOL(rcu_cpu_stall_notifiers);
+ 
+ #ifdef CONFIG_RCU_STALL_COMMON
+ int rcu_cpu_stall_ftrace_dump __read_mostly;
+@@ -548,7 +548,7 @@ module_param(rcu_cpu_stall_ftrace_dump,
+ module_param(rcu_cpu_stall_notifiers, int, 0444);
+ #endif // #ifdef CONFIG_RCU_CPU_STALL_NOTIFIER
+ int rcu_cpu_stall_suppress __read_mostly; // !0 = suppress stall warnings.
+-EXPORT_SYMBOL_GPL(rcu_cpu_stall_suppress);
++EXPORT_SYMBOL(rcu_cpu_stall_suppress);
+ module_param(rcu_cpu_stall_suppress, int, 0644);
+ int rcu_cpu_stall_timeout __read_mostly = CONFIG_RCU_CPU_STALL_TIMEOUT;
+ module_param(rcu_cpu_stall_timeout, int, 0644);
+@@ -563,7 +563,7 @@ module_param(rcu_exp_stall_task_details,
+ // Suppress boot-time RCU CPU stall warnings and rcutorture writer stall
+ // warnings.  Also used by rcutorture even if stall warnings are excluded.
+ int rcu_cpu_stall_suppress_at_boot __read_mostly; // !0 = suppress boot stalls.
+-EXPORT_SYMBOL_GPL(rcu_cpu_stall_suppress_at_boot);
++EXPORT_SYMBOL(rcu_cpu_stall_suppress_at_boot);
+ module_param(rcu_cpu_stall_suppress_at_boot, int, 0444);
+ 
+ /**
+@@ -577,7 +577,7 @@ unsigned long get_completed_synchronize_
+ {
+ 	return RCU_GET_STATE_COMPLETED;
+ }
+-EXPORT_SYMBOL_GPL(get_completed_synchronize_rcu);
++EXPORT_SYMBOL(get_completed_synchronize_rcu);
+ 
+ #ifdef CONFIG_PROVE_RCU
+ 
+diff -rupN a/kernel/workqueue.c b/kernel/workqueue.c
+--- a/kernel/workqueue.c	2025-02-27 19:33:49.000000000 +0100
++++ b/kernel/workqueue.c	2025-02-27 19:50:05.153548755 +0100
+@@ -506,21 +506,21 @@ static struct kthread_worker *pwq_releas
+ struct workqueue_struct *system_wq __ro_after_init;
+ EXPORT_SYMBOL(system_wq);
+ struct workqueue_struct *system_highpri_wq __ro_after_init;
+-EXPORT_SYMBOL_GPL(system_highpri_wq);
++EXPORT_SYMBOL(system_highpri_wq);
+ struct workqueue_struct *system_long_wq __ro_after_init;
+-EXPORT_SYMBOL_GPL(system_long_wq);
++EXPORT_SYMBOL(system_long_wq);
+ struct workqueue_struct *system_unbound_wq __ro_after_init;
+-EXPORT_SYMBOL_GPL(system_unbound_wq);
++EXPORT_SYMBOL(system_unbound_wq);
+ struct workqueue_struct *system_freezable_wq __ro_after_init;
+-EXPORT_SYMBOL_GPL(system_freezable_wq);
++EXPORT_SYMBOL(system_freezable_wq);
+ struct workqueue_struct *system_power_efficient_wq __ro_after_init;
+-EXPORT_SYMBOL_GPL(system_power_efficient_wq);
++EXPORT_SYMBOL(system_power_efficient_wq);
+ struct workqueue_struct *system_freezable_power_efficient_wq __ro_after_init;
+-EXPORT_SYMBOL_GPL(system_freezable_power_efficient_wq);
++EXPORT_SYMBOL(system_freezable_power_efficient_wq);
+ struct workqueue_struct *system_bh_wq;
+-EXPORT_SYMBOL_GPL(system_bh_wq);
++EXPORT_SYMBOL(system_bh_wq);
+ struct workqueue_struct *system_bh_highpri_wq;
+-EXPORT_SYMBOL_GPL(system_bh_highpri_wq);
++EXPORT_SYMBOL(system_bh_highpri_wq);
+ 
+ static int worker_thread(void *__worker);
+ static void workqueue_sysfs_unregister(struct workqueue_struct *wq);
+@@ -676,20 +676,20 @@ void __init_work(struct work_struct *wor
+ 	else
+ 		debug_object_init(work, &work_debug_descr);
+ }
+-EXPORT_SYMBOL_GPL(__init_work);
++EXPORT_SYMBOL(__init_work);
+ 
+ void destroy_work_on_stack(struct work_struct *work)
+ {
+ 	debug_object_free(work, &work_debug_descr);
+ }
+-EXPORT_SYMBOL_GPL(destroy_work_on_stack);
++EXPORT_SYMBOL(destroy_work_on_stack);
+ 
+ void destroy_delayed_work_on_stack(struct delayed_work *work)
+ {
+ 	destroy_timer_on_stack(&work->timer);
+ 	debug_object_free(&work->work, &work_debug_descr);
+ }
+-EXPORT_SYMBOL_GPL(destroy_delayed_work_on_stack);
++EXPORT_SYMBOL(destroy_delayed_work_on_stack);
+ 
+ #else
+ static inline void debug_work_activate(struct work_struct *work) { }
+@@ -2477,7 +2477,7 @@ bool queue_work_node(int node, struct wo
+ 	local_irq_restore(irq_flags);
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(queue_work_node);
++EXPORT_SYMBOL(queue_work_node);
+ 
+ void delayed_work_timer_fn(struct timer_list *t)
+ {
+@@ -2599,7 +2599,7 @@ bool mod_delayed_work_on(int cpu, struct
+ 	local_irq_restore(irq_flags);
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(mod_delayed_work_on);
++EXPORT_SYMBOL(mod_delayed_work_on);
+ 
+ static void rcu_work_rcufn(struct rcu_head *rcu)
+ {
+@@ -4137,7 +4137,7 @@ reflush:
+ 		wq->flags &= ~__WQ_DRAINING;
+ 	mutex_unlock(&wq->mutex);
+ }
+-EXPORT_SYMBOL_GPL(drain_workqueue);
++EXPORT_SYMBOL(drain_workqueue);
+ 
+ static bool start_flush_work(struct work_struct *work, struct wq_barrier *barr,
+ 			     bool from_cancel)
+@@ -4264,7 +4264,7 @@ bool flush_work(struct work_struct *work
+ 	might_sleep();
+ 	return __flush_work(work, false);
+ }
+-EXPORT_SYMBOL_GPL(flush_work);
++EXPORT_SYMBOL(flush_work);
+ 
+ /**
+  * flush_delayed_work - wait for a dwork to finish executing the last queueing
+@@ -4400,7 +4400,7 @@ bool cancel_work_sync(struct work_struct
+ {
+ 	return __cancel_work_sync(work, 0);
+ }
+-EXPORT_SYMBOL_GPL(cancel_work_sync);
++EXPORT_SYMBOL(cancel_work_sync);
+ 
+ /**
+  * cancel_delayed_work - cancel a delayed work
+@@ -4455,7 +4455,7 @@ bool disable_work(struct work_struct *wo
+ {
+ 	return __cancel_work(work, WORK_CANCEL_DISABLE);
+ }
+-EXPORT_SYMBOL_GPL(disable_work);
++EXPORT_SYMBOL(disable_work);
+ 
+ /**
+  * disable_work_sync - Disable, cancel and drain a work item
+@@ -4474,7 +4474,7 @@ bool disable_work_sync(struct work_struc
+ {
+ 	return __cancel_work_sync(work, WORK_CANCEL_DISABLE);
+ }
+-EXPORT_SYMBOL_GPL(disable_work_sync);
++EXPORT_SYMBOL(disable_work_sync);
+ 
+ /**
+  * enable_work - Enable a work item
+@@ -4501,7 +4501,7 @@ bool enable_work(struct work_struct *wor
+ 
+ 	return !offqd.disable;
+ }
+-EXPORT_SYMBOL_GPL(enable_work);
++EXPORT_SYMBOL(enable_work);
+ 
+ /**
+  * disable_delayed_work - Disable and cancel a delayed work item
+@@ -4514,7 +4514,7 @@ bool disable_delayed_work(struct delayed
+ 	return __cancel_work(&dwork->work,
+ 			     WORK_CANCEL_DELAYED | WORK_CANCEL_DISABLE);
+ }
+-EXPORT_SYMBOL_GPL(disable_delayed_work);
++EXPORT_SYMBOL(disable_delayed_work);
+ 
+ /**
+  * disable_delayed_work_sync - Disable, cancel and drain a delayed work item
+@@ -4527,7 +4527,7 @@ bool disable_delayed_work_sync(struct de
+ 	return __cancel_work_sync(&dwork->work,
+ 				  WORK_CANCEL_DELAYED | WORK_CANCEL_DISABLE);
+ }
+-EXPORT_SYMBOL_GPL(disable_delayed_work_sync);
++EXPORT_SYMBOL(disable_delayed_work_sync);
+ 
+ /**
+  * enable_delayed_work - Enable a delayed work item
+@@ -4539,7 +4539,7 @@ bool enable_delayed_work(struct delayed_
+ {
+ 	return enable_work(&dwork->work);
+ }
+-EXPORT_SYMBOL_GPL(enable_delayed_work);
++EXPORT_SYMBOL(enable_delayed_work);
+ 
+ /**
+  * schedule_on_each_cpu - execute a function synchronously on each online CPU
+@@ -4602,7 +4602,7 @@ int execute_in_process_context(work_func
+ 
+ 	return 1;
+ }
+-EXPORT_SYMBOL_GPL(execute_in_process_context);
++EXPORT_SYMBOL(execute_in_process_context);
+ 
+ /**
+  * free_workqueue_attrs - free a workqueue_attrs
+@@ -5792,7 +5792,7 @@ struct workqueue_struct *alloc_workqueue
+ 
+ 	return wq;
+ }
+-EXPORT_SYMBOL_GPL(alloc_workqueue);
++EXPORT_SYMBOL(alloc_workqueue);
+ 
+ #ifdef CONFIG_LOCKDEP
+ __printf(1, 5)
+@@ -5813,7 +5813,7 @@ alloc_workqueue_lockdep_map(const char *
+ 
+ 	return wq;
+ }
+-EXPORT_SYMBOL_GPL(alloc_workqueue_lockdep_map);
++EXPORT_SYMBOL(alloc_workqueue_lockdep_map);
+ #endif
+ 
+ static bool pwq_busy(struct pool_workqueue *pwq)
+@@ -5917,7 +5917,7 @@ void destroy_workqueue(struct workqueue_
+ 
+ 	rcu_read_unlock();
+ }
+-EXPORT_SYMBOL_GPL(destroy_workqueue);
++EXPORT_SYMBOL(destroy_workqueue);
+ 
+ /**
+  * workqueue_set_max_active - adjust max_active of a workqueue
+@@ -5951,7 +5951,7 @@ void workqueue_set_max_active(struct wor
+ 
+ 	mutex_unlock(&wq->mutex);
+ }
+-EXPORT_SYMBOL_GPL(workqueue_set_max_active);
++EXPORT_SYMBOL(workqueue_set_max_active);
+ 
+ /**
+  * workqueue_set_min_active - adjust min_active of an unbound workqueue
+@@ -6049,7 +6049,7 @@ bool workqueue_congested(int cpu, struct
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(workqueue_congested);
++EXPORT_SYMBOL(workqueue_congested);
+ 
+ /**
+  * work_busy - test whether a work is currently pending or running
+@@ -6083,7 +6083,7 @@ unsigned int work_busy(struct work_struc
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(work_busy);
++EXPORT_SYMBOL(work_busy);
+ 
+ /**
+  * set_worker_desc - set description for the current work item
+@@ -6106,7 +6106,7 @@ void set_worker_desc(const char *fmt, ..
+ 		va_end(args);
+ 	}
+ }
+-EXPORT_SYMBOL_GPL(set_worker_desc);
++EXPORT_SYMBOL(set_worker_desc);
+ 
+ /**
+  * print_worker_info - print out worker information and description
+@@ -6756,7 +6756,7 @@ long work_on_cpu_key(int cpu, long (*fn)
+ 	destroy_work_on_stack(&wfc.work);
+ 	return wfc.ret;
+ }
+-EXPORT_SYMBOL_GPL(work_on_cpu_key);
++EXPORT_SYMBOL(work_on_cpu_key);
+ 
+ /**
+  * work_on_cpu_safe_key - run a function in thread context on a particular cpu
+@@ -6781,7 +6781,7 @@ long work_on_cpu_safe_key(int cpu, long
+ 	cpus_read_unlock();
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(work_on_cpu_safe_key);
++EXPORT_SYMBOL(work_on_cpu_safe_key);
+ #endif /* CONFIG_SMP */
+ 
+ #ifdef CONFIG_FREEZER
+diff -rupN a/lib/debug_locks.c b/lib/debug_locks.c
+--- a/lib/debug_locks.c	2025-02-27 19:33:49.000000000 +0100
++++ b/lib/debug_locks.c	2025-02-27 19:50:05.155182773 +0100
+@@ -23,7 +23,7 @@
+  * shut up after that.
+  */
+ int debug_locks __read_mostly = 1;
+-EXPORT_SYMBOL_GPL(debug_locks);
++EXPORT_SYMBOL(debug_locks);
+ 
+ /*
+  * The locking-testsuite uses <debug_locks_silent> to get a
+@@ -31,7 +31,7 @@ EXPORT_SYMBOL_GPL(debug_locks);
+  * a locking bug is detected.
+  */
+ int debug_locks_silent __read_mostly;
+-EXPORT_SYMBOL_GPL(debug_locks_silent);
++EXPORT_SYMBOL(debug_locks_silent);
+ 
+ /*
+  * Generic 'turn off all lock debugging' function:
+@@ -46,4 +46,4 @@ int debug_locks_off(void)
+ 	}
+ 	return 0;
+ }
+-EXPORT_SYMBOL_GPL(debug_locks_off);
++EXPORT_SYMBOL(debug_locks_off);

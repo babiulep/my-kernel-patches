@@ -1,0 +1,59 @@
+diff --git a/drivers/net/usb/r8152.c b/drivers/net/usb/r8152.c
+index 468c73974046..8f6ea4e7685c 100644
+--- a/drivers/net/usb/r8152.c
++++ b/drivers/net/usb/r8152.c
+@@ -8537,8 +8537,11 @@ static int rtl8152_runtime_resume(struct r8152 *tp)
+ 		clear_bit(SELECTIVE_SUSPEND, &tp->flags);
+ 		smp_mb__after_atomic();
+ 
+-		if (!list_empty(&tp->rx_done))
++		if (!list_empty(&tp->rx_done)) {
++			local_bh_disable();
+ 			napi_schedule(&tp->napi);
++			local_bh_enable();
++		}
+ 
+ 		usb_submit_urb(tp->intr_urb, GFP_NOIO);
+ 	} else {
+diff --git a/include/linux/lockdep.h b/include/linux/lockdep.h
+index 67964dc4db95..1bd730b881f0 100644
+--- a/include/linux/lockdep.h
++++ b/include/linux/lockdep.h
+@@ -619,6 +619,17 @@ do {									\
+ 		     (!in_softirq() || in_irq() || in_nmi()));		\
+ } while (0)
+ 
++/*
++ * Assert to be either in hardirq or in serving softirq or with
++ * softirqs disabled. Verifies a safe context to queue a softirq
++ * with __raise_softirq_irqoff().
++ */
++#define lockdep_assert_in_interrupt()				\
++do {								\
++	WARN_ON_ONCE(__lockdep_enabled && !in_interrupt());	\
++} while (0)
++
++
+ extern void lockdep_assert_in_softirq_func(void);
+ 
+ #else
+@@ -634,6 +645,7 @@ extern void lockdep_assert_in_softirq_func(void);
+ # define lockdep_assert_preemption_enabled() do { } while (0)
+ # define lockdep_assert_preemption_disabled() do { } while (0)
+ # define lockdep_assert_in_softirq() do { } while (0)
++# define lockdep_assert_in_interrupt() do { } while (0)
+ # define lockdep_assert_in_softirq_func() do { } while (0)
+ #endif
+ 
+diff --git a/net/core/dev.c b/net/core/dev.c
+index c0021cbd28fc..80e415ccf2c8 100644
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -4666,6 +4666,7 @@ static inline void ____napi_schedule(struct softnet_data *sd,
+ 	struct task_struct *thread;
+ 
+ 	lockdep_assert_irqs_disabled();
++	lockdep_assert_in_interrupt();
+ 
+ 	if (test_bit(NAPI_STATE_THREADED, &napi->state)) {
+ 		/* Paired with smp_mb__before_atomic() in
