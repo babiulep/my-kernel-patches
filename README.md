@@ -4,6 +4,7 @@ Patches for the linux kernel
 2025-04-05:
 - tentative nvidia patch for 6.15:  
   tested with nvidia-570.124.06
+- update adios patch
 
 2025-03-23:
 - update patches

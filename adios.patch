@@ -1,65 +1,7 @@
-From 44ae23e75a3b80b3da6b13da87a86f588b935c80 Mon Sep 17 00:00:00 2001
-From: Piotr Gorski <lucjan.lucjanov@gmail.com>
-Date: Tue, 4 Feb 2025 11:36:24 +0100
-Subject: [PATCH] iosched-6.14: introduce ADIOS I/O scheduler
-
-Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
----
- block/Kconfig.iosched |    9 +
- block/Makefile        |    8 +
- block/adios.c         | 1352 +++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 1369 insertions(+)
- create mode 100644 block/adios.c
-
-diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
-index 27f11320b..dd9af8cd7 100644
---- a/block/Kconfig.iosched
-+++ b/block/Kconfig.iosched
-@@ -16,6 +16,15 @@ config MQ_IOSCHED_KYBER
- 	  synchronous writes, it will self-tune queue depths to achieve that
- 	  goal.
- 
-+config MQ_IOSCHED_ADIOS
-+	tristate "Adaptive Deadline I/O scheduler"
-+	default y
-+	help
-+	  ADIOS is a multi-queue I/O scheduler for the Linux kernel, based on
-+	  mq-deadline and Kyber, with learning-based adaptive latency control.
-+	  It aims to provide low latency for synchronous requests while
-+	  maintaining high throughput for asynchronous requests and bulk I/O.
-+
- config IOSCHED_BFQ
- 	tristate "BFQ I/O scheduler"
- 	select BLK_ICQ
-diff --git a/block/Makefile b/block/Makefile
-index 337481237..a67f651a7 100644
---- a/block/Makefile
-+++ b/block/Makefile
-@@ -23,6 +23,7 @@ obj-$(CONFIG_BLK_CGROUP_IOLATENCY)	+= blk-iolatency.o
- obj-$(CONFIG_BLK_CGROUP_IOCOST)	+= blk-iocost.o
- obj-$(CONFIG_MQ_IOSCHED_DEADLINE)	+= mq-deadline.o
- obj-$(CONFIG_MQ_IOSCHED_KYBER)	+= kyber-iosched.o
-+obj-$(CONFIG_MQ_IOSCHED_ADIOS)	+= adios.o
- bfq-y				:= bfq-iosched.o bfq-wf2q.o bfq-cgroup.o
- obj-$(CONFIG_IOSCHED_BFQ)	+= bfq.o
- 
-@@ -36,3 +37,10 @@ obj-$(CONFIG_BLK_INLINE_ENCRYPTION)	+= blk-crypto.o blk-crypto-profile.o \
- 					   blk-crypto-sysfs.o
- obj-$(CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK)	+= blk-crypto-fallback.o
- obj-$(CONFIG_BLOCK_HOLDER_DEPRECATED)	+= holder.o
-+
-+all:
-+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
-+
-+clean:
-+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-+
-diff --git a/block/adios.c b/block/adios.c
-new file mode 100644
-index 000000000..301beb812
---- /dev/null
-+++ b/block/adios.c
-@@ -0,0 +1,1352 @@
+diff -rupN a/block/adios.c b/block/adios.c
+--- a/block/adios.c	1970-01-01 01:00:00.000000000 +0100
++++ b/block/adios.c	2025-04-03 20:04:03.725886720 +0200
+@@ -0,0 +1,1342 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * The Adaptive Deadline I/O Scheduler (ADIOS)
@@ -86,7 +28,7 @@ index 000000000..301beb812
 +#include "blk-mq.h"
 +#include "blk-mq-sched.h"
 +
-+#define ADIOS_VERSION "1.5.3"
++#define ADIOS_VERSION "1.5.4"
 +
 +// Define operation types supported by ADIOS
 +enum adios_op_type {
@@ -123,10 +65,7 @@ index 000000000..301beb812
 +	[ADIOS_OTHER]   =  1,
 +};
 +
-+static u32 default_dl_prio[2] = {
-+	[0] = 7,
-+	[1] = 0,
-+};
++static u32 default_dl_prio[2] = {7, 0};
 +
 +// Thresholds for latency model control
 +#define LM_BLOCK_SIZE_THRESHOLD 4096
@@ -454,9 +393,7 @@ index 000000000..301beb812
 +
 +	if (block_size <= LM_BLOCK_SIZE_THRESHOLD) {
 +		// Handle small requests
-+
-+		bucket_index =
-+			lm_input_bucket_index(model, latency, (model->base ?: 1));
++		bucket_index = lm_input_bucket_index(model, latency, model->base ?: 1);
 +
 +		if (bucket_index >= LM_LAT_BUCKET_COUNT)
 +			bucket_index = LM_LAT_BUCKET_COUNT - 1;
@@ -476,8 +413,7 @@ index 000000000..301beb812
 +			return;
 +		}
 +
-+		bucket_index =
-+			lm_input_bucket_index(model, latency, pred_lat);
++		bucket_index = lm_input_bucket_index(model, latency, pred_lat);
 +
 +		if (bucket_index >= LM_LAT_BUCKET_COUNT)
 +			bucket_index = LM_LAT_BUCKET_COUNT - 1;
@@ -506,8 +442,7 @@ index 000000000..301beb812
 +
 +// Determine the type of operation based on request flags
 +static u8 adios_optype(struct request *rq) {
-+	blk_opf_t opf = rq->cmd_flags;
-+	switch (opf & REQ_OP_MASK) {
++	switch (rq->cmd_flags & REQ_OP_MASK) {
 +	case REQ_OP_READ:
 +		return ADIOS_READ;
 +	case REQ_OP_WRITE:
@@ -525,7 +460,7 @@ index 000000000..301beb812
 +
 +// Helper function to retrieve adios_rq_data from a request
 +static inline struct adios_rq_data *get_rq_data(struct request *rq) {
-+	return (struct adios_rq_data *)rq->elv.priv[0];
++	return rq->elv.priv[0];
 +}
 +
 +// Add a request to the deadline-sorted red-black tree
@@ -754,10 +689,8 @@ index 000000000..301beb812
 +	struct rb_root_cached *root = &ad->dl_tree[idx];
 +	struct rb_node *first = rb_first_cached(root);
 +	struct dl_group *dl_group = rb_entry(first, struct dl_group, node);
-+	struct adios_rq_data *rd =
-+		list_first_entry(&dl_group->rqs, struct adios_rq_data, dl_node);
 +
-+	return rd;
++	return list_first_entry(&dl_group->rqs, struct adios_rq_data, dl_node);
 +}
 +
 +// Select the next request to dispatch from the deadline-sorted red-black tree
@@ -817,8 +750,7 @@ index 000000000..301beb812
 +static bool fill_batch_queues(struct adios_data *ad, u64 current_lat) {
 +	unsigned long flags;
 +	u32 count = 0;
-+	u32 optype_count[ADIOS_OPTYPES];
-+	memset(optype_count, 0, sizeof(optype_count));
++	u32 optype_count[ADIOS_OPTYPES] = {0};
 +	u8 page = (ad->bq_page + 1) % ADIOS_BQ_PAGES;
 +
 +	reset_batch_counts(ad, page);
@@ -1030,7 +962,7 @@ index 000000000..301beb812
 +	}
 +
 +	eq->elevator_data = ad;
-+	
++
 +	ad->global_latency_window = default_global_latency_window;
 +	ad->bq_refill_below_ratio = default_bq_refill_below_ratio;
 +
@@ -1413,6 +1345,44 @@ index 000000000..301beb812
 +MODULE_LICENSE("GPL");
 +MODULE_DESCRIPTION(ADIOS_PROGNAME);
 \ No newline at end of file
--- 
-2.48.1
-
+diff -rupN a/block/Kconfig.iosched b/block/Kconfig.iosched
+--- a/block/Kconfig.iosched	2025-04-03 16:29:04.000000000 +0200
++++ b/block/Kconfig.iosched	2025-04-03 20:04:03.724886717 +0200
+@@ -16,6 +16,15 @@ config MQ_IOSCHED_KYBER
+ 	  synchronous writes, it will self-tune queue depths to achieve that
+ 	  goal.
+ 
++config MQ_IOSCHED_ADIOS
++	tristate "Adaptive Deadline I/O scheduler"
++	default m
++	help
++	  ADIOS is a multi-queue I/O scheduler for the Linux kernel, based on
++	  mq-deadline and Kyber, with learning-based adaptive latency control.
++	  It aims to provide low latency for synchronous requests while
++	  maintaining high throughput for asynchronous requests and bulk I/O.
++
+ config IOSCHED_BFQ
+ 	tristate "BFQ I/O scheduler"
+ 	select BLK_ICQ
+diff -rupN a/block/Makefile b/block/Makefile
+--- a/block/Makefile	2025-04-03 16:29:04.000000000 +0200
++++ b/block/Makefile	2025-04-03 20:04:03.724886717 +0200
+@@ -23,6 +23,7 @@ obj-$(CONFIG_BLK_CGROUP_IOLATENCY)	+= bl
+ obj-$(CONFIG_BLK_CGROUP_IOCOST)	+= blk-iocost.o
+ obj-$(CONFIG_MQ_IOSCHED_DEADLINE)	+= mq-deadline.o
+ obj-$(CONFIG_MQ_IOSCHED_KYBER)	+= kyber-iosched.o
++obj-$(CONFIG_MQ_IOSCHED_ADIOS)	+= adios.o
+ bfq-y				:= bfq-iosched.o bfq-wf2q.o bfq-cgroup.o
+ obj-$(CONFIG_IOSCHED_BFQ)	+= bfq.o
+ 
+@@ -37,3 +38,10 @@ obj-$(CONFIG_BLK_INLINE_ENCRYPTION)	+= b
+ 					   blk-crypto-sysfs.o
+ obj-$(CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK)	+= blk-crypto-fallback.o
+ obj-$(CONFIG_BLOCK_HOLDER_DEPRECATED)	+= holder.o
++
++all:
++	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
++
++clean:
++	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
++
