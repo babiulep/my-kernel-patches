@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-04-07:
+- more changes needed for NVIDIA modules
+
 2025-04-05:
 - tentative nvidia patch for 6.15:  
   tested with nvidia-570.124.06
