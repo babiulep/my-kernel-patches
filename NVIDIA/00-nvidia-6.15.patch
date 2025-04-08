@@ -1,0 +1,156 @@
+diff -rupN a/nvidia/nv.c b/nvidia/nv.c
+--- a/nvidia/nv.c	2025-02-26 03:29:43.000000000 +0100
++++ b/nvidia/nv.c	2025-04-08 12:07:57.778211299 +0200
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include <linux/module.h>  // for MODULE_FIRMWARE
++#include <linux/version.h>
+ 
+ // must precede "nv.h" and "nv-firmware.h" includes
+ #define NV_FIRMWARE_FOR_NAME(name)  "nvidia/" NV_VERSION_STRING "/" name ".bin"
+@@ -4096,7 +4097,11 @@ int NV_API_CALL nv_stop_rc_timer(
+ 
+     nv_printf(NV_DBG_INFO, "NVRM: stopping rc timer\n");
+     nv->rc_timer_enabled = 0;
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
+     del_timer_sync(&nvl->rc_timer.kernel_timer);
++#else
++    timer_delete_sync(&nvl->rc_timer.kernel_timer);
++#endif
+     nv_printf(NV_DBG_INFO, "NVRM: rc timer stopped\n");
+ 
+     return 0;
+@@ -4140,7 +4145,11 @@ void NV_API_CALL nv_stop_snapshot_timer(
+     NV_SPIN_UNLOCK_IRQRESTORE(&nvl->snapshot_timer_lock, flags);
+ 
+     if (timer_active)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
+         del_timer_sync(&nvl->snapshot_timer.kernel_timer);
++#else
++        timer_delete_sync(&nvl->snapshot_timer.kernel_timer);
++#endif
+ }
+ 
+ void NV_API_CALL nv_flush_snapshot_timer(void)
+diff -rupN a/nvidia/nv-nano-timer.c b/nvidia/nv-nano-timer.c
+--- a/nvidia/nv-nano-timer.c	2025-02-26 03:29:43.000000000 +0100
++++ b/nvidia/nv-nano-timer.c	2025-04-08 12:05:49.784092851 +0200
+@@ -27,6 +27,7 @@
+ #include <linux/hrtimer.h>
+ #include <linux/ktime.h>
+ #include <linux/timer.h>
++#include <linux/version.h>
+ #include "os-interface.h"
+ #include "nv-linux.h"
+ 
+@@ -150,9 +151,14 @@ void NV_API_CALL nv_create_nano_timer(
+     nv_nstimer->nv_nano_timer_callback = nvidia_nano_timer_callback;
+ 
+ #if NV_NANO_TIMER_USE_HRTIMER
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
+     hrtimer_init(&nv_nstimer->hr_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+     nv_nstimer->hr_timer.function = nv_nano_timer_callback_typed_data;
+ #else
++    hrtimer_setup(&nv_nstimer->hr_timer, nv_nano_timer_callback_typed_data,
++                  CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++#endif /* Kernel < 6.15 */
++#else
+ #if defined(NV_TIMER_SETUP_PRESENT)
+     timer_setup(&nv_nstimer->jiffy_timer, nv_jiffy_timer_callback_typed_data, 0);
+ #else
+@@ -203,7 +209,11 @@ void NV_API_CALL nv_cancel_nano_timer(
+ #if NV_NANO_TIMER_USE_HRTIMER
+     hrtimer_cancel(&nv_nstimer->hr_timer);
+ #else
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
+     del_timer_sync(&nv_nstimer->jiffy_timer);
++#else
++    timer_delete_sync(&nv_nstimer->jiffy_timer);
++#endif
+ #endif
+ 
+ }
+diff -rupN a/nvidia-drm/nvidia-drm-connector.c b/nvidia-drm/nvidia-drm-connector.c
+--- a/nvidia-drm/nvidia-drm-connector.c	2025-04-01 13:37:05.000000000 +0200
++++ b/nvidia-drm/nvidia-drm-connector.c	2025-04-08 12:12:29.449687836 +0200
+@@ -314,7 +314,7 @@ static int nv_drm_connector_get_modes(st
+ }
+ 
+ static int nv_drm_connector_mode_valid(struct drm_connector    *connector,
+-                                       struct drm_display_mode *mode)
++                                       const struct drm_display_mode *mode)
+ {
+     struct drm_device *dev = connector->dev;
+     struct nv_drm_device *nv_dev = to_nv_device(dev);
+diff -rupN a/nvidia-drm/nvidia-drm-os-interface.c b/nvidia-drm/nvidia-drm-os-interface.c
+--- a/nvidia-drm/nvidia-drm-os-interface.c	2025-02-26 02:42:10.000000000 +0100
++++ b/nvidia-drm/nvidia-drm-os-interface.c	2025-04-08 11:59:46.886930861 +0200
+@@ -21,6 +21,7 @@
+  */
+ 
+ #include <linux/slab.h>
++#include <linux/version.h>
+ 
+ #include "nvidia-drm-os-interface.h"
+ 
+@@ -238,7 +239,11 @@ unsigned long nv_drm_timeout_from_ms(NvU
+ 
+ bool nv_drm_del_timer_sync(nv_drm_timer *timer)
+ {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
+     if (del_timer_sync(&timer->kernel_timer)) {
++#else
++    if (timer_delete_sync(&timer->kernel_timer)) {
++#endif
+         return true;
+     } else {
+         return false;
+diff -rupN a/nvidia-modeset/nvidia-modeset-linux.c b/nvidia-modeset/nvidia-modeset-linux.c
+--- a/nvidia-modeset/nvidia-modeset-linux.c	2025-02-26 02:42:20.000000000 +0100
++++ b/nvidia-modeset/nvidia-modeset-linux.c	2025-04-08 12:02:35.551416388 +0200
+@@ -37,6 +37,7 @@
+ #include <linux/freezer.h>
+ #include <linux/poll.h>
+ #include <linux/cdev.h>
++#include <linux/version.h>
+ 
+ #include <acpi/video.h>
+ 
+@@ -738,7 +739,11 @@ static void nvkms_kthread_q_callback(voi
+      * pending timers and than waiting for workqueue callbacks.
+      */
+     if (timer->kernel_timer_created) {
+-        del_timer_sync(&timer->kernel_timer);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
++         del_timer_sync(&timer->kernel_timer);
++#else
++         timer_delete_sync(&timer->kernel_timer);
++#endif    
+     }
+ 
+     /*
+@@ -1922,7 +1927,11 @@ restart:
+              * completion, and we wait for queue completion with
+              * nv_kthread_q_stop below.
+              */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
+             if (del_timer_sync(&timer->kernel_timer) == 1) {
++#else
++            if (timer_delete_sync(&timer->kernel_timer) == 1) {
++#endif
+                 /*  We've deactivated timer so we need to clean after it */
+                 list_del(&timer->timers_list);
+ 
+diff -rupN a/nvidia-uvm/uvm_ats_sva.c b/nvidia-uvm/uvm_ats_sva.c
+--- a/nvidia-uvm/uvm_ats_sva.c	2025-02-26 03:38:16.000000000 +0100
++++ b/nvidia-uvm/uvm_ats_sva.c	2025-04-08 12:13:28.386035815 +0200
+@@ -139,7 +139,7 @@ static NvU32 smmu_vcmdq_read32(void __io
+ 
+ static void smmu_vcmdq_write64(void __iomem *smmu_cmdqv_base, int reg, NvU64 val)
+ {
+-    iowrite64(val, SMMU_VCMDQ_BASE_ADDR(smmu_cmdqv_base, VCMDQ) + reg);
++    __iowrite64_hi_lo(val, SMMU_VCMDQ_BASE_ADDR(smmu_cmdqv_base, VCMDQ) + reg);
+ }
+ 
+ // Fix for Bug 4130089: [GH180][r535] WAR for kernel not issuing SMMU
