@@ -1,0 +1,259 @@
+diff -rupN a/common/inc/nv-mm.h b/common/inc/nv-mm.h
+--- a/common/inc/nv-mm.h	2025-04-16 17:06:32.000000000 +0200
++++ b/common/inc/nv-mm.h	2025-05-02 11:10:29.799883845 +0200
+@@ -300,7 +300,7 @@ static inline struct rw_semaphore *nv_mm
+ static inline void nv_vm_flags_set(struct vm_area_struct *vma, vm_flags_t flags)
+ {
+ #if defined(NV_VM_AREA_STRUCT_HAS_CONST_VM_FLAGS)
+-    vm_flags_set(vma, flags);
++    vm_flags_reset(vma, vma->vm_flags | flags);
+ #else
+     vma->vm_flags |= flags;
+ #endif
+@@ -309,7 +309,7 @@ static inline void nv_vm_flags_set(struc
+ static inline void nv_vm_flags_clear(struct vm_area_struct *vma, vm_flags_t flags)
+ {
+ #if defined(NV_VM_AREA_STRUCT_HAS_CONST_VM_FLAGS)
+-    vm_flags_clear(vma, flags);
++    vm_flags_reset(vma, vma->vm_flags & ~flags);
+ #else
+     vma->vm_flags &= ~flags;
+ #endif
+diff -rupN a/Kbuild b/Kbuild
+--- a/Kbuild	2025-04-16 17:06:52.000000000 +0200
++++ b/Kbuild	2025-05-02 11:10:29.800316356 +0200
+@@ -76,20 +76,20 @@ $(foreach _module, $(NV_KERNEL_MODULES),
+ 
+ 
+ #
+-# Define CFLAGS that apply to all the NVIDIA kernel modules. EXTRA_CFLAGS
++# Define CFLAGS that apply to all the NVIDIA kernel modules. ccflags-y
+ # is deprecated since 2.6.24 in favor of ccflags-y, but we need to support
+ # older kernels which do not have ccflags-y. Newer kernels append
+-# $(EXTRA_CFLAGS) to ccflags-y for compatibility.
++# $(ccflags-y) to ccflags-y for compatibility.
+ #
+ 
+-EXTRA_CFLAGS += -I$(src)/common/inc
+-EXTRA_CFLAGS += -I$(src)
+-EXTRA_CFLAGS += -Wall $(DEFINES) $(INCLUDES) -Wno-cast-qual -Wno-format-extra-args
+-EXTRA_CFLAGS += -D__KERNEL__ -DMODULE -DNVRM
+-EXTRA_CFLAGS += -DNV_VERSION_STRING=\"575.51.03\"
++ccflags-y += -I$(src)/common/inc
++ccflags-y += -I$(src)
++ccflags-y += -Wall $(DEFINES) $(INCLUDES) -Wno-cast-qual -Wno-format-extra-args
++ccflags-y += -D__KERNEL__ -DMODULE -DNVRM
++ccflags-y += -DNV_VERSION_STRING=\"575.51.03\"
+ 
+ ifneq ($(SYSSRCHOST1X),)
+- EXTRA_CFLAGS += -I$(SYSSRCHOST1X)
++ ccflags-y += -I$(SYSSRCHOST1X)
+ endif
+ 
+ # Some Android kernels prohibit driver use of filesystem functions like
+@@ -99,57 +99,57 @@ endif
+ PLATFORM_IS_ANDROID ?= 0
+ 
+ ifeq ($(PLATFORM_IS_ANDROID),1)
+- EXTRA_CFLAGS += -DNV_FILESYSTEM_ACCESS_AVAILABLE=0
++ ccflags-y += -DNV_FILESYSTEM_ACCESS_AVAILABLE=0
+ else
+- EXTRA_CFLAGS += -DNV_FILESYSTEM_ACCESS_AVAILABLE=1
++ ccflags-y += -DNV_FILESYSTEM_ACCESS_AVAILABLE=1
+ endif
+ 
+-EXTRA_CFLAGS += -Wno-unused-function
++ccflags-y += -Wno-unused-function
+ 
+ ifneq ($(NV_BUILD_TYPE),debug)
+- EXTRA_CFLAGS += -Wuninitialized
++ ccflags-y += -Wuninitialized
+ endif
+ 
+-EXTRA_CFLAGS += -fno-strict-aliasing
++ccflags-y += -fno-strict-aliasing
+ 
+ ifeq ($(ARCH),arm64)
+- EXTRA_CFLAGS += -mstrict-align
++ ccflags-y += -mstrict-align
+ endif
+ 
+ ifeq ($(NV_BUILD_TYPE),debug)
+- EXTRA_CFLAGS += -g
++ ccflags-y += -g
+ endif
+ 
+-EXTRA_CFLAGS += -ffreestanding
++ccflags-y += -ffreestanding
+ 
+ ifeq ($(ARCH),arm64)
+- EXTRA_CFLAGS += -mgeneral-regs-only -march=armv8-a
+- EXTRA_CFLAGS += $(call cc-option,-mno-outline-atomics,)
++ ccflags-y += -mgeneral-regs-only -march=armv8-a
++ ccflags-y += $(call cc-option,-mno-outline-atomics,)
+ endif
+ 
+ ifeq ($(ARCH),x86_64)
+- EXTRA_CFLAGS += -mno-red-zone -mcmodel=kernel
++ ccflags-y += -mno-red-zone -mcmodel=kernel
+ endif
+ 
+ ifeq ($(ARCH),powerpc)
+- EXTRA_CFLAGS += -mlittle-endian -mno-strict-align
++ ccflags-y += -mlittle-endian -mno-strict-align
+ endif
+ 
+-EXTRA_CFLAGS += -DNV_UVM_ENABLE
+-EXTRA_CFLAGS += $(call cc-option,-Werror=undef,)
+-EXTRA_CFLAGS += -DNV_SPECTRE_V2=$(NV_SPECTRE_V2)
+-EXTRA_CFLAGS += -DNV_KERNEL_INTERFACE_LAYER
++ccflags-y += -DNV_UVM_ENABLE
++ccflags-y += $(call cc-option,-Werror=undef,)
++ccflags-y += -DNV_SPECTRE_V2=$(NV_SPECTRE_V2)
++ccflags-y += -DNV_KERNEL_INTERFACE_LAYER
+ 
+ #
+ # Detect SGI UV systems and apply system-specific optimizations.
+ #
+ 
+ ifneq ($(wildcard /proc/sgi_uv),)
+- EXTRA_CFLAGS += -DNV_CONFIG_X86_UV
++ ccflags-y += -DNV_CONFIG_X86_UV
+ endif
+ 
+ ifdef VGX_FORCE_VFIO_PCI_CORE
+- EXTRA_CFLAGS += -DNV_VGPU_FORCE_VFIO_PCI_CORE
++ ccflags-y += -DNV_VGPU_FORCE_VFIO_PCI_CORE
+ endif
+ 
+ WARNINGS_AS_ERRORS ?=
+@@ -183,7 +183,7 @@ NV_CONFTEST_CMD := /bin/sh $(NV_CONFTEST
+ 
+ NV_CFLAGS_FROM_CONFTEST := $(shell $(NV_CONFTEST_CMD) build_cflags)
+ 
+-NV_CONFTEST_CFLAGS = $(NV_CFLAGS_FROM_CONFTEST) $(EXTRA_CFLAGS) -fno-pie
++NV_CONFTEST_CFLAGS = $(NV_CFLAGS_FROM_CONFTEST) $(ccflags-y) -fno-pie
+ NV_CONFTEST_CFLAGS += $(call cc-disable-warning,pointer-sign)
+ NV_CONFTEST_CFLAGS += $(call cc-option,-fshort-wchar,)
+ NV_CONFTEST_CFLAGS += $(call cc-option,-Werror=incompatible-pointer-types,)
+diff -rupN a/nvidia/nv.c b/nvidia/nv.c
+--- a/nvidia/nv.c	2025-04-16 17:06:54.000000000 +0200
++++ b/nvidia/nv.c	2025-05-02 11:10:29.801495826 +0200
+@@ -4177,7 +4177,7 @@ int NV_API_CALL nv_stop_rc_timer(
+ 
+     nv_printf(NV_DBG_INFO, "NVRM: stopping rc timer\n");
+     nv->rc_timer_enabled = 0;
+-    del_timer_sync(&nvl->rc_timer.kernel_timer);
++    timer_delete_sync(&nvl->rc_timer.kernel_timer);
+     nv_printf(NV_DBG_INFO, "NVRM: rc timer stopped\n");
+ 
+     return 0;
+@@ -4221,7 +4221,7 @@ void NV_API_CALL nv_stop_snapshot_timer(
+     NV_SPIN_UNLOCK_IRQRESTORE(&nvl->snapshot_timer_lock, flags);
+ 
+     if (timer_active)
+-        del_timer_sync(&nvl->snapshot_timer.kernel_timer);
++        timer_delete_sync(&nvl->snapshot_timer.kernel_timer);
+ }
+ 
+ void NV_API_CALL nv_flush_snapshot_timer(void)
+diff -rupN a/nvidia/nv-nano-timer.c b/nvidia/nv-nano-timer.c
+--- a/nvidia/nv-nano-timer.c	2025-04-16 17:06:54.000000000 +0200
++++ b/nvidia/nv-nano-timer.c	2025-05-02 11:10:29.802832816 +0200
+@@ -203,7 +203,7 @@ void NV_API_CALL nv_cancel_nano_timer(
+ #if NV_NANO_TIMER_USE_HRTIMER
+     hrtimer_cancel(&nv_nstimer->hr_timer);
+ #else
+-    del_timer_sync(&nv_nstimer->jiffy_timer);
++    timer_delete_sync(&nv_nstimer->jiffy_timer);
+ #endif
+ 
+ }
+diff -rupN a/nvidia-drm/nvidia-drm-fence.c b/nvidia-drm/nvidia-drm-fence.c
+--- a/nvidia-drm/nvidia-drm-fence.c	2025-04-16 15:48:49.000000000 +0200
++++ b/nvidia-drm/nvidia-drm-fence.c	2025-05-02 11:10:29.803425276 +0200
+@@ -1132,7 +1132,7 @@ static void __nv_drm_semsurf_fence_ctx_d
+      */
+     nv_drm_workthread_shutdown(&ctx->worker);
+ 
+-    nv_drm_del_timer_sync(&ctx->timer);
++    nv_drm_timer_delete_sync(&ctx->timer);
+ 
+     /*
+      * The semaphore surface could still be sending callbacks, so it is still
+diff -rupN a/nvidia-drm/nvidia-drm-linux.c b/nvidia-drm/nvidia-drm-linux.c
+--- a/nvidia-drm/nvidia-drm-linux.c	2025-04-16 15:48:43.000000000 +0200
++++ b/nvidia-drm/nvidia-drm-linux.c	2025-05-02 11:10:29.803885647 +0200
+@@ -62,5 +62,6 @@ module_exit(nv_linux_drm_exit);
+ 
+   MODULE_LICENSE("MIT");
+ 
++MODULE_DESCRIPTION("NVIDIA GPU DRM kernel module");
+ MODULE_INFO(supported, "external");
+ MODULE_VERSION(NV_VERSION_STRING);
+diff -rupN a/nvidia-drm/nvidia-drm-os-interface.c b/nvidia-drm/nvidia-drm-os-interface.c
+--- a/nvidia-drm/nvidia-drm-os-interface.c	2025-04-16 15:48:48.000000000 +0200
++++ b/nvidia-drm/nvidia-drm-os-interface.c	2025-05-02 11:10:29.804134722 +0200
+@@ -236,9 +236,9 @@ unsigned long nv_drm_timeout_from_ms(NvU
+     return jiffies + msecs_to_jiffies(relative_timeout_ms);
+ }
+ 
+-bool nv_drm_del_timer_sync(nv_drm_timer *timer)
++bool nv_drm_timer_delete_sync(nv_drm_timer *timer)
+ {
+-    if (del_timer_sync(&timer->kernel_timer)) {
++    if (timer_delete_sync(&timer->kernel_timer)) {
+         return true;
+     } else {
+         return false;
+diff -rupN a/nvidia-drm/nvidia-drm-os-interface.h b/nvidia-drm/nvidia-drm-os-interface.h
+--- a/nvidia-drm/nvidia-drm-os-interface.h	2025-04-16 15:48:48.000000000 +0200
++++ b/nvidia-drm/nvidia-drm-os-interface.h	2025-05-02 11:10:29.804442633 +0200
+@@ -101,7 +101,7 @@ void nv_drm_timer_setup(nv_drm_timer *ti
+ 
+ void nv_drm_mod_timer(nv_drm_timer *timer, unsigned long relative_timeout_ms);
+ 
+-bool nv_drm_del_timer_sync(nv_drm_timer *timer);
++bool nv_drm_timer_delete_sync(nv_drm_timer *timer);
+ 
+ unsigned long nv_drm_timer_now(void);
+ 
+diff -rupN a/nvidia-modeset/nvidia-modeset-linux.c b/nvidia-modeset/nvidia-modeset-linux.c
+--- a/nvidia-modeset/nvidia-modeset-linux.c	2025-04-16 15:46:30.000000000 +0200
++++ b/nvidia-modeset/nvidia-modeset-linux.c	2025-05-02 11:10:29.804941952 +0200
+@@ -748,7 +748,7 @@ static void nvkms_kthread_q_callback(voi
+      * pending timers and than waiting for workqueue callbacks.
+      */
+     if (timer->kernel_timer_created) {
+-        del_timer_sync(&timer->kernel_timer);
++        timer_delete_sync(&timer->kernel_timer);
+     }
+ 
+     /*
+@@ -1932,7 +1932,7 @@ restart:
+              * completion, and we wait for queue completion with
+              * nv_kthread_q_stop below.
+              */
+-            if (del_timer_sync(&timer->kernel_timer) == 1) {
++            if (timer_delete_sync(&timer->kernel_timer) == 1) {
+                 /*  We've deactivated timer so we need to clean after it */
+                 list_del(&timer->timers_list);
+ 
+@@ -1972,5 +1972,6 @@ module_exit(nvkms_exit);
+ 
+   MODULE_LICENSE("NVIDIA");
+ 
++MODULE_DESCRIPTION("NVIDIA GPU modeset kernel module");
+ MODULE_INFO(supported, "external");
+ MODULE_VERSION(NV_VERSION_STRING);
+diff -rupN a/nvidia-uvm/uvm.c b/nvidia-uvm/uvm.c
+--- a/nvidia-uvm/uvm.c	2025-04-16 17:06:38.000000000 +0200
++++ b/nvidia-uvm/uvm.c	2025-05-02 11:10:29.805775808 +0200
+@@ -1251,6 +1251,7 @@ static void __exit uvm_exit_entry(void)
+ module_init(uvm_init_entry);
+ module_exit(uvm_exit_entry);
+ 
++MODULE_DESCRIPTION("NVIDIA GPU UVM kernel module");
+ MODULE_LICENSE("Dual MIT/GPL");
+ MODULE_INFO(supported, "external");
+ MODULE_VERSION(NV_VERSION_STRING);
