@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-05-07:
+- add clear patch for 6.15-rcX
+
 2025-05-02:
 - updated NVIDIA patches for version 575.51.03
 
