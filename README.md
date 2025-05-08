@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2024-05-08:
+- KBUILD_CFLAGS fix when use clang compiler
+
 2025-05-07:
 - add clear patch for 6.15-rcX
 

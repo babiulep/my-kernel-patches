@@ -1,6 +1,6 @@
 diff -rupN a/arch/x86/include/asm/topology.h b/arch/x86/include/asm/topology.h
---- a/arch/x86/include/asm/topology.h	2025-05-07 08:12:31.000000000 +0200
-+++ b/arch/x86/include/asm/topology.h	2025-05-07 11:21:31.269189814 +0200
+--- a/arch/x86/include/asm/topology.h	2025-05-08 10:27:35.000000000 +0200
++++ b/arch/x86/include/asm/topology.h	2025-05-08 14:16:18.047908536 +0200
 @@ -255,6 +255,7 @@ extern bool __read_mostly sysctl_sched_i
  
  /* Interface to set priority of a cpu */
@@ -10,8 +10,8 @@ diff -rupN a/arch/x86/include/asm/topology.h b/arch/x86/include/asm/topology.h
  /* Interface to notify scheduler that system supports ITMT */
  int sched_set_itmt_support(void);
 diff -rupN a/arch/x86/kernel/cpu/intel_epb.c b/arch/x86/kernel/cpu/intel_epb.c
---- a/arch/x86/kernel/cpu/intel_epb.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/arch/x86/kernel/cpu/intel_epb.c	2025-05-07 11:21:31.269189814 +0200
+--- a/arch/x86/kernel/cpu/intel_epb.c	2025-05-08 10:27:35.000000000 +0200
++++ b/arch/x86/kernel/cpu/intel_epb.c	2025-05-08 14:16:18.049908550 +0200
 @@ -166,6 +166,10 @@ static ssize_t energy_perf_bias_store(st
  	if (ret < 0)
  		return ret;
@@ -24,8 +24,8 @@ diff -rupN a/arch/x86/kernel/cpu/intel_epb.c b/arch/x86/kernel/cpu/intel_epb.c
  }
  
 diff -rupN a/arch/x86/kernel/itmt.c b/arch/x86/kernel/itmt.c
---- a/arch/x86/kernel/itmt.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/arch/x86/kernel/itmt.c	2025-05-07 11:21:31.270189822 +0200
+--- a/arch/x86/kernel/itmt.c	2025-05-08 10:27:35.000000000 +0200
++++ b/arch/x86/kernel/itmt.c	2025-05-08 14:16:18.050908558 +0200
 @@ -26,6 +26,7 @@
  
  static DEFINE_MUTEX(itmt_update_mutex);
@@ -74,8 +74,8 @@ diff -rupN a/arch/x86/kernel/itmt.c b/arch/x86/kernel/itmt.c
 +	}
 +}
 diff -rupN a/arch/x86/kernel/tsc.c b/arch/x86/kernel/tsc.c
---- a/arch/x86/kernel/tsc.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/arch/x86/kernel/tsc.c	2025-05-07 11:21:31.254189705 +0200
+--- a/arch/x86/kernel/tsc.c	2025-05-08 10:27:35.000000000 +0200
++++ b/arch/x86/kernel/tsc.c	2025-05-08 14:16:18.052908572 +0200
 @@ -1597,6 +1597,9 @@ unsigned long calibrate_delay_is_known(v
  	if (!constant_tsc || !mask)
  		return 0;
@@ -87,8 +87,8 @@ diff -rupN a/arch/x86/kernel/tsc.c b/arch/x86/kernel/tsc.c
  	if (sibling < nr_cpu_ids)
  		return cpu_data(sibling).loops_per_jiffy;
 diff -rupN a/arch/x86/kvm/vmx/vmx.c b/arch/x86/kvm/vmx/vmx.c
---- a/arch/x86/kvm/vmx/vmx.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/arch/x86/kvm/vmx/vmx.c	2025-05-07 11:21:31.290189967 +0200
+--- a/arch/x86/kvm/vmx/vmx.c	2025-05-08 10:27:35.000000000 +0200
++++ b/arch/x86/kvm/vmx/vmx.c	2025-05-08 14:16:18.057908609 +0200
 @@ -8771,4 +8771,4 @@ err_l1d_flush:
  	kvm_x86_vendor_exit();
  	return r;
@@ -96,20 +96,24 @@ diff -rupN a/arch/x86/kvm/vmx/vmx.c b/arch/x86/kvm/vmx/vmx.c
 -module_init(vmx_init);
 +late_initcall(vmx_init);
 diff -rupN a/arch/x86/Makefile b/arch/x86/Makefile
---- a/arch/x86/Makefile	2025-05-07 08:12:31.000000000 +0200
-+++ b/arch/x86/Makefile	2025-05-07 11:21:31.280189894 +0200
-@@ -74,7 +74,7 @@ export BITS
+--- a/arch/x86/Makefile	2025-05-08 10:27:35.000000000 +0200
++++ b/arch/x86/Makefile	2025-05-08 14:18:45.235978407 +0200
+@@ -74,7 +74,11 @@ export BITS
  #
  #    https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53383
  #
 -KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx
++ifdef CONFIG_CC_IS_CLANG
++KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mno-avx2 -O3 -fno-tree-vectorize -march=native -mpopcnt
++else
 +KBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mno-avx2 -O3 -fno-tree-vectorize -march=native -mpopcnt -fivopts -fmodulo-sched
++endif
  KBUILD_RUSTFLAGS += --target=$(objtree)/scripts/target.json
  KBUILD_RUSTFLAGS += -Ctarget-feature=-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2
  
 diff -rupN a/arch/x86/mm/fault.c b/arch/x86/mm/fault.c
---- a/arch/x86/mm/fault.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/arch/x86/mm/fault.c	2025-05-07 11:21:31.267189800 +0200
+--- a/arch/x86/mm/fault.c	2025-05-08 10:27:35.000000000 +0200
++++ b/arch/x86/mm/fault.c	2025-05-08 14:16:18.061908638 +0200
 @@ -754,9 +754,9 @@ show_signal_msg(struct pt_regs *regs, un
  	if (!printk_ratelimit())
  		return;
@@ -123,8 +127,8 @@ diff -rupN a/arch/x86/mm/fault.c b/arch/x86/mm/fault.c
  	print_vma_addr(KERN_CONT " in ", regs->ip);
  
 diff -rupN a/block/blk-mq.c b/block/blk-mq.c
---- a/block/blk-mq.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/block/blk-mq.c	2025-05-07 11:21:33.843208499 +0200
+--- a/block/blk-mq.c	2025-05-08 10:27:35.000000000 +0200
++++ b/block/blk-mq.c	2025-05-08 14:16:18.064908660 +0200
 @@ -29,6 +29,7 @@
  #include <linux/blk-crypto.h>
  #include <linux/part_stat.h>
@@ -142,8 +146,8 @@ diff -rupN a/block/blk-mq.c b/block/blk-mq.c
  		rq->q->mq_ops->complete(rq);
  }
 diff -rupN a/block/early-lookup.c b/block/early-lookup.c
---- a/block/early-lookup.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/block/early-lookup.c	2025-05-07 11:21:31.259189742 +0200
+--- a/block/early-lookup.c	2025-05-08 10:27:35.000000000 +0200
++++ b/block/early-lookup.c	2025-05-08 14:16:18.065908667 +0200
 @@ -5,6 +5,7 @@
   */
  #include <linux/blkdev.h>
@@ -174,8 +178,8 @@ diff -rupN a/block/early-lookup.c b/block/early-lookup.c
  		return devt_from_partlabel(name + 10, devt);
  	if (strncmp(name, "/dev/", 5) == 0)
 diff -rupN a/crypto/kdf_sp800108.c b/crypto/kdf_sp800108.c
---- a/crypto/kdf_sp800108.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/crypto/kdf_sp800108.c	2025-05-07 11:21:31.282189909 +0200
+--- a/crypto/kdf_sp800108.c	2025-05-08 10:27:35.000000000 +0200
++++ b/crypto/kdf_sp800108.c	2025-05-08 14:16:18.066908675 +0200
 @@ -149,7 +149,7 @@ static int __init crypto_kdf108_init(voi
  
  static void __exit crypto_kdf108_exit(void) { }
@@ -186,8 +190,8 @@ diff -rupN a/crypto/kdf_sp800108.c b/crypto/kdf_sp800108.c
  
  MODULE_LICENSE("GPL v2");
 diff -rupN a/drivers/acpi/osl.c b/drivers/acpi/osl.c
---- a/drivers/acpi/osl.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/acpi/osl.c	2025-05-07 11:21:31.286189938 +0200
+--- a/drivers/acpi/osl.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/acpi/osl.c	2025-05-08 14:16:18.067908682 +0200
 @@ -1581,7 +1581,7 @@ void acpi_os_release_lock(acpi_spinlock
  acpi_status
  acpi_os_create_cache(char *name, u16 size, u16 depth, acpi_cache_t **cache)
@@ -198,8 +202,8 @@ diff -rupN a/drivers/acpi/osl.c b/drivers/acpi/osl.c
  		return AE_ERROR;
  	else
 diff -rupN a/drivers/ata/libahci.c b/drivers/ata/libahci.c
---- a/drivers/ata/libahci.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/ata/libahci.c	2025-05-07 11:21:31.266189792 +0200
+--- a/drivers/ata/libahci.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/ata/libahci.c	2025-05-08 14:16:18.069908697 +0200
 @@ -34,14 +34,14 @@
  #include "libata.h"
  
@@ -218,8 +222,8 @@ diff -rupN a/drivers/ata/libahci.c b/drivers/ata/libahci.c
  static int ahci_set_lpm(struct ata_link *link, enum ata_lpm_policy policy,
  			unsigned hints);
 diff -rupN a/drivers/base/firmware_loader/main.c b/drivers/base/firmware_loader/main.c
---- a/drivers/base/firmware_loader/main.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/base/firmware_loader/main.c	2025-05-07 11:21:31.261189756 +0200
+--- a/drivers/base/firmware_loader/main.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/base/firmware_loader/main.c	2025-05-08 14:16:18.070908704 +0200
 @@ -471,6 +471,8 @@ static int fw_decompress_xz(struct devic
  static char fw_path_para[256];
  static const char * const fw_path[] = {
@@ -230,8 +234,8 @@ diff -rupN a/drivers/base/firmware_loader/main.c b/drivers/base/firmware_loader/
  	"/lib/firmware/updates",
  	"/lib/firmware/" UTS_RELEASE,
 diff -rupN a/drivers/clocksource/acpi_pm.c b/drivers/clocksource/acpi_pm.c
---- a/drivers/clocksource/acpi_pm.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/clocksource/acpi_pm.c	2025-05-07 11:21:31.285189931 +0200
+--- a/drivers/clocksource/acpi_pm.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/clocksource/acpi_pm.c	2025-05-08 14:16:18.071908711 +0200
 @@ -208,13 +208,16 @@ static int verify_pmtmr_rate(void)
  static int __init init_acpi_pm_clocksource(void)
  {
@@ -252,8 +256,8 @@ diff -rupN a/drivers/clocksource/acpi_pm.c b/drivers/clocksource/acpi_pm.c
  		value1 = clocksource_acpi_pm.read(&clocksource_acpi_pm);
  		for (i = 0; i < ACPI_PM_READ_CHECKS; i++) {
 diff -rupN a/drivers/cpufreq/intel_pstate.c b/drivers/cpufreq/intel_pstate.c
---- a/drivers/cpufreq/intel_pstate.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/cpufreq/intel_pstate.c	2025-05-07 11:21:31.271189829 +0200
+--- a/drivers/cpufreq/intel_pstate.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/cpufreq/intel_pstate.c	2025-05-08 14:16:18.074908733 +0200
 @@ -377,6 +377,13 @@ static void intel_pstate_set_itmt_prio(i
  	 * update them at any time after it has been called.
  	 */
@@ -269,8 +273,8 @@ diff -rupN a/drivers/cpufreq/intel_pstate.c b/drivers/cpufreq/intel_pstate.c
  	if (max_highest_perf <= min_highest_perf) {
  		if (cppc_perf.highest_perf > max_highest_perf)
 diff -rupN a/drivers/cpuidle/governors/menu.c b/drivers/cpuidle/governors/menu.c
---- a/drivers/cpuidle/governors/menu.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/cpuidle/governors/menu.c	2025-05-07 11:21:33.844208506 +0200
+--- a/drivers/cpuidle/governors/menu.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/cpuidle/governors/menu.c	2025-05-08 14:16:18.075908741 +0200
 @@ -16,6 +16,7 @@
  #include <linux/tick.h>
  #include <linux/sched/stat.h>
@@ -290,8 +294,8 @@ diff -rupN a/drivers/cpuidle/governors/menu.c b/drivers/cpuidle/governors/menu.c
  	predicted_ns = get_typical_interval(data) * NSEC_PER_USEC;
  	if (predicted_ns > RESIDENCY_THRESHOLD_NS) {
 diff -rupN a/drivers/cpuidle/Kconfig b/drivers/cpuidle/Kconfig
---- a/drivers/cpuidle/Kconfig	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/cpuidle/Kconfig	2025-05-07 11:21:33.843208499 +0200
+--- a/drivers/cpuidle/Kconfig	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/cpuidle/Kconfig	2025-05-08 14:16:18.077908755 +0200
 @@ -81,6 +81,16 @@ config HALTPOLL_CPUIDLE
  	 before halting in the guest (more efficient than polling in the
  	 host via halt_poll_ns for some scenarios).
@@ -310,8 +314,8 @@ diff -rupN a/drivers/cpuidle/Kconfig b/drivers/cpuidle/Kconfig
  
  config ARCH_NEEDS_CPU_IDLE_COUPLED
 diff -rupN a/drivers/cpuidle/Makefile b/drivers/cpuidle/Makefile
---- a/drivers/cpuidle/Makefile	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/cpuidle/Makefile	2025-05-07 11:21:33.843208499 +0200
+--- a/drivers/cpuidle/Makefile	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/cpuidle/Makefile	2025-05-08 14:16:18.078908763 +0200
 @@ -12,6 +12,7 @@ obj-$(CONFIG_DT_IDLE_STATES)		  += dt_id
  obj-$(CONFIG_DT_IDLE_GENPD)		  += dt_idle_genpd.o
  obj-$(CONFIG_ARCH_HAS_CPU_RELAX)	  += poll_state.o
@@ -322,7 +326,7 @@ diff -rupN a/drivers/cpuidle/Makefile b/drivers/cpuidle/Makefile
  # ARM SoC drivers
 diff -rupN a/drivers/cpuidle/psd.c b/drivers/cpuidle/psd.c
 --- a/drivers/cpuidle/psd.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/cpuidle/psd.c	2025-05-07 11:21:33.844208506 +0200
++++ b/drivers/cpuidle/psd.c	2025-05-08 14:16:18.079908770 +0200
 @@ -0,0 +1,123 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
@@ -448,8 +452,8 @@ diff -rupN a/drivers/cpuidle/psd.c b/drivers/cpuidle/psd.c
 +
 +late_initcall(prevent_sleep_demotion_init);
 diff -rupN a/drivers/idle/intel_idle.c b/drivers/idle/intel_idle.c
---- a/drivers/idle/intel_idle.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/idle/intel_idle.c	2025-05-07 11:21:33.856208593 +0200
+--- a/drivers/idle/intel_idle.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/idle/intel_idle.c	2025-05-08 14:16:18.082908792 +0200
 @@ -49,6 +49,8 @@
  #include <linux/sched.h>
  #include <linux/sched/smt.h>
@@ -879,8 +883,8 @@ diff -rupN a/drivers/idle/intel_idle.c b/drivers/idle/intel_idle.c
  	return retval;
  
 diff -rupN a/drivers/input/serio/i8042.c b/drivers/input/serio/i8042.c
---- a/drivers/input/serio/i8042.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/input/serio/i8042.c	2025-05-07 11:21:31.245189640 +0200
+--- a/drivers/input/serio/i8042.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/input/serio/i8042.c	2025-05-08 14:16:18.084908806 +0200
 @@ -621,7 +621,7 @@ static int i8042_enable_kbd_port(void)
  	if (i8042_command(&i8042_ctr, I8042_CMD_CTL_WCTR)) {
  		i8042_ctr &= ~I8042_CTR_KBDINT;
@@ -927,8 +931,8 @@ diff -rupN a/drivers/input/serio/i8042.c b/drivers/input/serio/i8042.c
  #endif
  }
 diff -rupN a/drivers/iommu/irq_remapping.c b/drivers/iommu/irq_remapping.c
---- a/drivers/iommu/irq_remapping.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/iommu/irq_remapping.c	2025-05-07 11:21:33.860208622 +0200
+--- a/drivers/iommu/irq_remapping.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/iommu/irq_remapping.c	2025-05-08 14:16:18.085908814 +0200
 @@ -24,7 +24,7 @@ int no_x2apic_optout;
  
  int disable_irq_post = 0;
@@ -939,8 +943,8 @@ diff -rupN a/drivers/iommu/irq_remapping.c b/drivers/iommu/irq_remapping.c
  static int disable_irq_remap;
  static struct irq_remap_ops *remap_ops;
 diff -rupN a/drivers/net/dummy.c b/drivers/net/dummy.c
---- a/drivers/net/dummy.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/net/dummy.c	2025-05-07 11:21:31.261189756 +0200
+--- a/drivers/net/dummy.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/net/dummy.c	2025-05-08 14:16:18.086908821 +0200
 @@ -44,7 +44,7 @@
  
  #define DRV_NAME	"dummy"
@@ -951,8 +955,8 @@ diff -rupN a/drivers/net/dummy.c b/drivers/net/dummy.c
  /* fake multicast ability */
  static void set_multicast_list(struct net_device *dev)
 diff -rupN a/drivers/pci/pci.c b/drivers/pci/pci.c
---- a/drivers/pci/pci.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/pci/pci.c	2025-05-07 11:21:31.250189676 +0200
+--- a/drivers/pci/pci.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/pci/pci.c	2025-05-08 14:16:18.090908850 +0200
 @@ -60,7 +60,7 @@ struct pci_pme_device {
  	struct pci_dev *dev;
  };
@@ -963,8 +967,8 @@ diff -rupN a/drivers/pci/pci.c b/drivers/pci/pci.c
  /*
   * Following exit from Conventional Reset, devices must be ready within 1 sec
 diff -rupN a/drivers/thermal/intel/intel_powerclamp.c b/drivers/thermal/intel/intel_powerclamp.c
---- a/drivers/thermal/intel/intel_powerclamp.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/drivers/thermal/intel/intel_powerclamp.c	2025-05-07 11:21:31.286189938 +0200
+--- a/drivers/thermal/intel/intel_powerclamp.c	2025-05-08 10:27:35.000000000 +0200
++++ b/drivers/thermal/intel/intel_powerclamp.c	2025-05-08 14:16:18.092908865 +0200
 @@ -710,6 +710,11 @@ static const struct thermal_cooling_devi
  	.set_cur_state = powerclamp_set_cur_state,
  };
@@ -994,8 +998,8 @@ diff -rupN a/drivers/thermal/intel/intel_powerclamp.c b/drivers/thermal/intel/in
  	}
  
 diff -rupN a/fs/binfmt_elf.c b/fs/binfmt_elf.c
---- a/fs/binfmt_elf.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/fs/binfmt_elf.c	2025-05-07 11:21:33.859208615 +0200
+--- a/fs/binfmt_elf.c	2025-05-08 10:27:35.000000000 +0200
++++ b/fs/binfmt_elf.c	2025-05-08 14:16:18.094908880 +0200
 @@ -1287,6 +1287,8 @@ out_free_interp:
  	mm = current->mm;
  	mm->end_code = end_code;
@@ -1006,8 +1010,8 @@ diff -rupN a/fs/binfmt_elf.c b/fs/binfmt_elf.c
  	mm->end_data = end_data;
  	mm->start_stack = bprm->p;
 diff -rupN a/fs/ext4/xattr.c b/fs/ext4/xattr.c
---- a/fs/ext4/xattr.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/fs/ext4/xattr.c	2025-05-07 11:21:31.244189633 +0200
+--- a/fs/ext4/xattr.c	2025-05-08 10:27:35.000000000 +0200
++++ b/fs/ext4/xattr.c	2025-05-08 14:16:18.097908902 +0200
 @@ -1617,7 +1617,6 @@ out_err:
  static int ext4_xattr_set_entry(struct ext4_xattr_info *i,
  				struct ext4_xattr_search *s,
@@ -1218,8 +1222,8 @@ diff -rupN a/fs/ext4/xattr.c b/fs/ext4/xattr.c
  }
  
 diff -rupN a/fs/select.c b/fs/select.c
---- a/fs/select.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/fs/select.c	2025-05-07 11:21:31.284189923 +0200
+--- a/fs/select.c	2025-05-08 10:27:35.000000000 +0200
++++ b/fs/select.c	2025-05-08 14:16:18.099908916 +0200
 @@ -630,7 +630,7 @@ int core_sys_select(int n, fd_set __user
  	long stack_fds[SELECT_STACK_ALLOC/sizeof(long)];
  
@@ -1239,8 +1243,8 @@ diff -rupN a/fs/select.c b/fs/select.c
  
  	CLASS(fd, f)(fd);
 diff -rupN a/fs/xattr.c b/fs/xattr.c
---- a/fs/xattr.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/fs/xattr.c	2025-05-07 11:21:31.262189763 +0200
+--- a/fs/xattr.c	2025-05-08 10:27:35.000000000 +0200
++++ b/fs/xattr.c	2025-05-08 14:16:18.101908931 +0200
 @@ -139,16 +139,17 @@ xattr_permission(struct mnt_idmap *idmap
  	}
  
@@ -1268,7 +1272,7 @@ diff -rupN a/fs/xattr.c b/fs/xattr.c
  
 diff -rupN a/include/linux/cpuidle_psd.h b/include/linux/cpuidle_psd.h
 --- a/include/linux/cpuidle_psd.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/linux/cpuidle_psd.h	2025-05-07 11:21:33.845208513 +0200
++++ b/include/linux/cpuidle_psd.h	2025-05-08 14:16:18.101908931 +0200
 @@ -0,0 +1,32 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
@@ -1303,8 +1307,8 @@ diff -rupN a/include/linux/cpuidle_psd.h b/include/linux/cpuidle_psd.h
 +
 +#endif
 diff -rupN a/include/linux/jbd2.h b/include/linux/jbd2.h
---- a/include/linux/jbd2.h	2025-05-07 08:12:31.000000000 +0200
-+++ b/include/linux/jbd2.h	2025-05-07 11:21:31.246189647 +0200
+--- a/include/linux/jbd2.h	2025-05-08 10:27:35.000000000 +0200
++++ b/include/linux/jbd2.h	2025-05-08 14:16:18.102908938 +0200
 @@ -45,7 +45,7 @@
  /*
   * The default maximum commit age, in seconds.
@@ -1315,8 +1319,8 @@ diff -rupN a/include/linux/jbd2.h b/include/linux/jbd2.h
  #ifdef CONFIG_JBD2_DEBUG
  /*
 diff -rupN a/include/linux/wait.h b/include/linux/wait.h
---- a/include/linux/wait.h	2025-05-07 08:12:31.000000000 +0200
-+++ b/include/linux/wait.h	2025-05-07 11:21:31.263189771 +0200
+--- a/include/linux/wait.h	2025-05-08 10:27:35.000000000 +0200
++++ b/include/linux/wait.h	2025-05-08 14:16:18.103908946 +0200
 @@ -163,6 +163,7 @@ static inline bool wq_has_sleeper(struct
  
  extern void add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
@@ -1334,8 +1338,8 @@ diff -rupN a/include/linux/wait.h b/include/linux/wait.h
  void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
  long wait_woken(struct wait_queue_entry *wq_entry, unsigned mode, long timeout);
 diff -rupN a/include/net/sock.h b/include/net/sock.h
---- a/include/net/sock.h	2025-05-07 08:12:31.000000000 +0200
-+++ b/include/net/sock.h	2025-05-07 11:21:33.863208644 +0200
+--- a/include/net/sock.h	2025-05-08 10:27:35.000000000 +0200
++++ b/include/net/sock.h	2025-05-08 14:16:18.105908960 +0200
 @@ -1583,10 +1583,17 @@ static inline void sk_mem_charge(struct
  
  static inline void sk_mem_uncharge(struct sock *sk, int size)
@@ -1365,8 +1369,8 @@ diff -rupN a/include/net/sock.h b/include/net/sock.h
  #define SK_WMEM_MAX		(_SK_MEM_OVERHEAD * _SK_MEM_PACKETS)
  #define SK_RMEM_MAX		(_SK_MEM_OVERHEAD * _SK_MEM_PACKETS)
 diff -rupN a/include/uapi/linux/if_bonding.h b/include/uapi/linux/if_bonding.h
---- a/include/uapi/linux/if_bonding.h	2025-05-07 08:12:31.000000000 +0200
-+++ b/include/uapi/linux/if_bonding.h	2025-05-07 11:21:31.261189756 +0200
+--- a/include/uapi/linux/if_bonding.h	2025-05-08 10:27:35.000000000 +0200
++++ b/include/uapi/linux/if_bonding.h	2025-05-08 14:16:18.105908960 +0200
 @@ -82,7 +82,7 @@
  #define BOND_STATE_ACTIVE       0   /* link is active */
  #define BOND_STATE_BACKUP       1   /* link is backup */
@@ -1377,8 +1381,8 @@ diff -rupN a/include/uapi/linux/if_bonding.h b/include/uapi/linux/if_bonding.h
  #define BOND_DEFAULT_TX_QUEUES 16   /* Default number of tx queues per device */
  
 diff -rupN a/init/do_mounts.c b/init/do_mounts.c
---- a/init/do_mounts.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/init/do_mounts.c	2025-05-07 11:21:31.257189727 +0200
+--- a/init/do_mounts.c	2025-05-08 10:27:35.000000000 +0200
++++ b/init/do_mounts.c	2025-05-08 14:16:18.107908975 +0200
 @@ -476,7 +476,9 @@ void __init prepare_namespace(void)
  	 * For example, it is not atypical to wait 5 seconds here
  	 * for the touchpad of a laptop to initialize.
@@ -1390,8 +1394,8 @@ diff -rupN a/init/do_mounts.c b/init/do_mounts.c
  	md_run_setup();
  
 diff -rupN a/init/init_task.c b/init/init_task.c
---- a/init/init_task.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/init/init_task.c	2025-05-07 11:21:33.863208644 +0200
+--- a/init/init_task.c	2025-05-08 10:27:35.000000000 +0200
++++ b/init/init_task.c	2025-05-08 14:16:18.108908982 +0200
 @@ -140,7 +140,7 @@ struct task_struct init_task __aligned(L
  	.journal_info	= NULL,
  	INIT_CPU_TIMERS(init_task)
@@ -1402,8 +1406,8 @@ diff -rupN a/init/init_task.c b/init/init_task.c
  	.thread_node	= LIST_HEAD_INIT(init_signals.thread_head),
  #ifdef CONFIG_AUDIT
 diff -rupN a/init/main.c b/init/main.c
---- a/init/main.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/init/main.c	2025-05-07 11:21:31.282189909 +0200
+--- a/init/main.c	2025-05-08 10:27:35.000000000 +0200
++++ b/init/main.c	2025-05-08 14:16:18.110908997 +0200
 @@ -1208,10 +1208,13 @@ static __init_or_module void
  trace_initcall_finish_cb(void *data, initcall_t fn, int ret)
  {
@@ -1421,8 +1425,8 @@ diff -rupN a/init/main.c b/init/main.c
  
  static ktime_t initcall_calltime;
 diff -rupN a/kernel/locking/rwsem.c b/kernel/locking/rwsem.c
---- a/kernel/locking/rwsem.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/kernel/locking/rwsem.c	2025-05-07 11:21:31.265189785 +0200
+--- a/kernel/locking/rwsem.c	2025-05-08 10:27:35.000000000 +0200
++++ b/kernel/locking/rwsem.c	2025-05-08 14:16:18.112909011 +0200
 @@ -747,6 +747,7 @@ rwsem_spin_on_owner(struct rw_semaphore
  	struct task_struct *new, *owner;
  	unsigned long flags, new_flags;
@@ -1442,8 +1446,8 @@ diff -rupN a/kernel/locking/rwsem.c b/kernel/locking/rwsem.c
  
  	return state;
 diff -rupN a/kernel/module/signing.c b/kernel/module/signing.c
---- a/kernel/module/signing.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/kernel/module/signing.c	2025-05-07 11:21:31.260189749 +0200
+--- a/kernel/module/signing.c	2025-05-08 10:27:35.000000000 +0200
++++ b/kernel/module/signing.c	2025-05-08 14:16:18.113909019 +0200
 @@ -14,6 +14,8 @@
  #include <linux/security.h>
  #include <crypto/public_key.h>
@@ -1475,8 +1479,8 @@ diff -rupN a/kernel/module/signing.c b/kernel/module/signing.c
  }
  EXPORT_SYMBOL(is_module_sig_enforced);
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/kernel/sched/fair.c	2025-05-07 11:21:33.852208564 +0200
+--- a/kernel/sched/fair.c	2025-05-08 10:27:35.000000000 +0200
++++ b/kernel/sched/fair.c	2025-05-08 14:16:18.120909070 +0200
 @@ -193,7 +193,7 @@ static inline void update_load_set(struc
   */
  static unsigned int get_update_sysctl_factor(void)
@@ -1496,8 +1500,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  
  		if (sd->flags & SD_BALANCE_NEWIDLE) {
 diff -rupN a/kernel/sched/syscalls.c b/kernel/sched/syscalls.c
---- a/kernel/sched/syscalls.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/kernel/sched/syscalls.c	2025-05-07 11:21:33.861208629 +0200
+--- a/kernel/sched/syscalls.c	2025-05-08 10:27:35.000000000 +0200
++++ b/kernel/sched/syscalls.c	2025-05-08 14:16:18.122909084 +0200
 @@ -1350,10 +1350,22 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t
  	return ret;
  }
@@ -1521,10 +1525,9 @@ diff -rupN a/kernel/sched/syscalls.c b/kernel/sched/syscalls.c
  
  	rq = this_rq_lock_irq(&rf);
  
-Binary files a/kernel/sched/.syscalls.c.swp and b/kernel/sched/.syscalls.c.swp differ
 diff -rupN a/kernel/sched/wait.c b/kernel/sched/wait.c
---- a/kernel/sched/wait.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/kernel/sched/wait.c	2025-05-07 11:21:31.263189771 +0200
+--- a/kernel/sched/wait.c	2025-05-08 10:27:35.000000000 +0200
++++ b/kernel/sched/wait.c	2025-05-08 14:16:18.123909092 +0200
 @@ -47,6 +47,17 @@ void add_wait_queue_priority(struct wait
  }
  EXPORT_SYMBOL_GPL(add_wait_queue_priority);
@@ -1564,8 +1567,8 @@ diff -rupN a/kernel/sched/wait.c b/kernel/sched/wait.c
  {
  	wq_entry->flags = flags;
 diff -rupN a/lib/raid6/algos.c b/lib/raid6/algos.c
---- a/lib/raid6/algos.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/lib/raid6/algos.c	2025-05-07 11:21:31.281189901 +0200
+--- a/lib/raid6/algos.c	2025-05-08 10:27:35.000000000 +0200
++++ b/lib/raid6/algos.c	2025-05-08 14:16:18.125909106 +0200
 @@ -18,6 +18,8 @@
  #else
  #include <linux/module.h>
@@ -1680,8 +1683,8 @@ diff -rupN a/lib/raid6/algos.c b/lib/raid6/algos.c
  	return best;
  }
 diff -rupN a/mm/page_alloc.c b/mm/page_alloc.c
---- a/mm/page_alloc.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/mm/page_alloc.c	2025-05-07 11:21:31.274189850 +0200
+--- a/mm/page_alloc.c	2025-05-08 10:27:35.000000000 +0200
++++ b/mm/page_alloc.c	2025-05-08 14:16:18.129909136 +0200
 @@ -5630,11 +5630,11 @@ static int zone_batchsize(struct zone *z
  
  	/*
@@ -1697,8 +1700,8 @@ diff -rupN a/mm/page_alloc.c b/mm/page_alloc.c
  	if (batch < 1)
  		batch = 1;
 diff -rupN a/net/ipv4/inet_connection_sock.c b/net/ipv4/inet_connection_sock.c
---- a/net/ipv4/inet_connection_sock.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/net/ipv4/inet_connection_sock.c	2025-05-07 11:21:31.264189778 +0200
+--- a/net/ipv4/inet_connection_sock.c	2025-05-08 10:27:35.000000000 +0200
++++ b/net/ipv4/inet_connection_sock.c	2025-05-08 14:16:18.131909150 +0200
 @@ -632,7 +632,7 @@ static int inet_csk_wait_for_connect(str
  	 * having to remove and re-insert us on the wait queue.
  	 */
@@ -1709,8 +1712,8 @@ diff -rupN a/net/ipv4/inet_connection_sock.c b/net/ipv4/inet_connection_sock.c
  		release_sock(sk);
  		if (reqsk_queue_empty(&icsk->icsk_accept_queue))
 diff -rupN a/net/ipv4/tcp.c b/net/ipv4/tcp.c
---- a/net/ipv4/tcp.c	2025-05-07 08:12:31.000000000 +0200
-+++ b/net/ipv4/tcp.c	2025-05-07 11:21:31.257189727 +0200
+--- a/net/ipv4/tcp.c	2025-05-08 10:27:35.000000000 +0200
++++ b/net/ipv4/tcp.c	2025-05-08 14:16:18.134909172 +0200
 @@ -5193,8 +5193,8 @@ void __init tcp_init(void)
  	tcp_init_mem();
  	/* Set per-socket limits to no more than 1/128 the pressure threshold */
