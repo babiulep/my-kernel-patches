@@ -1,6 +1,15 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-06-02:
+- Total patch with:  
+  ADIOS  
+  bbr3  
+  zram-ir  
+  polly  
+  mitigate off  
+  and cleanup
+
 2024-05-08:
 - KBUILD_CFLAGS fix when use clang compiler
 
