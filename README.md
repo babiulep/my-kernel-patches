@@ -1,6 +1,12 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-07-30:
+- Split patches:  
+- PATCHES: 6.16  
+- NEXT_PATCHES: next/6.17  
+- New NVIDIA patch for linux kernel next/6.17
+
 2025-06-02:
 - Total patch with:  
   ADIOS  
