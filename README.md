@@ -6,6 +6,7 @@ Patches for the linux kernel
 - PATCHES: 6.16  
 - NEXT_PATCHES: next/6.17  
 - New NVIDIA patch for linux kernel next/6.17
+  (tested with versions 575.57.08 and 575.64.03)
 
 2025-06-02:
 - Total patch with:  
