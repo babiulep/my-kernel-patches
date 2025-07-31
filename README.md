@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-07-31:
+- adios: fix for linux-next >= 2025073 in NEXT_PATCHES
+
 2025-07-30:
 - Split patches:  
 - PATCHES: 6.16  
