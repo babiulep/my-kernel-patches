@@ -1,7 +1,7 @@
 diff -rupN a/Makefile b/Makefile
---- a/Makefile	2025-07-24 06:03:51.000000000 +0200
-+++ b/Makefile	2025-07-24 16:45:26.986688049 +0200
-@@ -1062,6 +1062,8 @@ NOSTDINC_FLAGS += -nostdinc
+--- a/Makefile	2025-08-07 07:29:02.000000000 +0200
++++ b/Makefile	2025-08-07 11:02:09.866160495 +0200
+@@ -1063,6 +1063,8 @@ NOSTDINC_FLAGS += -nostdinc
  # arrays. Enforce this for everything that may examine structure sizes and
  # perform bounds checking.
  KBUILD_CFLAGS += $(call cc-option, -fstrict-flex-arrays=3)
