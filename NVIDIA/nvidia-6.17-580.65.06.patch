@@ -1,6 +1,6 @@
 diff -rupN a/nvidia-drm/nvidia-drm-fb.c b/nvidia-drm/nvidia-drm-fb.c
---- nvidia-580.65.06.ok/nvidia-drm/nvidia-drm-fb.c      2025-07-27 08:41:16.000000000 +0200
-+++ nvidia-580.65.06/nvidia-drm/nvidia-drm-fb.c 2025-08-05 12:16:29.512242478 +0200
+--- a/nvidia-drm/nvidia-drm-fb.c	2025-07-27 08:41:16.000000000 +0200
++++ b/nvidia-drm/nvidia-drm-fb.c	2025-08-07 12:54:31.707099903 +0200
 @@ -242,6 +242,7 @@ fail:
  struct drm_framebuffer *nv_drm_framebuffer_create(
      struct drm_device *dev,
@@ -13,13 +13,13 @@ diff -rupN a/nvidia-drm/nvidia-drm-fb.c b/nvidia-drm/nvidia-drm-fb.c
      drm_helper_mode_fill_fb_struct(
          dev,
          &nv_fb->base,
-+        NULL,
++        info,
          cmd);
  
      /*
 diff -rupN a/nvidia-drm/nvidia-drm-fb.h b/nvidia-drm/nvidia-drm-fb.h
---- nvidia-580.65.06.ok/nvidia-drm/nvidia-drm-fb.h      2025-07-27 08:41:14.000000000 +0200
-+++ nvidia-580.65.06/nvidia-drm/nvidia-drm-fb.h 2025-08-05 12:11:48.894145880 +0200
+--- a/nvidia-drm/nvidia-drm-fb.h	2025-07-27 08:41:14.000000000 +0200
++++ b/nvidia-drm/nvidia-drm-fb.h	2025-08-07 12:52:26.827194261 +0200
 @@ -53,6 +53,7 @@ static inline struct nv_drm_framebuffer
  struct drm_framebuffer *nv_drm_framebuffer_create(
      struct drm_device *dev,

@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-08-08:
+- NVIDIA for next/6.17 fix 
+
 2025-08-05:
 - NVIDIA: patch for linux kernel next/6.17 for 580.65.06
 
