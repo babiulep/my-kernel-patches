@@ -142,7 +142,7 @@ diff -rupN a/nvidia-drm/nvidia-drm-fb.c b/nvidia-drm/nvidia-drm-fb.c
          dev,
          #endif
          &nv_fb->base,
-+        NULL,
++        info,
          cmd);
  
      /*
