@@ -2,6 +2,7 @@
 Patches for the linux kernel
 
 2025-08-12:
+- NVIDIA GPL issues patch
 - BORE scheduler patch for 6.17
 
 2025-08-08:
