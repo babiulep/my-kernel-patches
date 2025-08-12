@@ -906,7 +906,7 @@ index b173a059315c..33ba4c0f9ced 100644
 +	u64 slice = sysctl_sched_base_slice;
 +#else // CONFIG_SCHED_BORE
  	u64 slice = normalized_sysctl_sched_base_slice;
-+#endif CONFIG_SCHED_BORE
++#endif // CONFIG_SCHED_BORE
  	u64 vprot = se->deadline;
  
  	if (sched_feat(RUN_TO_PARITY))
