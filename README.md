@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-08-12:
+- BORE scheduler patch for 6.17
+
 2025-08-08:
 - NVIDIA for next/6.17 fix 
 
