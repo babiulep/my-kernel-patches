@@ -2,6 +2,7 @@
 Patches for the linux kernel
 
 2025-08-20:
+- revert adios fix
 - fix adios patch for 6.17
 
 2025-08-12:
