@@ -1,6 +1,6 @@
 diff -rupN a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
---- a/drivers/block/zram/zram_drv.c	2025-07-24 06:03:51.000000000 +0200
-+++ b/drivers/block/zram/zram_drv.c	2025-07-24 16:52:42.814157114 +0200
+--- a/drivers/block/zram/zram_drv.c	2025-08-20 06:31:50.000000000 +0200
++++ b/drivers/block/zram/zram_drv.c	2025-08-20 09:31:36.402283840 +0200
 @@ -60,6 +60,23 @@ static void zram_free_page(struct zram *
  static int zram_read_from_zspool(struct zram *zram, struct page *page,
  				 u32 index);
@@ -25,7 +25,7 @@ diff -rupN a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
  #define slot_dep_map(zram, index) (&(zram)->table[(index)].dep_map)
  
  static void zram_slot_lock_init(struct zram *zram, u32 index)
-@@ -1806,7 +1823,7 @@ static int write_same_filled_page(struct
+@@ -1799,7 +1816,7 @@ static int write_same_filled_page(struct
  }
  
  static int write_incompressible_page(struct zram *zram, struct page *page,
@@ -34,7 +34,7 @@ diff -rupN a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
  {
  	unsigned long handle;
  	void *src;
-@@ -1835,6 +1852,7 @@ static int write_incompressible_page(str
+@@ -1828,6 +1845,7 @@ static int write_incompressible_page(str
  	zram_set_flag(zram, index, ZRAM_HUGE);
  	zram_set_handle(zram, index, handle);
  	zram_set_obj_size(zram, index, PAGE_SIZE);
@@ -42,7 +42,7 @@ diff -rupN a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
  	zram_slot_unlock(zram, index);
  
  	atomic64_add(PAGE_SIZE, &zram->stats.compr_data_size);
-@@ -1851,9 +1869,13 @@ static int zram_write_page(struct zram *
+@@ -1844,9 +1862,13 @@ static int zram_write_page(struct zram *
  	unsigned long handle;
  	unsigned int comp_len;
  	void *mem;
@@ -57,7 +57,7 @@ diff -rupN a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
  
  	/* First, free memory allocated to this slot (if any) */
  	zram_slot_lock(zram, index);
-@@ -1866,49 +1888,68 @@ static int zram_write_page(struct zram *
+@@ -1859,49 +1881,68 @@ static int zram_write_page(struct zram *
  	if (same_filled)
  		return write_same_filled_page(zram, element, index);
  
@@ -142,7 +142,7 @@ diff -rupN a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
  	return ret;
  }
  
-@@ -2913,6 +2954,15 @@ static int __init zram_init(void)
+@@ -2906,6 +2947,15 @@ static int __init zram_init(void)
  		num_devices--;
  	}
  
@@ -158,7 +158,7 @@ diff -rupN a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
  	return 0;
  
  out_error:
-@@ -2922,6 +2972,10 @@ out_error:
+@@ -2915,6 +2965,10 @@ out_error:
  
  static void __exit zram_exit(void)
  {

@@ -1,7 +1,7 @@
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2025-08-07 07:29:02.000000000 +0200
-+++ b/init/Kconfig	2025-08-07 11:05:05.908632972 +0200
-@@ -271,6 +271,19 @@ config BUILD_SALT
+--- a/init/Kconfig	2025-09-05 08:01:32.000000000 +0200
++++ b/init/Kconfig	2025-09-06 13:46:30.617071137 +0200
+@@ -275,6 +275,19 @@ config BUILD_SALT
  	  This is mostly useful for distributions which want to ensure the
  	  build is unique between builds. It's safe to leave the default.
  
@@ -22,8 +22,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool
  
 diff -rupN a/Makefile b/Makefile
---- a/Makefile	2025-08-07 11:03:02.234654509 +0200
-+++ b/Makefile	2025-08-07 11:06:13.683747155 +0200
+--- a/Makefile	2025-09-06 13:46:13.059957624 +0200
++++ b/Makefile	2025-09-06 13:46:30.618071143 +0200
 @@ -879,6 +879,22 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)

@@ -1,12 +1,17 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-09-06:
+- remove BORE patch  
+- update patches (offsets)  
+- add new adios (version 3)
+
 2025-08-20:
-- revert adios fix
+- revert adios fix  
 - fix adios patch for 6.17
 
 2025-08-12:
-- NVIDIA GPL issues patch
+- NVIDIA GPL issues patch  
 - BORE scheduler patch for 6.17
 
 2025-08-08:
