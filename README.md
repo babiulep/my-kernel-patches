@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-10-19:
+- updates for upcoming 6.18-rc2
+
 2025-09-06:
 - remove BORE patch  
 - update patches (offsets)  

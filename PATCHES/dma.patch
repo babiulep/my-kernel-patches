@@ -1,6 +1,6 @@
 diff -rupN a/drivers/dma-buf/dma-buf.c b/drivers/dma-buf/dma-buf.c
---- a/drivers/dma-buf/dma-buf.c	2025-07-24 07:23:35.000000000 +0200
-+++ b/drivers/dma-buf/dma-buf.c	2025-07-24 13:17:06.801843951 +0200
+--- a/drivers/dma-buf/dma-buf.c	2025-07-24 06:03:51.000000000 +0200
++++ b/drivers/dma-buf/dma-buf.c	2025-07-24 16:43:55.203300954 +0200
 @@ -518,6 +518,7 @@ static long dma_buf_ioctl(struct file *f
  	struct dma_buf *dmabuf;
  	struct dma_buf_sync sync;
@@ -24,8 +24,8 @@ diff -rupN a/drivers/dma-buf/dma-buf.c b/drivers/dma-buf/dma-buf.c
  		return -ENOTTY;
  	}
 diff -rupN a/drivers/dma-buf/heaps/system_heap.c b/drivers/dma-buf/heaps/system_heap.c
---- a/drivers/dma-buf/heaps/system_heap.c	2025-07-24 07:23:35.000000000 +0200
-+++ b/drivers/dma-buf/heaps/system_heap.c	2025-07-24 13:17:06.802118841 +0200
+--- a/drivers/dma-buf/heaps/system_heap.c	2025-07-24 06:03:51.000000000 +0200
++++ b/drivers/dma-buf/heaps/system_heap.c	2025-07-24 16:43:55.204233776 +0200
 @@ -20,6 +20,8 @@
  #include <linux/scatterlist.h>
  #include <linux/slab.h>
@@ -35,7 +35,7 @@ diff -rupN a/drivers/dma-buf/heaps/system_heap.c b/drivers/dma-buf/heaps/system_
  
  struct system_heap_buffer {
  	struct dma_heap *heap;
-@@ -279,6 +281,124 @@ static void system_heap_vunmap(struct dm
+@@ -270,6 +272,124 @@ static void system_heap_vunmap(struct dm
  	iosys_map_clear(map);
  }
  
@@ -160,7 +160,7 @@ diff -rupN a/drivers/dma-buf/heaps/system_heap.c b/drivers/dma-buf/heaps/system_
  static void system_heap_dma_buf_release(struct dma_buf *dmabuf)
  {
  	struct system_heap_buffer *buffer = dmabuf->priv;
-@@ -306,6 +426,7 @@ static const struct dma_buf_ops system_h
+@@ -297,6 +417,7 @@ static const struct dma_buf_ops system_h
  	.mmap = system_heap_mmap,
  	.vmap = system_heap_vmap,
  	.vunmap = system_heap_vunmap,
@@ -169,8 +169,8 @@ diff -rupN a/drivers/dma-buf/heaps/system_heap.c b/drivers/dma-buf/heaps/system_
  };
  
 diff -rupN a/include/linux/dma-buf.h b/include/linux/dma-buf.h
---- a/include/linux/dma-buf.h	2025-07-24 07:23:35.000000000 +0200
-+++ b/include/linux/dma-buf.h	2025-07-24 13:17:06.801968383 +0200
+--- a/include/linux/dma-buf.h	2025-07-24 06:03:51.000000000 +0200
++++ b/include/linux/dma-buf.h	2025-07-24 16:43:55.204832023 +0200
 @@ -22,6 +22,7 @@
  #include <linux/fs.h>
  #include <linux/dma-fence.h>
@@ -201,8 +201,8 @@ diff -rupN a/include/linux/dma-buf.h b/include/linux/dma-buf.h
  
  /**
 diff -rupN a/include/uapi/linux/dma-buf.h b/include/uapi/linux/dma-buf.h
---- a/include/uapi/linux/dma-buf.h	2025-07-24 07:23:35.000000000 +0200
-+++ b/include/uapi/linux/dma-buf.h	2025-07-24 13:17:06.802031225 +0200
+--- a/include/uapi/linux/dma-buf.h	2025-07-24 06:03:51.000000000 +0200
++++ b/include/uapi/linux/dma-buf.h	2025-07-24 16:43:55.205385514 +0200
 @@ -167,6 +167,28 @@ struct dma_buf_import_sync_file {
  	__s32 fd;
  };
