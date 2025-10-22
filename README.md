@@ -4,6 +4,7 @@ Patches for the linux kernel
 2025-10-22:
 - 'state.patch' fix for NVIDIA (tested with 580.95.05)  
 - 'module_fix.patch' for TIP & NEXT branches
+- add working 'adios' (v3) patch for linux-6.18
 
 2025-10-19:
 - updates for upcoming 6.18-rc2
