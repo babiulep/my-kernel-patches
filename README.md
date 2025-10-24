@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-10-24:
+- 'module_fix.patch' included in source tree
+
 2025-10-22:
 - 'state.patch' fix for NVIDIA (tested with 580.95.05)  
 - 'module_fix.patch' for TIP & NEXT branches
