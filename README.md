@@ -4,14 +4,14 @@ Patches for the linux kernel
 2025-10-26:
 - rearrange patches  
 - 'module_fix.patch' no longer needed  
-- NVIDIA: add 'in_irq.patch': 'in_irq' has changed into 'in_hardirq'  
+- LINUX-TIP: add 'in_irq.patch': 'in_irq' has changed into 'in_hardirq'  
   (https://lore.kernel.org/all/176133511760.2601451.11756138328464524645.tip-bot2@tip-bot2/)
 
 2025-10-24:
 - 'module_fix.patch' included in source tree
 
 2025-10-22:
-- 'state.patch' fix for NVIDIA (tested with 580.95.05)  
+- LINUX-NEXT: 'state.patch' fix for NVIDIA (tested with 580.95.05)  
 - 'module_fix.patch' for TIP & NEXT branches
 - add working 'adios' (v3) patch for linux-6.18
 
