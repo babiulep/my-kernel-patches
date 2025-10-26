@@ -1,0 +1,33 @@
+diff -rupN a/common/inc/nv-time.h b/common/inc/nv-time.h
+--- a/common/inc/nv-time.h	2025-09-23 12:32:58.000000000 +0200
++++ b/common/inc/nv-time.h	2025-10-26 13:29:54.672534572 +0100
+@@ -82,7 +82,7 @@ static inline NV_STATUS nv_sleep_us(unsi
+     ktime_get_raw_ts64(&tm1);
+ #endif
+ 
+-    if (in_irq() && (us > NV_MAX_ISR_DELAY_US))
++    if (in_hardirq() && (us > NV_MAX_ISR_DELAY_US))
+         return NV_ERR_GENERIC;
+ 
+     mdelay_safe_msec = us / 1000;
+@@ -127,7 +127,7 @@ static inline NV_STATUS nv_sleep_ms(unsi
+     tm_start = tm_aux;
+ #endif
+ 
+-    if (in_irq() && (ms > NV_MAX_ISR_DELAY_MS))
++    if (in_hardirq() && (ms > NV_MAX_ISR_DELAY_MS))
+     {
+         return NV_ERR_GENERIC;
+     }
+diff -rupN a/nvidia/os-interface.c b/nvidia/os-interface.c
+--- a/nvidia/os-interface.c	2025-09-23 12:33:36.000000000 +0200
++++ b/nvidia/os-interface.c	2025-10-26 13:30:15.984579282 +0100
+@@ -341,7 +341,7 @@ NvBool NV_API_CALL os_semaphore_may_slee
+ 
+ NvBool NV_API_CALL os_is_isr(void)
+ {
+-    return (in_irq());
++    return (in_hardirq());
+ }
+ 
+ // return TRUE if the caller is the super-user
