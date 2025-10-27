@@ -1,6 +1,12 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-10-27:
+In linux-next Eric Biggers has changed the BLAKE2b library API  
+See: https://lore.kernel.org/all/20251018043106.375964-1-ebiggers@kernel.org/  
+A patch for the dkms version of the amneziawg kernel module is added:  
+AMNEZIAWG/blake2s.patch
+
 2025-10-26:
 - rearrange patches  
 - 'module_fix.patch' no longer needed  
