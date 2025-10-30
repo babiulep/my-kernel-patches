@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-10-30:
+- add dma.patch for linux next 20251030
+
 2025-10-27:  
 
 In linux-next Eric Biggers has changed the BLAKE2b library API  
