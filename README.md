@@ -1,6 +1,9 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-11-05:
+- add drm_error.patch for linux next 20251105
+
 2025-10-30:
 - add dma.patch for linux next 20251030
 
