@@ -2,6 +2,7 @@
 Patches for the linux kernel
 
 2025-11-05:
+- NVIDIA: add new folder 6.19 for linux-next patches  
 - add drm_error.patch for linux next 20251105
 
 2025-10-30:
