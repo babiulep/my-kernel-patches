@@ -1,6 +1,10 @@
 # my-kernel-patches
 Patches for the linux kernel
 
+2025-11-06:
+- remove branch 6.17  
+- include 6.18 patches when applying 6.19 patches!
+
 2025-11-05:
 - NVIDIA: add new folder 6.19 for linux-next patches  
 - add drm_error.patch for linux next 20251105
