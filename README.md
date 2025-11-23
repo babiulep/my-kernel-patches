@@ -1,6 +1,9 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2025-11-22
+* sync patches with 6.18-rc7
+
 ### 2025-11-06:
 * remove branch 6.17
 * include 6.18 patches when applying 6.19 patches!

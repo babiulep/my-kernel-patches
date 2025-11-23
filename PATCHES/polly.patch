@@ -24,12 +24,16 @@ diff -rupN a/init/Kconfig b/init/Kconfig
 diff -rupN a/Makefile b/Makefile
 --- a/Makefile	2025-09-29 17:37:57.293435632 +0200
 +++ b/Makefile	2025-09-29 17:38:09.390713081 +0200
-@@ -879,6 +879,22 @@ endif
+@@ -879,6 +879,26 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
 +ifdef CONFIG_POLLY_CLANG
 +KBUILD_CFLAGS  += -mllvm -polly \
++                  -mllvm -polly-omp-backend=LLVM \
++                  -mllvm -polly-num-threads=4 \
++                  -mllvm -polly-scheduling=dynamic \
++                  -mllvm -polly-scheduling-chunksize=1 \
 +                  -mllvm -polly-ast-use-context \
 +                  -mllvm -polly-invariant-load-hoisting \
 +                  -mllvm -polly-loopfusion-greedy \
