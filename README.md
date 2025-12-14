@@ -2,6 +2,7 @@
 ## Patches for the linux kernel
 
 ### 2025-12-14
+* show my preferred order of patches
 * sync patches with 6.18.1
 
 ### 2025-11-22
