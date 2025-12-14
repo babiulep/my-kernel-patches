@@ -1,6 +1,6 @@
 diff -rupN a/arch/Kconfig b/arch/Kconfig
---- a/arch/Kconfig	2025-09-29 17:17:19.000000000 +0200
-+++ b/arch/Kconfig	2025-09-29 17:33:03.145050973 +0200
+--- a/arch/Kconfig	2025-11-30 23:42:10.000000000 +0100
++++ b/arch/Kconfig	2025-12-13 13:41:09.479852885 +0100
 @@ -864,6 +864,25 @@ config LTO_CLANG_THIN
  	    https://clang.llvm.org/docs/ThinLTO.html
  
@@ -28,8 +28,8 @@ diff -rupN a/arch/Kconfig b/arch/Kconfig
  
  config ARCH_SUPPORTS_AUTOFDO_CLANG
 diff -rupN a/.gitignore b/.gitignore
---- a/.gitignore	2025-09-29 17:17:19.000000000 +0200
-+++ b/.gitignore	2025-09-29 17:33:03.150051017 +0200
+--- a/.gitignore	2025-11-30 23:42:10.000000000 +0100
++++ b/.gitignore	2025-12-13 13:41:09.481668204 +0100
 @@ -55,6 +55,7 @@
  *.zst
  Module.symvers
@@ -47,9 +47,9 @@ diff -rupN a/.gitignore b/.gitignore
  /vmlinux-gdb.py
  /vmlinuz
 diff -rupN a/Makefile b/Makefile
---- a/Makefile	2025-09-29 17:17:19.000000000 +0200
-+++ b/Makefile	2025-09-29 17:33:03.151051026 +0200
-@@ -1000,10 +1000,10 @@ export CC_FLAGS_SCS
+--- a/Makefile	2025-12-13 13:36:27.494677999 +0100
++++ b/Makefile	2025-12-13 13:41:09.638853862 +0100
+@@ -1020,10 +1020,10 @@ export CC_FLAGS_SCS
  endif
  
  ifdef CONFIG_LTO_CLANG
@@ -63,7 +63,7 @@ diff -rupN a/Makefile b/Makefile
  endif
  CC_FLAGS_LTO	+= -fvisibility=hidden
  
-@@ -1198,7 +1198,7 @@ export ARCH_DRIVERS	:= $(drivers-y) $(dr
+@@ -1220,7 +1220,7 @@ export ARCH_DRIVERS	:= $(drivers-y) $(dr
  KBUILD_VMLINUX_OBJS := built-in.a $(patsubst %/, %/lib.a, $(filter %/, $(libs-y)))
  KBUILD_VMLINUX_LIBS := $(filter-out %/, $(libs-y))
  
@@ -72,7 +72,7 @@ diff -rupN a/Makefile b/Makefile
  export KBUILD_LDS          := arch/$(SRCARCH)/kernel/vmlinux.lds
  
  ifdef CONFIG_TRIM_UNUSED_KSYMS
-@@ -1207,16 +1207,12 @@ ifdef CONFIG_TRIM_UNUSED_KSYMS
+@@ -1229,16 +1229,12 @@ ifdef CONFIG_TRIM_UNUSED_KSYMS
  KBUILD_MODULES := y
  endif
  
@@ -95,7 +95,7 @@ diff -rupN a/Makefile b/Makefile
  
  PHONY += vmlinux_o
  vmlinux_o: vmlinux.a $(KBUILD_VMLINUX_LIBS)
-@@ -1576,6 +1572,7 @@ endif # CONFIG_MODULES
+@@ -1598,6 +1594,7 @@ endif # CONFIG_MODULES
  CLEAN_FILES += vmlinux.symvers modules-only.symvers \
  	       modules.builtin modules.builtin.modinfo modules.nsdeps \
  	       modules.builtin.ranges vmlinux.o.map vmlinux.unstripped \
@@ -103,7 +103,7 @@ diff -rupN a/Makefile b/Makefile
  	       compile_commands.json rust/test \
  	       rust-project.json .vmlinux.objs .vmlinux.export.c \
                 .builtin-dtbs-list .builtin-dtb.S
-@@ -2019,7 +2016,7 @@ clean: $(clean-dirs)
+@@ -2040,7 +2037,7 @@ clean: $(clean-dirs)
  	$(call cmd,rmfiles)
  	@find . $(RCS_FIND_IGNORE) \
  		\( -name '*.[aios]' -o -name '*.rsi' -o -name '*.ko' -o -name '.*.cmd' \
@@ -114,7 +114,7 @@ diff -rupN a/Makefile b/Makefile
  		-o -name '*.dt.yaml' -o -name 'dtbs-list' \
 diff -rupN a/scripts/Makefile.thinlto b/scripts/Makefile.thinlto
 --- a/scripts/Makefile.thinlto	1970-01-01 01:00:00.000000000 +0100
-+++ b/scripts/Makefile.thinlto	2025-09-29 17:33:03.152055462 +0200
++++ b/scripts/Makefile.thinlto	2025-12-13 13:41:09.640379091 +0100
 @@ -0,0 +1,38 @@
 +PHONY := __default
 +__default:
@@ -156,7 +156,7 @@ diff -rupN a/scripts/Makefile.thinlto b/scripts/Makefile.thinlto
 +.PHONY: $(PHONY)
 diff -rupN a/scripts/Makefile.vmlinux_a b/scripts/Makefile.vmlinux_a
 --- a/scripts/Makefile.vmlinux_a	1970-01-01 01:00:00.000000000 +0100
-+++ b/scripts/Makefile.vmlinux_a	2025-09-29 17:33:03.152223544 +0200
++++ b/scripts/Makefile.vmlinux_a	2025-12-13 13:41:09.640548761 +0100
 @@ -0,0 +1,83 @@
 +# SPDX-License-Identifier: GPL-2.0-only
 +
@@ -242,8 +242,8 @@ diff -rupN a/scripts/Makefile.vmlinux_a b/scripts/Makefile.vmlinux_a
 +
 +.PHONY: $(PHONY)
 diff -rupN a/scripts/mod/modpost.c b/scripts/mod/modpost.c
---- a/scripts/mod/modpost.c	2025-09-29 17:17:19.000000000 +0200
-+++ b/scripts/mod/modpost.c	2025-09-29 17:33:03.152809442 +0200
+--- a/scripts/mod/modpost.c	2025-11-30 23:42:10.000000000 +0100
++++ b/scripts/mod/modpost.c	2025-12-13 13:41:09.641149933 +0100
 @@ -1473,13 +1473,22 @@ static void extract_crcs_for_object(cons
  	char cmd_file[PATH_MAX];
  	char *buf, *p;

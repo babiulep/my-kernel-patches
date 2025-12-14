@@ -1,7 +1,7 @@
 diff -rupN a/drivers/hid/hid-logitech-hidpp.c b/drivers/hid/hid-logitech-hidpp.c
---- a/drivers/hid/hid-logitech-hidpp.c	2024-12-08 23:03:39.000000000 +0100
-+++ b/drivers/hid/hid-logitech-hidpp.c	2024-12-09 15:23:17.492844383 +0100
-@@ -973,7 +973,7 @@ static int hidpp_root_get_protocol_versi
+--- a/drivers/hid/hid-logitech-hidpp.c	2025-12-13 13:26:11.357317157 +0100
++++ b/drivers/hid/hid-logitech-hidpp.c	2025-12-13 13:36:51.880393435 +0100
+@@ -980,7 +980,7 @@ static int hidpp_root_get_protocol_versi
  		return -EIO;
  
  	if (ret > 0) {
