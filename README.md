@@ -3,6 +3,8 @@
 
 ### 2025-12-20
 * New NVIDIA patch for 6.19
+* Added several kernel patches for 6.19
+* Create directories for kernel versions 6.18 and 6.19
 
 ### 2025-12-17
 * Be careful using these NVIDIA patches for the upcoming kernel 6.19
