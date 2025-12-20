@@ -1,0 +1,12 @@
+diff -rupN a/Makefile b/Makefile
+--- a/Makefile	2025-09-05 08:01:32.000000000 +0200
++++ b/Makefile	2025-09-06 13:43:07.879760051 +0200
+@@ -1060,6 +1060,8 @@ NOSTDINC_FLAGS += -nostdinc
+ # arrays. Enforce this for everything that may examine structure sizes and
+ # perform bounds checking.
+ KBUILD_CFLAGS += $(call cc-option, -fstrict-flex-arrays=3)
++KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-var-unsafe)
++KBUILD_CFLAGS += $(call cc-disable-warning, default-const-init-field-unsafe)
+ 
+ # disable invalid "can't wrap" optimizations for signed / pointers
+ KBUILD_CFLAGS	+= -fno-strict-overflow

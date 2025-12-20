@@ -1,0 +1,21 @@
+diff -rupN a/drivers/gpu/drm/Kconfig b/drivers/gpu/drm/Kconfig
+--- a/drivers/gpu/drm/Kconfig	2025-07-24 07:23:35.000000000 +0200
++++ b/drivers/gpu/drm/Kconfig	2025-07-24 13:11:47.567028740 +0200
+@@ -186,7 +186,7 @@ config DRM_LOAD_EDID_FIRMWARE
+ source "drivers/gpu/drm/display/Kconfig"
+ 
+ config DRM_TTM
+-	tristate
++	tristate "TTM"
+ 	depends on DRM && MMU
+ 	select SHMEM
+ 	help
+@@ -230,7 +230,7 @@ config DRM_VRAM_HELPER
+ 	  Helpers for VRAM memory management
+ 
+ config DRM_TTM_HELPER
+-	tristate
++	tristate "TTM_HELPER"
+ 	depends on DRM
+ 	select DRM_TTM
+ 	select DRM_KMS_HELPER if DRM_FBDEV_EMULATION
