@@ -1,6 +1,9 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2025-12-20
+* New NVIDIA patch for 6.19
+
 ### 2025-12-17
 * Be careful using these NVIDIA patches for the upcoming kernel 6.19
 * A lot has changed since and your (dkms) build will probably fail...
