@@ -1,7 +1,7 @@
 diff -rupN a/arch/x86/Makefile b/arch/x86/Makefile
---- a/arch/x86/Makefile	2025-09-05 08:01:32.000000000 +0200
-+++ b/arch/x86/Makefile	2025-09-06 13:48:36.697577636 +0200
-@@ -163,7 +163,7 @@ else
+--- a/arch/x86/Makefile	2025-12-29 10:20:05.000000000 +0100
++++ b/arch/x86/Makefile	2025-12-29 11:02:10.109358679 +0100
+@@ -165,7 +165,7 @@ else
  	KBUILD_CFLAGS += -mskip-rax-setup
  
  ifdef CONFIG_X86_NATIVE_CPU

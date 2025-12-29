@@ -1,6 +1,9 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2025-12-29
+* sync 6.19 patches
+
 ### 2025-12-20
 * New NVIDIA patch for 6.19
 * Added several kernel patches for 6.19
