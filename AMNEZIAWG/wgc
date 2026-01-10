@@ -391,17 +391,17 @@ start_vpn() {
   ip netns exec $NAMESPACE ip link set lo up
   ip netns exec $NAMESPACE ip addr add "$Address" dev $DEV
   [[ $MTU ]] && ip netns exec $NAMESPACE ip link set $DEV mtu $MTU
-  [[ $Jc ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jc "${Jc}"
-  [[ $Jmin ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jmin "${Jmin}"
-  [[ $Jmax ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jmax "${Jmax}"
-  [[ $H1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h1 "${H1}"
-  [[ $H2 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h2 "${H2}"
-  [[ $H3 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h3 "${H3}"
-  [[ $H4 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h4 "${H4}"
-  [[ $S0 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE s0 "${S0}"
-  [[ $S1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE s1 "${S1}"
+  [[ $Jmin ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jmin ${Jmin}
+  [[ $Jmax ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jmax ${Jmax}
+  [[ $H1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h1 ${H1}
+  [[ $H2 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h2 ${H2}
+  [[ $H3 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h3 ${H3}
+  [[ $H4 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h4 ${H4}
+  [[ $S0 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE s0 ${S0}
+  [[ $S1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE s1 ${S1}
   [[ $I1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE i1 "${I1}"
   [[ $I2 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE i2 "${I2}"
+  [[ $Jc ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jc ${Jc}
   ip netns exec $NAMESPACE ip link set $DEV up
   ip netns exec $NAMESPACE ip route add default dev $DEV
 
@@ -411,19 +411,19 @@ start_vpn() {
     echo "nameserver $dns"
   done > /etc/netns/$NAMESPACE/resolv.conf
 
-  echo "$Y VPN connected successfully"
-  echo
-  ip netns exec $NAMESPACE awg show $DEV
-  echo
-  echo "Network namespace: $NAMESPACE"
-  echo
-  ip netns exec $NAMESPACE ip -c addr show $DEV
-  echo
-  ip netns exec $NAMESPACE ip -c route show
-  echo
-  echo "To run commands in the VPN namespace:"
-  echo "  $THIS exec $NAMESPACE <command>"
-  echo "  Example: $THIS exec $NAMESPACE curl ifconfig.me"
+  # echo "$Y VPN connected successfully"
+  # echo
+  # ip netns exec $NAMESPACE awg show $DEV
+  # echo
+  # echo "Network namespace: $NAMESPACE"
+  # echo
+  # ip netns exec $NAMESPACE ip -c addr show $DEV
+  # echo
+  # ip netns exec $NAMESPACE ip -c route show
+  # echo
+  # echo "To run commands in the VPN namespace:"
+  # echo "  $THIS exec $NAMESPACE <command>"
+  # echo "  Example: $THIS exec $NAMESPACE curl ifconfig.me"
 }
 
 set +e +x
