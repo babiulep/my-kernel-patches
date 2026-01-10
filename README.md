@@ -1,6 +1,11 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2026-01-10
+* add "wgc": rewrite for amneziawg  
+  currently reads the extra config entries:  
+  jc, jmin, jmax, h1, h2, h3, h4, s0, s1, i1, i2
+
 ### 2025-12-29
 * sync 6.19 patches
 

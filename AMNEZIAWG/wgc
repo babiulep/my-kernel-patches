@@ -1,0 +1,467 @@
+#!/usr/bin/env bash
+#
+# wgc - Manage multiple WireGuard VPNs using Linux network namespaces.
+# Copyright (C) 2025 Marco Coletti <colemarc@gmail.com>.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+
+[[ $UID == 0 ]] || exec sudo "$0" "$@"
+
+show_usage() {
+  cat <<EOF
+Usage: $THIS [start <vpn>|stop <vpn>|status <vpn>|active|list|exec <vpn> <command>]
+
+<vpn> should match the config file name /etc/amnezia/amneziawg/<vpn>.conf
+
+Commands:
+  start  - Start the VPN connection
+  stop   - Stop the VPN connection
+  status - Show VPN connection status
+  active - Show active VPN namespaces
+  list   - List config files in /etc/amnezia/amneziawg/
+  exec   - Execute a command in the VPN namespace
+           Example: $THIS <vpn> exec curl ifconfig.me
+
+To enable bash completion: $THIS completion
+EOF
+}
+
+check_dependencies() {
+  local missing=()
+  for cmd in ip wg; do
+    command -v $cmd >/dev/null || missing+=($cmd)
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "ERROR: Missing required commands: ${missing[*]}"
+    echo "Install with: apt install wireguard-tools iproute2"
+    return 1
+  fi
+}
+
+list_config_files() {
+  local f
+  printf "%-12s %-18s %-18s %s\n" "Name" "Address" "AllowedIPs" "Endpoint"
+  printf "%-12s %-18s %-18s %s\n" "----" "-------" "----------" "--------"
+  for f in /etc/amnezia/amneziawg/*.conf; do
+    [[ "$f" == "/etc/amnezia/amneziawg/*.conf" ]] && return 0
+    f=${f##*/}; f=${f%.*}
+    [[ $f =~ wg[0-9]+ ]] && continue # exclude wg0, wg1, wg2 ...
+    parse_config_file "$f" || return 1
+    printf "%-12s %-18s %-18s %s\n" "$f" "$Address" "$AllowedIPs" "$Endpoint"
+  done
+}
+
+parse_config_file() {
+  local CONFIG_FILE="/etc/amnezia/amneziawg/$1.conf"
+
+  [[ -f "$CONFIG_FILE" ]] || { echo "Config file not found: $CONFIG_FILE"; return 1; }
+  [[ -r "$CONFIG_FILE" ]] || { echo "Can't read file: $CONFIG_FILE"; return 1; }
+
+  local section=""
+  while read -r key eq value; do
+      # Skip empty lines
+      [[ -z "$key" ]] && continue
+
+      # Track section
+      if [[ "$key" == "["* ]]; then
+          section="$key"
+          continue
+      fi
+
+      # Process only if the second token is "="
+      [[ "$eq" != "=" ]] && continue
+
+      # Get values according to section/key
+      process_config_line "$key" "$value" "$section"
+  done < "$CONFIG_FILE"
+
+  for k in Address PrivateKey DNS PublicKey Endpoint AllowedIPs; do
+    [[ ${!k} ]] || { echo "Missing key '$k' in file $CONFIG_FILE"; return 1; }
+  done
+
+}
+
+show_config() {
+  for k in Address PrivateKey MTU DNS PublicKey PresharedKey Endpoint AllowedIPs PersistentKeepalive Jc Jmin Jmax H1 H2 H3 H4 S0 S1 I1 I2; do
+    echo "$k=${!k}"
+  done
+  echo
+}
+
+process_config_line() {
+    local key="$1"
+    local value="$2"
+    local section="$3"
+
+    case "$key" in
+        Address)
+            Address=$(extract_ipv4 "$value")
+            ;;
+        PrivateKey)
+            PrivateKey="$value"
+            ;;
+        MTU)
+            MTU="$value"
+            ;;
+        DNS)
+            DNS=$(extract_all_ipv4 "$value")
+            ;;
+        PublicKey)
+            [[ "$section" == "[Peer]" ]] && PublicKey="$value"
+            ;;
+        PresharedKey)
+            PresharedKey="$value"
+            ;;
+        Endpoint)
+            Endpoint="$value"
+            ;;
+        AllowedIPs)
+            AllowedIPs=$(extract_ipv4 "$value")
+            ;;
+        PersistentKeepalive)
+            PersistentKeepalive="$value"
+            ;;
+        Jc)
+            Jc="$value"
+            ;;
+        Jmin)
+            Jmin="$value"
+            ;;
+        Jmax)
+            Jmax="$value"
+            ;;
+        H1)
+            H1="$value"
+            ;;
+        H2)
+            H2="$value"
+            ;;
+        H3)
+            H3="$value"
+            ;;
+        H4)
+            H4="$value"
+            ;;
+        S0)
+            S0="$value"
+            ;;
+        S1)
+            S1="$value"
+            ;;
+        I1)
+            I1="$value"
+            ;;
+        I2)
+            I2="$value"
+            ;;
+    esac
+}
+
+extract_ipv4() {
+    local input="$1"
+    local regex='([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]+)?'
+
+    if [[ $input =~ $regex ]]; then
+        echo "${BASH_REMATCH[0]}"
+    fi
+}
+
+extract_all_ipv4() {
+    local input="$1"
+    local result=""
+    local regex='([0-9]{1,3}\.){3}[0-9]{1,3}'
+
+    while [[ $input =~ $regex ]]; do
+        result="$result${BASH_REMATCH[0]} "
+        # Remove found match and go on
+        input="${input/"${BASH_REMATCH[0]}"/}"
+    done
+
+    # Remove final space
+    echo "${result% }"
+}
+
+disconnect() {
+  local pids=$(ip netns pids $NAMESPACE 2>/dev/null)
+  if [[ "$pids" ]]; then
+    echo -e "Terminating processes:\n$(ps -fp $pids)"
+    kill $pids 2>/dev/null || true
+    local -i count=20
+    local bar=$(printf '%.s.' $(seq 1 $count))
+    while [[ "$pids" && count -gt 0 ]]; do
+      sleep 0.5
+      pids=$(ip netns pids $NAMESPACE 2>/dev/null)
+      count+=-1
+      echo -ne "\r${bar:1:$((count))} "
+    done
+    if ((count==0)); then
+      echo "Forcibly terminating processes (SIGKILL)"
+      kill -9 $pids 2>/dev/null || true
+      sleep 0.1
+    fi
+  fi
+  # ip netns del removes all interfaces within the namespace automatically
+  ip netns del $NAMESPACE 2>/dev/null || true
+  rm -rf /etc/netns/$NAMESPACE 2>/dev/null || true
+}
+
+show_status() {
+  if ip netns exec $NAMESPACE ip address show $DEV >/dev/null 2>&1; then
+    echo "$Y $DEV VPN is CONNECTED"
+    echo
+    ip netns exec $NAMESPACE awg show $DEV
+    echo
+    echo "Interface details:"
+    ip netns exec $NAMESPACE ip -c addr show $DEV
+    echo
+    echo "Routes:"
+    ip netns exec $NAMESPACE ip -c route show
+    echo
+    echo "Active processes in namespace $NAMESPACE:"
+    pids=$(ip netns pids $NAMESPACE 2>/dev/null)
+    [[ $pids ]] && ps -fp $pids || echo "  (none)"
+  else
+    echo "$N $DEV VPN is DISCONNECTED"
+    return 0
+  fi
+}
+
+show_active_vpns() {
+  local ns x net found=false
+  while read -r ns x; do
+    found=true
+    if ip netns exec $ns awg show $ns &>/dev/null; then
+      read -r ns x net < <(ip netns exec $ns ip -br -c address show $ns 2>/dev/null)
+      echo $ns $net
+    fi
+  done < <(ip netns list) || true
+  $found || echo "No active VPN namespaces"
+}
+
+stop_vpn() {
+  ip netns exec $NAMESPACE ip address show $DEV >/dev/null 2>&1 || {
+    echo "$N $DEV is already disconnected"
+    return 0
+  }
+  disconnect
+  echo "$Y $DEV is now disconnected"
+}
+
+exec_in_namespace() {
+  [[ $# -eq 0 ]] && { echo "ERROR: No command specified"; show_usage; return 1; }
+  ip netns exec $NAMESPACE ip address show $DEV >/dev/null 2>&1 || {
+    echo "ERROR: $DEV VPN is not connected. Start it first with: $THIS start $DEV"
+    return 1
+  }
+  exec ip netns exec $NAMESPACE sudo -u "${SUDO_USER:-$USER}" "$@"
+}
+
+enable_completion() {
+  local completion_file="/etc/bash_completion.d/$THIS"
+
+  cat > "$completion_file" << 'EOF'
+_wgc_completion() {
+  local cur prev commands
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  # Main commands
+  commands="start stop status active list exec"
+
+  # Complete the first arg with main commands
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+    return 0
+  fi
+
+  # Complete the second arg depending on command
+  if [[ $COMP_CWORD -eq 2 ]]; then
+    local vpns
+    case "$prev" in
+      star|start)
+        # VPN config file list
+        local f
+        vpns=$(
+          for f in $(sudo find /etc/amnezia/amneziawg -maxdepth 1 -name "*.conf" -type f 2>/dev/null); do
+            f=${f##*/}; f=${f%.*}
+            [[ $f =~ wg[0-9]+ ]] && continue # exclude wg0, wg1, wg2 ...
+            echo "$f"
+          done )
+        COMPREPLY=( $(compgen -W "$vpns" -- "$cur") )
+        ;;
+      sto|stop|stat|statu|status|e|ex|exe|exec)
+        # Active VPNs (namespaces) list
+        local ns x
+        vpns=$(
+          while read -r ns x; do
+            sudo ip netns exec "$ns" awg show "$ns" &>/dev/null && echo "$ns"
+          done 2>/dev/null < <(sudo ip netns list 2>/dev/null) )
+        COMPREPLY=( $(compgen -W "$vpns" -- "$cur") )
+        ;;
+    esac
+    return 0
+  fi
+
+  # For exec, after VPN name do complete with system commmands
+	if [[ $COMP_CWORD -gt 2 ]]; then
+		case "${COMP_WORDS[1]}" in
+			e|ex|exe|exec)
+				if declare -F _command_offset &>/dev/null; then
+					# Use advanced completion if available
+					_command_offset 3
+				else
+					# Fallback to basic completion
+					if [[ $COMP_CWORD -eq 3 ]]; then
+						COMPREPLY=( $(compgen -c -- "$cur") )
+					else
+						compopt -o default
+						COMPREPLY=()
+					fi
+				fi
+				return 0
+				;;
+		esac
+	fi
+}
+
+complete -F _wgc_completion wgc
+EOF
+
+  chmod 644 "$completion_file"
+
+  cat << EOF
+$Y Bash completion installed to $completion_file
+
+To activate completion in current shell:
+  source $completion_file
+
+Completion will be automatically available in new shell sessions.
+
+To avoid sudo password prompt:
+  sudo visudo -f /etc/sudoers.d/wgc-completion
+  Then add:
+  %sudo ALL=(ALL) NOPASSWD: /usr/bin/find /etc/amnezia/amneziawg/ -maxdepth 1 -name *.conf -type f
+  %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip netns list
+  %sudo ALL=(ALL) NOPASSWD: /usr/sbin/ip netns exec * awg show *
+EOF
+}
+
+start_vpn() {
+
+  # get parameters from config file named $DEV
+  parse_config_file $DEV || return 1
+
+  if ip netns exec $NAMESPACE ip -c address show $DEV 2>/dev/null; then
+    echo "$N $DEV is already connected"
+    echo "  To reconnect, first stop it: $THIS stop $DEV"
+    return 1
+  fi
+
+  disconnect # Clean slate
+
+  # Create WireGuard interface
+  ip link add dev $DEV type amneziawg
+
+  # Configure WireGuard
+  [[ $PresharedKey ]] && presharedkey='preshared-key <(echo "$PresharedKey")'
+  [[ $PersistentKeepalive ]] && persistentkeepalive='persistent-keepalive $PersistentKeepalive'
+  eval awg set $DEV \
+    private-key <(echo "$PrivateKey") \
+    peer "$PublicKey" $presharedkey \
+    allowed-ips "$AllowedIPs" \
+    endpoint $Endpoint \
+    $persistentkeepalive
+
+  # Create and configure namespace
+  ip netns add $NAMESPACE
+  ip link set $DEV netns $NAMESPACE
+  ip netns exec $NAMESPACE ip link set lo up
+  ip netns exec $NAMESPACE ip addr add "$Address" dev $DEV
+  [[ $MTU ]] && ip netns exec $NAMESPACE ip link set $DEV mtu $MTU
+  [[ $Jc ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jc "${Jc}"
+  [[ $Jmin ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jmin "${Jmin}"
+  [[ $Jmax ]] && ip netns exec $NAMESPACE awg set $NAMESPACE jmax "${Jmax}"
+  [[ $H1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h1 "${H1}"
+  [[ $H2 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h2 "${H2}"
+  [[ $H3 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h3 "${H3}"
+  [[ $H4 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE h4 "${H4}"
+  [[ $S0 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE s0 "${S0}"
+  [[ $S1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE s1 "${S1}"
+  [[ $I1 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE i1 "${I1}"
+  [[ $I2 ]] && ip netns exec $NAMESPACE awg set $NAMESPACE i2 "${I2}"
+  ip netns exec $NAMESPACE ip link set $DEV up
+  ip netns exec $NAMESPACE ip route add default dev $DEV
+
+  # Configure DNS
+  mkdir -p /etc/netns/$NAMESPACE
+  for dns in $DNS; do
+    echo "nameserver $dns"
+  done > /etc/netns/$NAMESPACE/resolv.conf
+
+  echo "$Y VPN connected successfully"
+  echo
+  ip netns exec $NAMESPACE awg show $DEV
+  echo
+  echo "Network namespace: $NAMESPACE"
+  echo
+  ip netns exec $NAMESPACE ip -c addr show $DEV
+  echo
+  ip netns exec $NAMESPACE ip -c route show
+  echo
+  echo "To run commands in the VPN namespace:"
+  echo "  $THIS exec $NAMESPACE <command>"
+  echo "  Example: $THIS exec $NAMESPACE curl ifconfig.me"
+}
+
+set +e +x
+THIS=${0##*/}
+check_dependencies || exit 1
+DEV=$2
+NAMESPACE=$DEV
+N=$'\e[01;31m✗\e[m'
+Y=$'\e[01;32m✓\e[m'
+
+case "$1" in
+  star|start)
+    [[ $2 ]] || { show_usage; exit 1; }
+    start_vpn
+    ;;
+  sto|stop)
+    [[ $2 ]] || { show_usage; exit 1; }
+    stop_vpn
+    ;;
+  stat|statu|status)
+    [[ $2 ]] || { show_usage; exit 1; }
+    show_status
+    ;;
+  a|ac|act|acti|activ|active)
+    show_active_vpns
+    ;;
+  l|li|lis|list)
+    list_config_files
+    ;;
+  e|ex|exe|exec)
+    [[ $2 ]] || { show_usage; exit 1; }
+    shift; shift
+    exec_in_namespace "$@"
+    ;;
+  completion)
+    enable_completion
+    ;;
+  *)
+    show_usage
+    ;;
+esac
