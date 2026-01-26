@@ -1,6 +1,9 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2026-01-26
+* separate patches for TIP and NEXT trees
+
 ### 2026-01-10
 * add my [wgc](https://github.com/colemar/wgc/) rewrite for amneziawg  
   currently reads the extra config entries:  
