@@ -1,6 +1,9 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2026-01-27
+* added 'next'-patches for NVIDIA and VHBA kernel modules
+
 ### 2026-01-26
 * separate patches for TIP and NEXT trees
 

@@ -1,0 +1,12 @@
+diff -rupN a/vhba.c b/vhba.c
+--- a/vhba.c    2025-07-18 00:49:33.000000000 +0200
++++ b/vhba.c    2026-01-27 12:14:31.886443510 +0100
+@@ -471,7 +471,7 @@ static void vhba_free_command (struct vh
+     spin_unlock_irqrestore(&vhost->cmd_lock, flags);
+ }
+ 
+-static int vhba_queuecommand (struct Scsi_Host *shost, struct scsi_cmnd *cmd)
++static enum scsi_qc_status vhba_queuecommand (struct Scsi_Host *shost, struct scsi_cmnd *cmd)
+ {
+     struct vhba_device *vdev;
+     int retval;
