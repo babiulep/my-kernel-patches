@@ -1,6 +1,9 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2026-01-28
+* upgrade bore-scheduler to 6.6.0
+
 ### 2026-01-27
 * added 'next'-patches for NVIDIA and VHBA kernel modules
 
