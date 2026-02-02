@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 --- a/include/linux/sched/bore.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/linux/sched/bore.h	2026-01-28 11:25:04.823836842 +0100
++++ b/include/linux/sched/bore.h	2026-02-02 16:27:41.254966795 +0100
 @@ -0,0 +1,39 @@
 +#ifndef _KERNEL_SCHED_BORE_H
 +#define _KERNEL_SCHED_BORE_H
@@ -14,7 +14,7 @@ diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 +#define SCHED_BORE_AUTHOR   "Masahito Suzuki"
 +#define SCHED_BORE_PROGNAME "BORE CPU Scheduler modification"
 +
-+#define SCHED_BORE_VERSION  "6.6.0"
++#define SCHED_BORE_VERSION  "6.6.1"
 +
 +extern u8   __read_mostly sched_bore;
 +extern u8   __read_mostly sched_burst_inherit_type;
@@ -42,8 +42,8 @@ diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 +
 +#endif /* _KERNEL_SCHED_BORE_H */
 diff -rupN a/include/linux/sched.h b/include/linux/sched.h
---- a/include/linux/sched.h	2026-01-28 10:36:24.000000000 +0100
-+++ b/include/linux/sched.h	2026-01-28 11:25:04.822135824 +0100
+--- a/include/linux/sched.h	2026-02-02 00:20:43.000000000 +0100
++++ b/include/linux/sched.h	2026-02-02 16:27:41.254289272 +0100
 @@ -811,6 +811,37 @@ struct kmap_ctrl {
  #endif
  };
@@ -93,8 +93,8 @@ diff -rupN a/include/linux/sched.h b/include/linux/sched.h
  
  #ifdef CONFIG_SCHED_CORE
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-01-28 10:36:24.000000000 +0100
-+++ b/init/Kconfig	2026-01-28 11:25:04.935136633 +0100
+--- a/init/Kconfig	2026-02-02 00:20:43.000000000 +0100
++++ b/init/Kconfig	2026-02-02 16:27:41.255488290 +0100
 @@ -1430,6 +1430,23 @@ config CHECKPOINT_RESTORE
  
  	  If unsure, say N here.
@@ -120,8 +120,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Automatic process group scheduling"
  	select CGROUPS
 diff -rupN a/kernel/exit.c b/kernel/exit.c
---- a/kernel/exit.c	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/exit.c	2026-01-28 11:25:05.308139305 +0100
+--- a/kernel/exit.c	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/exit.c	2026-02-02 16:27:41.256432047 +0100
 @@ -147,7 +147,7 @@ static void __unhash_process(struct rele
  		detach_pid(post->pids, p, PIDTYPE_SID);
  
@@ -132,8 +132,8 @@ diff -rupN a/kernel/exit.c b/kernel/exit.c
  	}
  	list_del_rcu(&p->thread_node);
 diff -rupN a/kernel/fork.c b/kernel/fork.c
---- a/kernel/fork.c	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/fork.c	2026-01-28 11:25:05.360139678 +0100
+--- a/kernel/fork.c	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/fork.c	2026-02-02 16:27:41.257360385 +0100
 @@ -116,6 +116,10 @@
  /* For dup_mmap(). */
  #include "../mm/internal.h"
@@ -167,8 +167,8 @@ diff -rupN a/kernel/fork.c b/kernel/fork.c
  			attach_pid(p, PIDTYPE_TGID);
  			attach_pid(p, PIDTYPE_PGID);
 diff -rupN a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
---- a/kernel/futex/waitwake.c	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/futex/waitwake.c	2026-01-28 11:25:05.417140086 +0100
+--- a/kernel/futex/waitwake.c	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/futex/waitwake.c	2026-02-02 16:27:41.258170216 +0100
 @@ -4,6 +4,9 @@
  #include <linux/sched/task.h>
  #include <linux/sched/signal.h>
@@ -196,8 +196,8 @@ diff -rupN a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
  	__set_current_state(TASK_RUNNING);
  }
 diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
---- a/kernel/Kconfig.hz	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/Kconfig.hz	2026-01-28 11:25:05.281139112 +0100
+--- a/kernel/Kconfig.hz	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/Kconfig.hz	2026-02-02 16:27:41.256048304 +0100
 @@ -57,3 +57,20 @@ config HZ
  
  config SCHED_HRTICK
@@ -221,7 +221,7 @@ diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
 +	 latency and poor system responsiveness.
 diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 --- a/kernel/sched/bore.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/bore.c	2026-01-28 11:25:05.484964194 +0100
++++ b/kernel/sched/bore.c	2026-02-02 16:27:41.258862714 +0100
 @@ -0,0 +1,415 @@
 +/*
 + *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
@@ -639,8 +639,8 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
 diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
---- a/kernel/sched/core.c	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/sched/core.c	2026-01-28 11:25:05.547141018 +0100
+--- a/kernel/sched/core.c	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/sched/core.c	2026-02-02 16:27:41.261410049 +0100
 @@ -100,6 +100,10 @@
  #include "../smpboot.h"
  #include "../locking/mutex.h"
@@ -676,8 +676,8 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  
  #ifdef CONFIG_FAIR_GROUP_SCHED
 diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
---- a/kernel/sched/debug.c	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/sched/debug.c	2026-01-28 11:25:05.685142006 +0100
+--- a/kernel/sched/debug.c	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/sched/debug.c	2026-02-02 16:27:41.262985505 +0100
 @@ -169,6 +169,53 @@ static const struct file_operations sche
  	.release	= single_release,
  };
@@ -781,8 +781,8 @@ diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/sched/fair.c	2026-01-28 11:25:05.758142529 +0100
+--- a/kernel/sched/fair.c	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/sched/fair.c	2026-02-02 16:27:41.267410101 +0100
 @@ -58,6 +58,10 @@
  #include "stats.h"
  #include "autogroup.h"
@@ -1048,11 +1048,11 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  
  	util_est_update(&rq->cfs, p, flags & DEQUEUE_SLEEP);
 +#ifdef CONFIG_SCHED_BORE
-+	struct cfs_rq *cfs_rq = &rq->cfs;
++	struct cfs_rq *cfs_rq = cfs_rq_of(&p->se);
 +	struct sched_entity *se = &p->se;
 +	if ((flags & DEQUEUE_SLEEP) && entity_is_task(se)) {
 +		if (cfs_rq->curr == se)
-+			update_curr(cfs_rq_of(&p->se));
++			update_curr(cfs_rq);
 +		restart_burst_bore(p);
 +	}
 +#endif /* CONFIG_SCHED_BORE */
@@ -1110,8 +1110,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	set_task_max_allowed_capacity(p);
  
 diff -rupN a/kernel/sched/features.h b/kernel/sched/features.h
---- a/kernel/sched/features.h	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/sched/features.h	2026-01-28 11:25:05.811661951 +0100
+--- a/kernel/sched/features.h	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/sched/features.h	2026-02-02 16:27:41.268665646 +0100
 @@ -18,6 +18,9 @@ SCHED_FEAT(PLACE_REL_DEADLINE, true)
   * 0-lag point or until is has exhausted it's slice.
   */
@@ -1123,16 +1123,16 @@ diff -rupN a/kernel/sched/features.h b/kernel/sched/features.h
   * Allow wakeup of tasks with a shorter slice to cancel RUN_TO_PARITY for
   * current.
 diff -rupN a/kernel/sched/Makefile b/kernel/sched/Makefile
---- a/kernel/sched/Makefile	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/sched/Makefile	2026-01-28 11:25:05.483140559 +0100
+--- a/kernel/sched/Makefile	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/sched/Makefile	2026-02-02 16:27:41.258490939 +0100
 @@ -40,3 +40,4 @@ obj-y += core.o
  obj-y += fair.o
  obj-y += build_policy.o
  obj-y += build_utility.o
 +obj-$(CONFIG_SCHED_BORE) += bore.o
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2026-01-28 10:36:24.000000000 +0100
-+++ b/kernel/sched/sched.h	2026-01-28 11:25:05.900143546 +0100
+--- a/kernel/sched/sched.h	2026-02-02 00:20:43.000000000 +0100
++++ b/kernel/sched/sched.h	2026-02-02 16:27:41.269297890 +0100
 @@ -2210,7 +2210,11 @@ extern int group_balance_cpu(struct sche
  extern void update_sched_domain_debugfs(void);
  extern void dirty_sched_domain_sysctl(int cpu);
