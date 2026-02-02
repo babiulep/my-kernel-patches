@@ -2,7 +2,7 @@
 ## Patches for the linux kernel
 
 ### 2026-02-02
-* TIP: upgrade bore-scheduler to 6.6.1
+* 6.19: upgrade bore-scheduler to 6.6.1
 
 ### 2026-01-28
 * upgrade bore-scheduler to 6.6.0
