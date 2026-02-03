@@ -2,6 +2,7 @@
 ## Patches for the linux kernel
 
 ### 2026-02-03
+* 6.19: upgrade POC selector patches from 1.3 to 1.5  
 * CMS_NO_SIGNING_TIME fixed in linux-next-next-20260203
 
 ### 2026-02-03
