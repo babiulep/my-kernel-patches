@@ -1,6 +1,10 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2026-02-03
+* 6.19: upgrade adios patch to 3.1.9  
+* 6.19: add POC selector patches
+
 ### 2026-02-02
 * 6.19: upgrade bore-scheduler to 6.6.1
 

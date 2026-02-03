@@ -1,0 +1,13 @@
+--- a/tools/objtool/Makefile	2026-01-29 18:09:41.000000000 +0100
++++ b/tools/objtool/Makefile	2026-01-30 14:04:09.252585073 +0100
+@@ -89,8 +89,8 @@ LIBOPCODES_LIBS := $(shell \
+ 		    "-lopcodes -lbfd -liberty -lz"; do \
+ 		echo 'extern void disassemble_init_for_target(void *);' \
+ 		     'int main(void) { disassemble_init_for_target(0); return 0; }' | \
+-			$(HOSTCC) -xc - -o /dev/null $$libs 2>/dev/null && \
+-			echo "$$libs" && break; \
++			$(HOSTCC) -xc - -o /dev/null $libs 2>/dev/null && \
++			echo "$libs" && break; \
+ 	done)
+ 
+ # Styled disassembler support requires binutils >= 2.39
