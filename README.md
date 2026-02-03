@@ -2,6 +2,9 @@
 ## Patches for the linux kernel
 
 ### 2026-02-03
+* CMS_NO_SIGNING_TIME fixed in linux-next-next-20260203
+
+### 2026-02-03
 * 6.19 NEXT: add scripts/sign-file patch: build failure on OpenSSL < CMS_NO_SIGNING_TIME  
 * 6.19: upgrade adios patch to 3.1.9  
 * 6.19: add POC selector patches
