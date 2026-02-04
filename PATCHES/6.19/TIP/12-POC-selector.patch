@@ -1,24 +1,6 @@
-From 4e16a1f9dd415017a5e15aa3adc187c8d3bbb40c Mon Sep 17 00:00:00 2001
-From: Piotr Gorski <lucjan.lucjanov@gmail.com>
-Date: Tue, 3 Feb 2026 21:07:29 +0100
-Subject: [PATCH] sched-6.19: introduce POC selector
-
-Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
----
- include/linux/sched/topology.h |  17 +
- init/Kconfig                   |  13 +
- kernel/sched/fair.c            |  20 +-
- kernel/sched/idle.c            |   6 +
- kernel/sched/poc_selector.c    | 575 +++++++++++++++++++++++++++++++++
- kernel/sched/sched.h           |  13 +
- kernel/sched/topology.c        |  64 ++++
- 7 files changed, 703 insertions(+), 5 deletions(-)
- create mode 100644 kernel/sched/poc_selector.c
-
-diff --git a/include/linux/sched/topology.h b/include/linux/sched/topology.h
-index 45c0022b9..dee5d9402 100644
---- a/include/linux/sched/topology.h
-+++ b/include/linux/sched/topology.h
+diff -rupN a/include/linux/sched/topology.h b/include/linux/sched/topology.h
+--- a/include/linux/sched/topology.h	2026-02-04 11:45:30.000000000 +0100
++++ b/include/linux/sched/topology.h	2026-02-04 12:43:13.617363290 +0100
 @@ -68,6 +68,23 @@ struct sched_domain_shared {
  	atomic_t	nr_busy_cpus;
  	int		has_idle_cores;
@@ -43,11 +25,10 @@ index 45c0022b9..dee5d9402 100644
  };
  
  struct sched_domain {
-diff --git a/init/Kconfig b/init/Kconfig
-index fa79feb8f..c1b466be7 100644
---- a/init/Kconfig
-+++ b/init/Kconfig
-@@ -1442,6 +1442,19 @@ config SCHED_AUTOGROUP
+diff -rupN a/init/Kconfig b/init/Kconfig
+--- a/init/Kconfig	2026-02-04 12:42:48.649549649 +0100
++++ b/init/Kconfig	2026-02-04 12:43:13.618029136 +0100
+@@ -1472,6 +1472,32 @@ config SCHED_AUTOGROUP
  	  desktop applications.  Task group autogeneration is currently based
  	  upon task session.
  
@@ -64,14 +45,26 @@ index fa79feb8f..c1b466be7 100644
 +
 +	  If unsure, say Y.
 +
++config SCHED_POC_SELECTOR_DEBUG
++	bool "POC Selector debug counters"
++	depends on SCHED_POC_SELECTOR && SYSFS
++	default n
++	help
++	  Expose per-level hit counters and per-CPU selection counters
++	  via sysfs (/sys/kernel/poc_selector/).
++
++	  Counters: hit, fallthrough, sticky, l2_hit, llc_hit, per-CPU selected.
++	  SMT search count can be derived as (hit - sticky - l2_hit - llc_hit).
++
++	  If unsure, say N.
++
  config RELAY
  	bool "Kernel->user space relay support (formerly relayfs)"
  	select IRQ_WORK
-diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index 3eaeceda7..4961c5efa 100644
---- a/kernel/sched/fair.c
-+++ b/kernel/sched/fair.c
-@@ -7630,6 +7630,9 @@ static inline int select_idle_smt(struct task_struct *p, struct sched_domain *sd
+diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
+--- a/kernel/sched/fair.c	2026-02-04 12:42:48.633498310 +0100
++++ b/kernel/sched/fair.c	2026-02-04 12:43:13.621864750 +0100
+@@ -7705,6 +7705,9 @@ static inline int select_idle_smt(struct
  
  #endif /* !CONFIG_SCHED_SMT */
  
@@ -81,7 +74,7 @@ index 3eaeceda7..4961c5efa 100644
  /*
   * Scan the LLC domain for idle CPUs; this is dynamically regulated by
   * comparing the average scan cost (tracked in sd->avg_scan_cost) against the
-@@ -7641,11 +7644,16 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, bool
+@@ -7716,11 +7719,24 @@ static int select_idle_cpu(struct task_s
  	int i, cpu, idle_cpu = -1, nr = INT_MAX;
  	struct sched_domain_shared *sd_share;
  
@@ -96,14 +89,22 @@ index 3eaeceda7..4961c5efa 100644
 +		if (static_branch_likely(&sched_poc_enabled) &&
 +				!sched_asym_cpucap_active() &&
 +				likely(p->nr_cpus_allowed >= sd->span_weight) &&
-+				likely(sd_share->poc_fast_eligible))
-+			return select_idle_cpu_poc(has_idle_core, target, sd_share);
++				likely(sd_share->poc_fast_eligible)) {
++			int poc_cpu = select_idle_cpu_poc(has_idle_core, target, sd_share);
++			if (poc_cpu >= 0) {
++				POC_DBG_INC_HIT();
++				POC_DBG_INC_SELECTED(poc_cpu);
++			} else {
++				POC_DBG_INC_FALLTHROUGH();
++			}
++			return poc_cpu;
++		}
 +#endif
 +		if (sched_feat(SIS_UTIL)) {
  			/* because !--nr is the condition to stop scan */
  			nr = READ_ONCE(sd_share->nr_idle_scan) + 1;
  			/* overloaded LLC is unlikely to have idle cpu/core */
-@@ -7654,6 +7662,8 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, bool
+@@ -7729,6 +7745,8 @@ static int select_idle_cpu(struct task_s
  		}
  	}
  
@@ -112,10 +113,9 @@ index 3eaeceda7..4961c5efa 100644
  	if (static_branch_unlikely(&sched_cluster_active)) {
  		struct sched_group *sg = sd->groups;
  
-diff --git a/kernel/sched/idle.c b/kernel/sched/idle.c
-index abf8f15d6..847e50d65 100644
---- a/kernel/sched/idle.c
-+++ b/kernel/sched/idle.c
+diff -rupN a/kernel/sched/idle.c b/kernel/sched/idle.c
+--- a/kernel/sched/idle.c	2026-02-04 11:45:30.000000000 +0100
++++ b/kernel/sched/idle.c	2026-02-04 12:43:13.623514305 +0100
 @@ -277,6 +277,9 @@ static void do_idle(void)
  	__current_set_polling();
  	tick_nohz_idle_enter();
@@ -136,12 +136,10 @@ index abf8f15d6..847e50d65 100644
  	/*
  	 * Since we fell out of the loop above, we know TIF_NEED_RESCHED must
  	 * be set, propagate it into PREEMPT_NEED_RESCHED.
-diff --git a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
-new file mode 100644
-index 000000000..fe3f6abe8
---- /dev/null
-+++ b/kernel/sched/poc_selector.c
-@@ -0,0 +1,575 @@
+diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
+--- a/kernel/sched/poc_selector.c	1970-01-01 01:00:00.000000000 +0100
++++ b/kernel/sched/poc_selector.c	2026-02-04 12:43:13.624276156 +0100
+@@ -0,0 +1,812 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Piece-Of-Cake (POC) CPU Selector
@@ -166,7 +164,7 @@ index 000000000..fe3f6abe8
 +#define SCHED_POC_SELECTOR_AUTHOR   "Masahito Suzuki"
 +#define SCHED_POC_SELECTOR_PROGNAME "Piece-Of-Cake (POC) CPU Selector"
 +
-+#define SCHED_POC_SELECTOR_VERSION  "1.5"
++#define SCHED_POC_SELECTOR_VERSION  "1.6"
 +
 +/*
 + * Runtime control: sched_poc_selector (sysctl kernel.sched_poc_selector)
@@ -176,6 +174,34 @@ index 000000000..fe3f6abe8
 +DEFINE_STATIC_KEY_TRUE(sched_poc_enabled);
 +
 +static DEFINE_PER_CPU(unsigned int, poc_rr_seed);
++
++/* --- Debug counters (CONFIG_SCHED_POC_SELECTOR_DEBUG) ---
++ *
++ * hit / fallthrough / selected are counted at the call site (fair.c).
++ * sticky / l2_hit / llc_hit are counted inside the DEFINE_SELECT_IDLE_CPU_POC macro.
++ */
++#ifdef CONFIG_SCHED_POC_SELECTOR_DEBUG
++static DEFINE_PER_CPU(u32, poc_dbg_hit);
++static DEFINE_PER_CPU(u32, poc_dbg_fallthrough);
++static DEFINE_PER_CPU(u32, poc_dbg_sticky);
++static DEFINE_PER_CPU(u32, poc_dbg_l2_hit);
++static DEFINE_PER_CPU(u32, poc_dbg_llc_hit);
++static DEFINE_PER_CPU(atomic_t, poc_dbg_selected);
++
++#define POC_DBG_INC_HIT()          __this_cpu_inc(poc_dbg_hit)
++#define POC_DBG_INC_FALLTHROUGH()  __this_cpu_inc(poc_dbg_fallthrough)
++#define POC_DBG_INC_STICKY()      __this_cpu_inc(poc_dbg_sticky)
++#define POC_DBG_INC_L2_HIT()      __this_cpu_inc(poc_dbg_l2_hit)
++#define POC_DBG_INC_LLC_HIT()     __this_cpu_inc(poc_dbg_llc_hit)
++#define POC_DBG_INC_SELECTED(cpu)  atomic_inc(&per_cpu(poc_dbg_selected, cpu))
++#else
++#define POC_DBG_INC_HIT()          do {} while (0)
++#define POC_DBG_INC_FALLTHROUGH()  do {} while (0)
++#define POC_DBG_INC_STICKY()      do {} while (0)
++#define POC_DBG_INC_L2_HIT()      do {} while (0)
++#define POC_DBG_INC_LLC_HIT()     do {} while (0)
++#define POC_DBG_INC_SELECTED(cpu)  do {} while (0)
++#endif
 +
 +/*
 + * is_idle_core_poc - Check if all SMT siblings of a CPU are idle
@@ -554,8 +580,10 @@ index 000000000..fe3f6abe8
 +		int pos = tgt_bit & 63;										\
 +																	\
 +		if ((unsigned int)w < (N) &&								\
-+		    (cpu_mask[w] & (1ULL << pos)))							\
++		    (cpu_mask[w] & (1ULL << pos))) {						\
++			POC_DBG_INC_STICKY();									\
 +			return target;											\
++		}															\
 +	}																\
 +																	\
 +	/* Levels 2 + 3: cluster-local then LLC-wide selection.			\
@@ -585,14 +613,18 @@ index 000000000..fe3f6abe8
 +				    && sd_share->poc_cluster_valid) {				\
 +					cpu = poc_cluster_search(core_mask, sd_share,	\
 +							tgt_bit, (N), base, seed);				\
-+					if (cpu >= 0)									\
++					if (cpu >= 0) {									\
++						POC_DBG_INC_L2_HIT();						\
 +						return cpu;									\
++					}												\
 +				}													\
 +																	\
 +				/* Level 3a: idle core across LLC */				\
 +				cpu = poc_select_rr(core_mask, (N), base, seed);	\
-+				if (cpu >= 0)										\
++				if (cpu >= 0) {										\
++					POC_DBG_INC_LLC_HIT();							\
 +					return cpu;										\
++				}													\
 +			}														\
 +																	\
 +			/* Level 3b: all cores busy — any idle CPU */			\
@@ -605,12 +637,19 @@ index 000000000..fe3f6abe8
 +		    && sd_share->poc_cluster_valid) {						\
 +			int cpu = poc_cluster_search(cpu_mask, sd_share,		\
 +					tgt_bit, (N), base, seed);						\
-+			if (cpu >= 0)											\
++			if (cpu >= 0) {											\
++				POC_DBG_INC_L2_HIT();								\
 +				return cpu;											\
++			}														\
 +		}															\
 +																	\
 +		/* Level 3: idle CPU across entire LLC */					\
-+		return poc_select_rr(cpu_mask, (N), base, seed);			\
++		{															\
++			int __ret = poc_select_rr(cpu_mask, (N), base, seed);	\
++			if (__ret >= 0)											\
++				POC_DBG_INC_LLC_HIT();								\
++			return __ret;											\
++		}															\
 +	}																\
 +}
 +
@@ -716,12 +755,207 @@ index 000000000..fe3f6abe8
 +late_initcall(sched_poc_sysctl_init);
 +
 +#endif /* CONFIG_SYSCTL */
++
++/* --- sysfs exposure (CONFIG_SCHED_POC_SELECTOR_DEBUG) ---
++ *
++ * Exported at /sys/kernel/poc_selector/ so non-root users can read
++ * counters.  Uses kobject + kobj_attribute (no debugfs dependency).
++ */
++#ifdef CONFIG_SCHED_POC_SELECTOR_DEBUG
++
++static u64 poc_dbg_sum_percpu(u32 __percpu *var)
++{
++	u64 sum = 0;
++	int cpu;
++
++	for_each_possible_cpu(cpu)
++		sum += per_cpu(*var, cpu);
++	return sum;
++}
++
++/*
++ * Aggregate counter attributes (read-only).
++ * We avoid __ATTR_RO() because "fallthrough" clashes with the
++ * compiler keyword macro; token-pasting (##) prevents expansion.
++ */
++#define DEFINE_POC_DBG_ATTR(ctr)					\
++static ssize_t poc_dbg_##ctr##_show(struct kobject *kobj,		\
++		struct kobj_attribute *attr, char *buf)			\
++{									\
++	return sysfs_emit(buf, "%llu\n",				\
++			  poc_dbg_sum_percpu(&poc_dbg_##ctr));		\
++}									\
++static struct kobj_attribute poc_attr_##ctr = {				\
++	.attr = { .name = #ctr, .mode = 0444 },			\
++	.show = poc_dbg_##ctr##_show,					\
++}
++
++DEFINE_POC_DBG_ATTR(hit);
++DEFINE_POC_DBG_ATTR(fallthrough);
++DEFINE_POC_DBG_ATTR(sticky);
++DEFINE_POC_DBG_ATTR(l2_hit);
++DEFINE_POC_DBG_ATTR(llc_hit);
++
++/* Per-CPU selected counter — dynamically allocated per CPU */
++struct poc_selected_attr {
++	struct kobj_attribute kattr;
++	int cpu;
++};
++
++static ssize_t poc_selected_show(struct kobject *kobj,
++				 struct kobj_attribute *attr, char *buf)
++{
++	struct poc_selected_attr *sa =
++		container_of(attr, struct poc_selected_attr, kattr);
++	return sysfs_emit(buf, "%d\n",
++			  atomic_read(&per_cpu(poc_dbg_selected, sa->cpu)));
++}
++
++/* Reset all counters (write-only, root-only) */
++static ssize_t poc_dbg_reset_store(struct kobject *kobj,
++				   struct kobj_attribute *attr,
++				   const char *buf, size_t count)
++{
++	int cpu;
++
++	for_each_possible_cpu(cpu) {
++		per_cpu(poc_dbg_hit, cpu) = 0;
++		per_cpu(poc_dbg_fallthrough, cpu) = 0;
++		per_cpu(poc_dbg_sticky, cpu) = 0;
++		per_cpu(poc_dbg_l2_hit, cpu) = 0;
++		per_cpu(poc_dbg_llc_hit, cpu) = 0;
++		atomic_set(&per_cpu(poc_dbg_selected, cpu), 0);
++	}
++	return count;
++}
++
++static struct kobj_attribute poc_attr_reset = {
++	.attr  = { .name = "reset", .mode = 0200 },
++	.store = poc_dbg_reset_store,
++};
++
++/* --- hw_accel: expose which hardware acceleration is in use --- */
++
++#define DEFINE_POC_HW_ATTR(fname, namestr)				\
++static ssize_t poc_hw_##fname##_show(struct kobject *kobj,		\
++		struct kobj_attribute *attr, char *buf)			\
++{									\
++	return sysfs_emit(buf, "%s\n", namestr);			\
++}									\
++static struct kobj_attribute poc_hw_attr_##fname = {			\
++	.attr = { .name = #fname, .mode = 0444 },			\
++	.show = poc_hw_##fname##_show,					\
++}
++
++DEFINE_POC_HW_ATTR(ctz, POC_CTZ64_NAME);
++DEFINE_POC_HW_ATTR(ptselect, POC_PTSELECT_NAME);
++
++/* popcnt: x86 uses runtime alternatives, detect via boot_cpu_has */
++static ssize_t poc_hw_popcnt_show(struct kobject *kobj,
++				  struct kobj_attribute *attr, char *buf)
++{
++#if defined(__x86_64__)
++	return sysfs_emit(buf, "%s\n",
++		boot_cpu_has(X86_FEATURE_POPCNT) ? "HW (POPCNT)" : "SW");
++#elif defined(__aarch64__)
++	return sysfs_emit(buf, "HW (CNT)\n");
++#elif defined(__riscv) && defined(__riscv_zbb)
++	return sysfs_emit(buf, "HW (cpop)\n");
++#else
++	return sysfs_emit(buf, "SW\n");
++#endif
++}
++
++static struct kobj_attribute poc_hw_attr_popcnt = {
++	.attr = { .name = "popcnt", .mode = 0444 },
++	.show = poc_hw_popcnt_show,
++};
++
++/* Attribute groups for batch registration */
++static struct attribute *poc_counter_attrs[] = {
++	&poc_attr_hit.attr,
++	&poc_attr_fallthrough.attr,
++	&poc_attr_sticky.attr,
++	&poc_attr_l2_hit.attr,
++	&poc_attr_llc_hit.attr,
++	&poc_attr_reset.attr,
++	NULL,
++};
++
++static const struct attribute_group poc_counter_group = {
++	.attrs = poc_counter_attrs,
++};
++
++static struct attribute *poc_hw_attrs[] = {
++	&poc_hw_attr_popcnt.attr,
++	&poc_hw_attr_ctz.attr,
++	&poc_hw_attr_ptselect.attr,
++	NULL,
++};
++
++static const struct attribute_group poc_hw_group = {
++	.attrs = poc_hw_attrs,
++};
++
++static int __init sched_poc_debug_init(void)
++{
++	struct kobject *kobj_poc, *kobj_sel, *kobj_hw;
++	int cpu, ret;
++
++	kobj_poc = kobject_create_and_add("poc_selector", kernel_kobj);
++	if (!kobj_poc)
++		return -ENOMEM;
++
++	ret = sysfs_create_group(kobj_poc, &poc_counter_group);
++	if (ret)
++		goto err_poc;
++
++	kobj_sel = kobject_create_and_add("selected", kobj_poc);
++	if (kobj_sel) {
++		for_each_possible_cpu(cpu) {
++			struct poc_selected_attr *sa;
++
++			sa = kzalloc(sizeof(*sa), GFP_KERNEL);
++			if (!sa)
++				continue;
++			sa->cpu = cpu;
++			sa->kattr.attr.name = kasprintf(GFP_KERNEL, "cpu%d", cpu);
++			if (!sa->kattr.attr.name) {
++				kfree(sa);
++				continue;
++			}
++			sa->kattr.attr.mode = 0444;
++			sa->kattr.show = poc_selected_show;
++			sysfs_attr_init(&sa->kattr.attr);
++			ret = sysfs_create_file(kobj_sel, &sa->kattr.attr);
++			if (ret) {
++				kfree(sa->kattr.attr.name);
++				kfree(sa);
++			}
++		}
++	}
++
++	kobj_hw = kobject_create_and_add("hw_accel", kobj_poc);
++	if (kobj_hw) {
++		ret = sysfs_create_group(kobj_hw, &poc_hw_group);
++		if (ret)
++			kobject_put(kobj_hw);
++	}
++
++	return 0;
++
++err_poc:
++	kobject_put(kobj_poc);
++	return ret;
++}
++late_initcall(sched_poc_debug_init);
++
++#endif /* CONFIG_SCHED_POC_SELECTOR_DEBUG */
 +#endif /* CONFIG_SCHED_POC_SELECTOR */
-diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index 93fce4bbf..c6218860a 100644
---- a/kernel/sched/sched.h
-+++ b/kernel/sched/sched.h
-@@ -3299,6 +3299,19 @@ extern void nohz_run_idle_balance(int cpu);
+diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
+--- a/kernel/sched/sched.h	2026-02-04 12:42:48.642236240 +0100
++++ b/kernel/sched/sched.h	2026-02-04 12:43:13.625278276 +0100
+@@ -3359,6 +3359,19 @@ extern void nohz_run_idle_balance(int cp
  static inline void nohz_run_idle_balance(int cpu) { }
  #endif
  
@@ -741,11 +975,10 @@ index 93fce4bbf..c6218860a 100644
  #include "stats.h"
  
  #if defined(CONFIG_SCHED_CORE) && defined(CONFIG_SCHEDSTATS)
-diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index cf643a5dd..b38cb505c 100644
---- a/kernel/sched/topology.c
-+++ b/kernel/sched/topology.c
-@@ -1730,6 +1730,70 @@ sd_init(struct sched_domain_topology_level *tl,
+diff -rupN a/kernel/sched/topology.c b/kernel/sched/topology.c
+--- a/kernel/sched/topology.c	2026-02-04 11:45:30.000000000 +0100
++++ b/kernel/sched/topology.c	2026-02-04 12:43:13.626513808 +0100
+@@ -1735,6 +1735,70 @@ sd_init(struct sched_domain_topology_lev
  		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
  		atomic_inc(&sd->shared->ref);
  		atomic_set(&sd->shared->nr_busy_cpus, sd_weight);
@@ -816,6 +1049,3 @@ index cf643a5dd..b38cb505c 100644
  	}
  
  	sd->private = sdd;
--- 
-2.52.0
-
