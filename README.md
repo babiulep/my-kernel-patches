@@ -1,6 +1,9 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2026-02-05
+* 6.19 TIP: small (offset) fixes
+
 ### 2026-02-04
 * 6.19 NEXT: remove scripts/sign-file patch (fixed in linux-next-next-20260203)  
 * 6.19 NEXT: upgrade POC selector patches from 1.5 to 1.6

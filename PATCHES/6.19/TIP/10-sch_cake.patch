@@ -1,6 +1,6 @@
 diff -rupN a/Documentation/netlink/specs/tc.yaml b/Documentation/netlink/specs/tc.yaml
---- a/Documentation/netlink/specs/tc.yaml	2026-01-19 09:52:42.000000000 +0100
-+++ b/Documentation/netlink/specs/tc.yaml	2026-01-19 17:41:44.171578341 +0100
+--- a/Documentation/netlink/specs/tc.yaml	2026-02-05 10:01:43.000000000 +0100
++++ b/Documentation/netlink/specs/tc.yaml	2026-02-05 16:16:53.351044571 +0100
 @@ -2207,6 +2207,9 @@ attribute-sets:
        -
          name: blue-timer-us
@@ -13,7 +13,7 @@ diff -rupN a/Documentation/netlink/specs/tc.yaml b/Documentation/netlink/specs/t
      name-prefix: tca-cake-tin-stats-
 diff -rupN a/include/net/sch_priv.h b/include/net/sch_priv.h
 --- a/include/net/sch_priv.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/net/sch_priv.h	2026-01-19 17:41:43.840550530 +0100
++++ b/include/net/sch_priv.h	2026-02-05 16:16:53.338890097 +0100
 @@ -0,0 +1,27 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef __NET_SCHED_PRIV_H
@@ -43,8 +43,8 @@ diff -rupN a/include/net/sch_priv.h b/include/net/sch_priv.h
 +
 +#endif
 diff -rupN a/include/uapi/linux/pkt_sched.h b/include/uapi/linux/pkt_sched.h
---- a/include/uapi/linux/pkt_sched.h	2026-01-19 09:52:42.000000000 +0100
-+++ b/include/uapi/linux/pkt_sched.h	2026-01-19 17:41:44.173093022 +0100
+--- a/include/uapi/linux/pkt_sched.h	2026-02-05 10:01:43.000000000 +0100
++++ b/include/uapi/linux/pkt_sched.h	2026-02-05 16:16:53.352018983 +0100
 @@ -1036,6 +1036,7 @@ enum {
  	TCA_CAKE_STATS_DROP_NEXT_US,
  	TCA_CAKE_STATS_P_DROP,
@@ -54,9 +54,9 @@ diff -rupN a/include/uapi/linux/pkt_sched.h b/include/uapi/linux/pkt_sched.h
  };
  #define TCA_CAKE_STATS_MAX (__TCA_CAKE_STATS_MAX - 1)
 diff -rupN a/MAINTAINERS b/MAINTAINERS
---- a/MAINTAINERS	2026-01-19 09:52:42.000000000 +0100
-+++ b/MAINTAINERS	2026-01-19 17:41:43.839575797 +0100
-@@ -25468,6 +25468,7 @@ L:	netdev@vger.kernel.org
+--- a/MAINTAINERS	2026-02-05 10:01:43.000000000 +0100
++++ b/MAINTAINERS	2026-02-05 16:16:53.337471160 +0100
+@@ -25478,6 +25478,7 @@ L:	netdev@vger.kernel.org
  S:	Maintained
  F:	include/net/pkt_cls.h
  F:	include/net/pkt_sched.h
@@ -65,8 +65,8 @@ diff -rupN a/MAINTAINERS b/MAINTAINERS
  F:	include/uapi/linux/pkt_cls.h
  F:	include/uapi/linux/pkt_sched.h
 diff -rupN a/net/sched/sch_cake.c b/net/sched/sch_cake.c
---- a/net/sched/sch_cake.c	2026-01-19 09:52:42.000000000 +0100
-+++ b/net/sched/sch_cake.c	2026-01-19 17:41:44.174578364 +0100
+--- a/net/sched/sch_cake.c	2026-02-05 10:01:43.000000000 +0100
++++ b/net/sched/sch_cake.c	2026-02-05 16:16:53.358471289 +0100
 @@ -67,6 +67,7 @@
  #include <linux/if_vlan.h>
  #include <net/gso.h>
@@ -1040,8 +1040,8 @@ diff -rupN a/net/sched/sch_cake.c b/net/sched/sch_cake.c
  MODULE_DESCRIPTION("The CAKE shaper.");
 +MODULE_IMPORT_NS("NET_SCHED_INTERNAL");
 diff -rupN a/net/sched/sch_mq.c b/net/sched/sch_mq.c
---- a/net/sched/sch_mq.c	2026-01-19 09:52:42.000000000 +0100
-+++ b/net/sched/sch_mq.c	2026-01-19 17:41:43.840987890 +0100
+--- a/net/sched/sch_mq.c	2026-02-05 10:01:43.000000000 +0100
++++ b/net/sched/sch_mq.c	2026-02-05 16:16:53.339471843 +0100
 @@ -15,11 +15,7 @@
  #include <net/netlink.h>
  #include <net/pkt_cls.h>
@@ -1230,7 +1230,7 @@ diff -rupN a/net/sched/sch_mq.c b/net/sched/sch_mq.c
  	.select_queue	= mq_select_queue,
 diff -rupN a/tools/testing/selftests/tc-testing/tc-tests/qdiscs/cake_mq.json b/tools/testing/selftests/tc-testing/tc-tests/qdiscs/cake_mq.json
 --- a/tools/testing/selftests/tc-testing/tc-tests/qdiscs/cake_mq.json	1970-01-01 01:00:00.000000000 +0100
-+++ b/tools/testing/selftests/tc-testing/tc-tests/qdiscs/cake_mq.json	2026-01-19 17:41:44.175702470 +0100
++++ b/tools/testing/selftests/tc-testing/tc-tests/qdiscs/cake_mq.json	2026-02-05 16:16:53.360144618 +0100
 @@ -0,0 +1,559 @@
 +[
 +    {
