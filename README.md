@@ -3,6 +3,7 @@
 
 ### 2024-02-09
 * 6.19 NEXT/TIP: upgrade POC selector patches from 1.6 to 1.8.1
+* 6.19 TIP: remove bbr3 patch
 
 ### 2026-02-05
 * 6.19 TIP: small (offset) fixes
