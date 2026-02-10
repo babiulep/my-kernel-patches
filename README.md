@@ -1,6 +1,8 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+- [README 2025](README2025.md) 
+
 ## 2024-02-10
 ### 7.00 TIP (aae3ab427a426b2b24053c8089274f5315cd8e75)
 * add NVIDIA patch (in a very early stage...)
