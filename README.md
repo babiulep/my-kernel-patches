@@ -1,130 +1,130 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
-### 2024-02-10
-## 7.00 TIP (aae3ab427a426b2b24053c8089274f5315cd8e75)
+## 2024-02-10
+### 7.00 TIP (aae3ab427a426b2b24053c8089274f5315cd8e75)
 * add NVIDIA patch (in a very early stage...)
 * add kernel patches, upgrade POC selector patches to 1.9.3
 
-### 2024-02-09
+## 2024-02-09
 * 6.19 NEXT/TIP: upgrade POC selector patches from 1.6 to 1.8.1
 * 6.19 TIP: remove bbr3 patch
 
-### 2026-02-05
+## 2026-02-05
 * 6.19 TIP: small (offset) fixes
 
-### 2026-02-04
+## 2026-02-04
 * 6.19 NEXT: remove scripts/sign-file patch (fixed in linux-next-next-20260203)  
 * 6.19 NEXT: upgrade POC selector patches from 1.5 to 1.6
 * 6.19 TIP: upgrade POC selector patches from 1.5 to 1.6
 
-### 2026-02-03
+## 2026-02-03
 * 6.19: upgrade POC selector patches from 1.3 to 1.5  
 * CMS_NO_SIGNING_TIME fixed in linux-next-next-20260203
 
-### 2026-02-03
+## 2026-02-03
 * 6.19 NEXT: add scripts/sign-file patch: build failure on OpenSSL < CMS_NO_SIGNING_TIME  
 * 6.19: upgrade adios patch to 3.1.9  
 * 6.19: add POC selector patches
 
-### 2026-02-02
+## 2026-02-02
 * 6.19: upgrade bore-scheduler to 6.6.1
 
-### 2026-01-28
+## 2026-01-28
 * upgrade bore-scheduler to 6.6.0
 
-### 2026-01-27
+## 2026-01-27
 * added 'next'-patches for NVIDIA and VHBA kernel modules
 
-### 2026-01-26
+## 2026-01-26
 * separate patches for TIP and NEXT trees
 
-### 2026-01-10
+## 2026-01-10
 * add my [wgc](https://github.com/colemar/wgc/) rewrite for amneziawg  
   currently reads the extra config entries:  
   jc, jmin, jmax, h1, h2, h3, h4, s0, s1, i1, i2
 
-### 2025-12-29
+## 2025-12-29
 * sync 6.19 patches
 
-### 2025-12-20
+## 2025-12-20
 * New NVIDIA patch for 6.19
 * Added several kernel patches for 6.19
 * Create directories for kernel versions 6.18 and 6.19
 
-### 2025-12-17
+## 2025-12-17
 * Be careful using these NVIDIA patches for the upcoming kernel 6.19
 * A lot has changed since and your (dkms) build will probably fail...
 
-### 2025-12-14
+## 2025-12-14
 * show my preferred order of patches
 * sync patches with 6.18.1
 
-### 2025-11-22
+## 2025-11-22
 * sync patches with 6.18-rc7
 
-### 2025-11-06:
+## 2025-11-06:
 * remove branch 6.17
 * include 6.18 patches when applying 6.19 patches!
 
-### 2025-11-05:
+## 2025-11-05:
 * NVIDIA: add new folder 6.19 for linux-next patches
 * add drm_error.patch for linux next 20251105
 
-### 2025-10-30:
+## 2025-10-30:
 * add dma.patch for linux next 20251030
 
-### 2025-10-27:
+## 2025-10-27:
 * In linux-next Eric Biggers has [changed the BLAKE2b library API](https://lore.kernel.org/all/20251018043106.375964-1-ebiggers@kernel.org/)
 * A patch for the dkms version of the amneziawg kernel module is added:
   AMNEZIAWG/blake2s.patch
 
-### 2025-10-26:
+## 2025-10-26:
 * rearrange patches
 * 'module_fix.patch' no longer needed
 * LINUX-TIP: add 'in_irq.patch': ['in_irq' has changed into 'in_hardirq'](https://lore.kernel.org/all/176133511760.2601451.11756138328464524645.tip-bot2@tip-bot2/)
 
-### 2025-10-24:
+## 2025-10-24:
 * 'module_fix.patch' included in source tree
 
-### 2025-10-22:
+## 2025-10-22:
 * LINUX-NEXT: 'state.patch' fix for NVIDIA (tested with 580.95.05)
 * 'module_fix.patch' for TIP & NEXT branches
 * add working 'adios' (v3) patch for linux-6.18
 
-### 2025-10-19:
+## 2025-10-19:
 * updates for upcoming 6.18-rc2
 
-### 2025-09-06:
+## 2025-09-06:
 * remove BORE patch
 * update patches (offsets)
 * add new adios (version 3)
 
-### 2025-08-20:
+## 2025-08-20:
 * revert adios fix
 * fix adios patch for 6.17
 
-### 2025-08-12:
+## 2025-08-12:
 * NVIDIA GPL issues patch
 * BORE scheduler patch for 6.17
 
-### 2025-08-08:
+## 2025-08-08:
 * NVIDIA for next/6.17 fix
 
-### 2025-08-05:
+## 2025-08-05:
 * NVIDIA: patch for linux kernel next/6.17 for 580.65.06
 
-### 2025-07-31:
+## 2025-07-31:
 * adios: fix for linux-next >= 2025073 in NEXT_PATCHES
 
-### 2025-07-30:
+## 2025-07-30:
 * Split patches:
 * PATCHES: 6.16
 * NEXT_PATCHES: next/6.17
 * New NVIDIA patch for linux kernel next/6.17
   (tested with versions 575.57.08 and 575.64.03)
 
-### 2025-06-02:
+## 2025-06-02:
 * Total patch with:
   ADIOS
   bbr3
@@ -133,54 +133,54 @@
   mitigate off
   and cleanup
 
-### 2024-05-08:
+## 2024-05-08:
 * KBUILD_CFLAGS fix when use clang compiler
 
-### 2025-05-07:
+## 2025-05-07:
 * add clear patch for 6.15-rcX
 
-### 2025-05-02:
+## 2025-05-02:
 * updated NVIDIA patches for version 575.51.03
 
-### 2025-04-08:
+## 2025-04-08:
 * simplified NVIDIA patch for 6.15-rc1
 
-### 2025-04-07:
+## 2025-04-07:
 * more changes needed for NVIDIA modules
 
-### 2025-04-05:
+## 2025-04-05:
 * tentative nvidia patch for 6.15:
   tested with nvidia-570.124.06
 * update adios patch
 
-### 2025-03-23:
+## 2025-03-23:
 * update patches
 
-### 2025-01-16:
+## 2025-01-16:
 * update patches
 
-### 2025-01-13:
+## 2025-01-13:
 * update patches
 
-### 2025-01-12:
+## 2025-01-12:
 * update patches
 
-### 2024-12-24:
+## 2024-12-24:
 * bore 5.9.4 for linux-tip
 
-### 2024-12-24:
+## 2024-12-24:
 * added Jens Axboe Uncached Buffered I/O patch for 6.13-tip
 * updated bore scheduler for tip branch to 5.7.14
 
-### 2024-12-23:
+## 2024-12-23:
 * freeze because of usb bug in tree: solved
 * patches updated for 6.13.x
 
-### 2024-12-02:
+## 2024-12-02:
 * some patches make the system freeze?
 * moved to TO_TEST
 
-### 2024-11-30:
+## 2024-11-30:
 * add ipu6 fix
 * add usb/thunderbolt patch (6.13)
 * add driver-core patch from GKH (6.13)
@@ -188,7 +188,7 @@
 * update bore scheduler from 5.7.3 to 5.7.4
 * add rtc patch (6.13)
 
-### new branch added:
+## new branch added:
 * patches for 6.12.x from various sources
 * plus backports from 6.13
 * please apply patches in order...
