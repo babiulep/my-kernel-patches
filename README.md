@@ -1,6 +1,11 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
+### 2024-02-10
+## 7.00 TIP (aae3ab427a426b2b24053c8089274f5315cd8e75)
+* add NVIDIA patch (in a very early stage...)
+* add kernel patches, upgrade POC selector patches to 1.9.3
+
 ### 2024-02-09
 * 6.19 NEXT/TIP: upgrade POC selector patches from 1.6 to 1.8.1
 * 6.19 TIP: remove bbr3 patch

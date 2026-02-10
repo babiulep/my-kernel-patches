@@ -1,0 +1,12 @@
+diff -rupN a/nvidia/nv-mmap.c b/nvidia/nv-mmap.c
+--- a/nvidia/nv-mmap.c  2025-12-08 14:45:02.000000000 +0100
++++ b/nvidia/nv-mmap.c  2026-02-10 14:39:55.856306267 +0100
+@@ -864,7 +864,7 @@ void NV_API_CALL nv_set_safe_to_mmap_loc
+ #if !NV_CAN_CALL_VMA_START_WRITE
+ static NvBool nv_vma_enter_locked(struct vm_area_struct *vma, NvBool detaching)
+ {
+-    NvU32 tgt_refcnt = VMA_LOCK_OFFSET;
++    unsigned int tgt_refcnt = VMA_LOCK_OFFSET;
+     NvBool interrupted = NV_FALSE;
+     if (!detaching)
+     {
