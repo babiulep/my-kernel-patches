@@ -5,6 +5,7 @@
 
 ## 2026-02-11
 * upgrade POC selector patches to 1.9.4
+* split NVIDIA patches for TIP & NEXT trees
 
 ## 2026-02-10
 * add NVIDIA patch (in a very early stage...)
