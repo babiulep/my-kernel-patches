@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched/topology.h b/include/linux/sched/topology.h
---- a/include/linux/sched/topology.h	2026-02-10 12:10:26.000000000 +0100
-+++ b/include/linux/sched/topology.h	2026-02-10 13:27:21.385279317 +0100
+--- a/include/linux/sched/topology.h	2026-02-11 14:59:01.000000000 +0100
++++ b/include/linux/sched/topology.h	2026-02-11 15:46:09.609735766 +0100
 @@ -66,8 +66,31 @@ struct sched_group;
  struct sched_domain_shared {
  	atomic_t	ref;
@@ -36,9 +36,9 @@ diff -rupN a/include/linux/sched/topology.h b/include/linux/sched/topology.h
  
  struct sched_domain {
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-02-10 13:28:13.476997284 +0100
-+++ b/init/Kconfig	2026-02-10 13:27:21.385935444 +0100
-@@ -1476,6 +1476,32 @@ config SCHED_AUTOGROUP
+--- a/init/Kconfig	2026-02-11 15:46:51.779943477 +0100
++++ b/init/Kconfig	2026-02-11 15:46:09.610342283 +0100
+@@ -1483,6 +1483,32 @@ config SCHED_AUTOGROUP
  	  desktop applications.  Task group autogeneration is currently based
  	  upon task session.
  
@@ -72,8 +72,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Kernel->user space relay support (formerly relayfs)"
  	select IRQ_WORK
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2026-02-10 13:28:13.505997491 +0100
-+++ b/kernel/sched/fair.c	2026-02-10 13:27:21.389625399 +0100
+--- a/kernel/sched/fair.c	2026-02-11 15:46:51.775727160 +0100
++++ b/kernel/sched/fair.c	2026-02-11 15:46:09.614268723 +0100
 @@ -7842,6 +7842,9 @@ static inline bool asym_fits_cpu(unsigne
  	return true;
  }
@@ -135,8 +135,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	 * For cluster machines which have lower sharing cache like L2 or
  	 * LLC Tag, we tend to find an idle CPU in the target's cluster
 diff -rupN a/kernel/sched/idle.c b/kernel/sched/idle.c
---- a/kernel/sched/idle.c	2026-02-10 12:10:26.000000000 +0100
-+++ b/kernel/sched/idle.c	2026-02-10 13:27:21.391464166 +0100
+--- a/kernel/sched/idle.c	2026-02-11 14:59:01.000000000 +0100
++++ b/kernel/sched/idle.c	2026-02-11 15:46:09.615730632 +0100
 @@ -277,6 +277,9 @@ static void do_idle(void)
  	__current_set_polling();
  	tick_nohz_idle_enter();
@@ -159,7 +159,7 @@ diff -rupN a/kernel/sched/idle.c b/kernel/sched/idle.c
  	 * be set, propagate it into PREEMPT_NEED_RESCHED.
 diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 --- a/kernel/sched/poc_selector.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/poc_selector.c	2026-02-10 13:27:21.392371495 +0100
++++ b/kernel/sched/poc_selector.c	2026-02-11 15:46:09.616620236 +0100
 @@ -0,0 +1,1120 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -199,7 +199,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +#define SCHED_POC_SELECTOR_AUTHOR   "Masahito Suzuki"
 +#define SCHED_POC_SELECTOR_PROGNAME "Piece-Of-Cake (POC) CPU Selector"
 +
-+#define SCHED_POC_SELECTOR_VERSION  "1.9.3"
++#define SCHED_POC_SELECTOR_VERSION  "1.9.4"
 +
 +/*
 + * IF_SMT - conditionally include code only when SMT is enabled.
@@ -1282,8 +1282,8 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +#endif /* CONFIG_SCHED_POC_SELECTOR_DEBUG */
 +#endif /* CONFIG_SCHED_POC_SELECTOR */
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2026-02-10 13:28:13.520997598 +0100
-+++ b/kernel/sched/sched.h	2026-02-10 13:27:21.393582391 +0100
+--- a/kernel/sched/sched.h	2026-02-11 15:46:51.778727193 +0100
++++ b/kernel/sched/sched.h	2026-02-11 15:46:09.617779592 +0100
 @@ -3363,6 +3363,104 @@ extern void nohz_run_idle_balance(int cp
  static inline void nohz_run_idle_balance(int cpu) { }
  #endif
@@ -1390,8 +1390,8 @@ diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
  
  #if defined(CONFIG_SCHED_CORE) && defined(CONFIG_SCHEDSTATS)
 diff -rupN a/kernel/sched/topology.c b/kernel/sched/topology.c
---- a/kernel/sched/topology.c	2026-02-10 12:10:26.000000000 +0100
-+++ b/kernel/sched/topology.c	2026-02-10 13:27:21.394857472 +0100
+--- a/kernel/sched/topology.c	2026-02-11 14:59:01.000000000 +0100
++++ b/kernel/sched/topology.c	2026-02-11 15:46:09.619020040 +0100
 @@ -1735,6 +1735,131 @@ sd_init(struct sched_domain_topology_lev
  		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
  		atomic_inc(&sd->shared->ref);
@@ -1410,7 +1410,7 @@ diff -rupN a/kernel/sched/topology.c b/kernel/sched/topology.c
 +			 * is not 64-aligned (e.g., Threadripper CCDs).
 +			 */
 +			if (sd_id & 63)
-+				static_branch_disable(&sched_poc_aligned);
++				static_branch_disable_cpuslocked(&sched_poc_aligned);
 +		} else {
 +			sd->shared->poc_fast_eligible = false;
 +		}

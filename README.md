@@ -3,8 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-02-11
+* upgrade POC selector patches to 1.9.4
+
 ## 2026-02-10
-### 7.00 TIP (aae3ab427a426b2b24053c8089274f5315cd8e75)
 * add NVIDIA patch (in a very early stage...)
 * add kernel patches, upgrade POC selector patches to 1.9.3
 
