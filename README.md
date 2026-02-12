@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-02-12
+* upgrade POC selector patches to 2.0.0-rc2
+
 ## 2026-02-11
 * upgrade POC selector patches to 1.9.4
 * split NVIDIA patches for TIP & NEXT trees
