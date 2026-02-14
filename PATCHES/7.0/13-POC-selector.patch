@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched/topology.h b/include/linux/sched/topology.h
---- a/include/linux/sched/topology.h	2026-02-12 15:47:53.000000000 +0100
-+++ b/include/linux/sched/topology.h	2026-02-12 16:38:52.234449053 +0100
+--- a/include/linux/sched/topology.h	2026-02-14 11:56:14.000000000 +0100
++++ b/include/linux/sched/topology.h	2026-02-14 14:28:38.775003949 +0100
 @@ -66,8 +66,38 @@ struct sched_group;
  struct sched_domain_shared {
  	atomic_t	ref;
@@ -43,8 +43,8 @@ diff -rupN a/include/linux/sched/topology.h b/include/linux/sched/topology.h
  
  struct sched_domain {
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-02-12 16:39:19.992512362 +0100
-+++ b/init/Kconfig	2026-02-12 16:38:52.235050747 +0100
+--- a/init/Kconfig	2026-02-14 14:29:35.923209214 +0100
++++ b/init/Kconfig	2026-02-14 14:28:38.775607755 +0100
 @@ -1483,6 +1483,19 @@ config SCHED_AUTOGROUP
  	  desktop applications.  Task group autogeneration is currently based
  	  upon task session.
@@ -66,8 +66,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Kernel->user space relay support (formerly relayfs)"
  	select IRQ_WORK
 diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
---- a/kernel/sched/core.c	2026-02-12 16:39:19.958244408 +0100
-+++ b/kernel/sched/core.c	2026-02-12 16:38:52.238050768 +0100
+--- a/kernel/sched/core.c	2026-02-14 14:29:35.888103544 +0100
++++ b/kernel/sched/core.c	2026-02-14 14:28:38.778772622 +0100
 @@ -2153,6 +2153,11 @@ void activate_task(struct rq *rq, struct
  		flags |= ENQUEUE_MIGRATED;
  
@@ -81,8 +81,8 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  	WRITE_ONCE(p->on_rq, TASK_ON_RQ_QUEUED);
  	ASSERT_EXCLUSIVE_WRITER(p->on_rq);
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2026-02-12 16:39:19.975244527 +0100
-+++ b/kernel/sched/fair.c	2026-02-12 16:38:52.240050782 +0100
+--- a/kernel/sched/fair.c	2026-02-14 14:29:35.905103642 +0100
++++ b/kernel/sched/fair.c	2026-02-14 14:28:38.783772651 +0100
 @@ -7150,6 +7150,11 @@ static int dequeue_entities(struct rq *r
  	}
  
@@ -144,8 +144,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	 * For cluster machines which have lower sharing cache like L2 or
  	 * LLC Tag, we tend to find an idle CPU in the target's cluster
 diff -rupN a/kernel/sched/idle.c b/kernel/sched/idle.c
---- a/kernel/sched/idle.c	2026-02-12 15:47:53.000000000 +0100
-+++ b/kernel/sched/idle.c	2026-02-12 16:38:52.240421296 +0100
+--- a/kernel/sched/idle.c	2026-02-14 11:56:14.000000000 +0100
++++ b/kernel/sched/idle.c	2026-02-14 14:28:38.784668105 +0100
 @@ -277,6 +277,11 @@ static void do_idle(void)
  	__current_set_polling();
  	tick_nohz_idle_enter();
@@ -160,8 +160,8 @@ diff -rupN a/kernel/sched/idle.c b/kernel/sched/idle.c
  		/*
 diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 --- a/kernel/sched/poc_selector.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/poc_selector.c	2026-02-12 16:38:52.240563861 +0100
-@@ -0,0 +1,1036 @@
++++ b/kernel/sched/poc_selector.c	2026-02-14 14:28:38.784772656 +0100
+@@ -0,0 +1,1123 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Piece-Of-Cake (POC) CPU Selector
@@ -202,7 +202,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +#define SCHED_POC_SELECTOR_AUTHOR   "Masahito Suzuki"
 +#define SCHED_POC_SELECTOR_PROGNAME "Piece-Of-Cake (POC) CPU Selector"
 +
-+#define SCHED_POC_SELECTOR_VERSION  "2.0.0-rc2"
++#define SCHED_POC_SELECTOR_VERSION  "2.0.0-rc3"
 +
 +/**************************************************************
 + * Static keys:
@@ -219,11 +219,31 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 + * L2 cluster search control: sched_poc_l2_cluster_search
 + * (sysctl kernel.sched_poc_l2_cluster_search)
 + *
-+ * When enabled (default), Level 2 and Level 4 search within L2 (cluster)
++ * When enabled (default), Level 2 and Level 5 search within L2 (cluster)
 + * domain before falling back to LLC-wide search.  Disable to skip
 + * cluster-local search for A/B performance comparison.
 + */
 +DEFINE_STATIC_KEY_TRUE(sched_poc_l2_cluster_search);
++
++/*
++ * SMT prev sticky control: sched_poc_prefer_idle_smt
++ * (sysctl kernel.sched_poc_prefer_idle_smt)
++ *
++ * When enabled, Level 1/4 tries prev or its SMT sibling first
++ * regardless of core_mask (idle cores bitmap) state.
++ * Default: disabled (standard core_mask-gated behavior).
++ */
++DEFINE_STATIC_KEY_FALSE(sched_poc_prefer_idle_smt);
++
++/*
++ * Fallback target control: sched_poc_fallback_target
++ * (sysctl kernel.sched_poc_fallback_target)
++ *
++ * When enabled, POC returns target instead of -1 on saturation
++ * and SIS_UTIL overload, bypassing CFS's select_idle_cpu fallback.
++ * Default: disabled (return -1, let CFS handle it).
++ */
++DEFINE_STATIC_KEY_FALSE(sched_poc_fallback_target);
 +
 +/*
 + * sched_poc_aligned: true when all LLCs have poc_cpu_base aligned to 64
@@ -253,17 +273,17 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 + * Aggregated across all CPUs and exposed via sysfs.
 + */
 +enum poc_level {
-+	POC_LV1A = 0,	/* prev sticky (non-SMT) */
++	POC_LV1 = 0,	/* prev sticky (non-SMT) */
 +	POC_LV2,	/* idle core in L2 cluster */
 +	POC_LV3,	/* idle core across LLC (RR) */
-+	POC_LV1B,	/* prev/sibling sticky (SMT) */
-+	POC_LV4,	/* idle CPU in L2 cluster */
-+	POC_LV5,	/* idle CPU across LLC (RR) */
++	POC_LV4,	/* prev/sibling sticky (SMT) */
++	POC_LV5,	/* idle CPU in L2 cluster */
++	POC_LV6,	/* idle CPU across LLC (RR) */
 +	POC_FALLBACK,	/* POC returned -1, CFS fallback */
 +	POC_NR_LEVELS
 +};
 +
-+#define POC_SMT_LEVEL_OFFSET (POC_LV4 - POC_LV2)
++#define POC_SMT_LEVEL_OFFSET (POC_LV5 - POC_LV2)
 +
 +DEFINE_STATIC_KEY_FALSE(sched_poc_count_enabled);
 +static DEFINE_PER_CPU(unsigned long[POC_NR_LEVELS], poc_debug_cnt);
@@ -710,14 +730,14 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 + * Idle CPU selection using shared flag array aggregation:
 + *
 + *   Level 0: Saturation check -- no idle CPUs → return -1 (CFS fallback)
-+ *   Level 1a: prev sticky (non-SMT only)
-+ *   Level 1b: prev/sibling sticky (SMT only, before idle core search)
++ *   Level 1: prev sticky (non-SMT only)
 + *   Level 2: Idle core in L2 cluster (RR PTSELECT)
 + *   Level 3: Idle core across LLC (RR PTSELECT)
-+ *   Level 4: Idle CPU in L2 cluster (RR PTSELECT)
-+ *   Level 5: Idle CPU across LLC (RR PTSELECT)
++ *   Level 4: prev/sibling sticky (SMT only, all cores busy)
++ *   Level 5: Idle CPU in L2 cluster (RR PTSELECT)
++ *   Level 6: Idle CPU across LLC (RR PTSELECT)
 + *
-+ * On SMT, Level 1b checks prev/sibling idle before reading idle_cores,
++ * On SMT, Level 4 checks prev/sibling idle when all cores are busy,
 + * matching CFS's "prev idle → return prev" behavior.
 + * Levels 2-3 search the idle-core bitmap; levels 5-6 search
 + * the idle-CPU bitmap (fallback when no full cores are free).
@@ -749,34 +769,42 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +
 +	cpu_mask = poc_read_idle_cpus(sd_share) & affinity;
 +
-+	/* Level 0: Saturation — no idle CPU, let CFS return target */
++	/* Level 0: Saturation — no idle CPU */
 +	if (!cpu_mask)
-+		return -1;
++		return static_branch_unlikely(&sched_poc_fallback_target)
++			? target : -1;
 +
 +#ifdef CONFIG_SCHED_SMT
-+
 +	if (sched_smt_active()) {
-+		/* Level 1b: prev/sibling sticky (before reading idle_cores) */
-+		{
++		u64 core_mask = poc_read_idle_cores(sd_share) & affinity;
++
++		if (!static_branch_unlikely(&sched_poc_prefer_idle_smt) && core_mask) {
++			/* Level 1: prev sticky (prev's core is idle → return prev) */
++			if (prev_local) {
++				u64 prev_core = (1ULL << prev_bit) |
++					sd_share->poc_smt_mask[prev_bit];
++				if (core_mask & prev_core) {
++					poc_count(POC_LV1);
++					return prev;
++				}
++			}
++		} else {
++			/* Level 4: prev/sibling sticky (all cores busy) */
 +			int smt_cpu = poc_find_idle_smt_sibling(
 +				prev, cpu_mask, base, sd_share->poc_smt_mask);
 +			if (smt_cpu >= 0) {
-+				poc_count(POC_LV1B);
++				poc_count(POC_LV4);
 +				return smt_cpu;
 +			}
 +		}
-+
-+		u64 core_mask = poc_read_idle_cores(sd_share) & affinity;
-+		if (core_mask)
-+			cpu_mask = core_mask;
-+		else
++		if (!core_mask)
 +			level_offset = POC_SMT_LEVEL_OFFSET;
 +	}
 +	else
 +#endif
-+	/* Level 1a: prev sticky (non-SMT: prev is idle → return) */
++	/* Level 1: prev sticky (non-SMT: prev is idle → return) */
 +	if (prev_local && (cpu_mask & (1ULL << prev_bit))) {
-+		poc_count(POC_LV1A);
++		poc_count(POC_LV1);
 +		return prev;
 +	}
 +
@@ -793,7 +821,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +			__this_cpu_inc_return(poc_rr_counter) * POC_HASH_MULT;
 +
 +		/*
-+		 * Respect CFS's SIS_UTIL overload detection before L2-L5.
++		 * Respect CFS's SIS_UTIL overload detection before L2-L6.
 +		 *
 +		 * Gate 1: nr_idle_scan == 0 → LLC overloaded (85%+ util).
 +		 *
@@ -806,10 +834,11 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +			int nr = READ_ONCE(sd_share->nr_idle_scan);
 +			if (!nr || (u64)hweight64(cpu_mask) * nr
 +					< per_cpu(sd_llc_size, target))
-+				return -1;
++				return static_branch_unlikely(&sched_poc_fallback_target)
++					? target : -1;
 +		}
 +
-+		/* Level 2/4: idle core/cpu in target's L2 cluster */
++		/* Level 2/5: idle core/cpu in target's L2 cluster */
 +		if (static_branch_likely(&sched_poc_l2_cluster_search)
 +				&& static_branch_unlikely(&sched_cluster_active)
 +				&& sd_share->poc_cluster_valid) {
@@ -821,7 +850,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +			}
 +		}
 +
-+		/* Level 3/5: idle core/cpu across LLC via RR */
++		/* Level 3/6: idle core/cpu across LLC via RR */
 +		poc_count(POC_LV3 + level_offset);
 +		return poc_select_rr(cpu_mask, base, seed);
 +	}
@@ -897,6 +926,50 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +	return ret;
 +}
 +
++static int sched_poc_fallback_target_sysctl_handler(const struct ctl_table *table,
++					    int write, void *buffer,
++					    size_t *lenp, loff_t *ppos)
++{
++	unsigned int val = static_branch_unlikely(&sched_poc_fallback_target) ? 1 : 0;
++	struct ctl_table tmp = {
++		.data    = &val,
++		.maxlen  = sizeof(val),
++		.extra1  = SYSCTL_ZERO,
++		.extra2  = SYSCTL_ONE,
++	};
++	int ret = proc_douintvec_minmax(&tmp, write, buffer, lenp, ppos);
++
++	if (!ret && write) {
++		if (val)
++			static_branch_enable(&sched_poc_fallback_target);
++		else
++			static_branch_disable(&sched_poc_fallback_target);
++	}
++	return ret;
++}
++
++static int sched_poc_prefer_idle_smt_sysctl_handler(const struct ctl_table *table,
++					    int write, void *buffer,
++					    size_t *lenp, loff_t *ppos)
++{
++	unsigned int val = static_branch_unlikely(&sched_poc_prefer_idle_smt) ? 1 : 0;
++	struct ctl_table tmp = {
++		.data    = &val,
++		.maxlen  = sizeof(val),
++		.extra1  = SYSCTL_ZERO,
++		.extra2  = SYSCTL_ONE,
++	};
++	int ret = proc_douintvec_minmax(&tmp, write, buffer, lenp, ppos);
++
++	if (!ret && write) {
++		if (val)
++			static_branch_enable(&sched_poc_prefer_idle_smt);
++		else
++			static_branch_disable(&sched_poc_prefer_idle_smt);
++	}
++	return ret;
++}
++
 +static int sched_poc_count_sysctl_handler(const struct ctl_table *table,
 +					  int write, void *buffer,
 +					  size_t *lenp, loff_t *ppos)
@@ -933,6 +1006,20 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +		.maxlen		= sizeof(unsigned int),
 +		.mode		= 0644,
 +		.proc_handler	= sched_poc_l2_cluster_sysctl_handler,
++	},
++	{
++		.procname	= "sched_poc_fallback_target",
++		.data		= NULL,
++		.maxlen		= sizeof(unsigned int),
++		.mode		= 0644,
++		.proc_handler	= sched_poc_fallback_target_sysctl_handler,
++	},
++	{
++		.procname	= "sched_poc_prefer_idle_smt",
++		.data		= NULL,
++		.maxlen		= sizeof(unsigned int),
++		.mode		= 0644,
++		.proc_handler	= sched_poc_prefer_idle_smt_sysctl_handler,
 +	},
 +	{
 +		.procname	= "sched_poc_count",
@@ -1121,12 +1208,12 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +	.show = poc_count_##fname##_show,				\
 +}
 +
-+DEFINE_POC_COUNT_ATTR(l1a, POC_LV1A);
++DEFINE_POC_COUNT_ATTR(l1, POC_LV1);
 +DEFINE_POC_COUNT_ATTR(l2, POC_LV2);
 +DEFINE_POC_COUNT_ATTR(l3, POC_LV3);
-+DEFINE_POC_COUNT_ATTR(l1b, POC_LV1B);
 +DEFINE_POC_COUNT_ATTR(l4, POC_LV4);
 +DEFINE_POC_COUNT_ATTR(l5, POC_LV5);
++DEFINE_POC_COUNT_ATTR(l6, POC_LV6);
 +DEFINE_POC_COUNT_ATTR(fallback, POC_FALLBACK);
 +
 +static ssize_t poc_count_reset_store(struct kobject *kobj,
@@ -1147,12 +1234,12 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +};
 +
 +static struct attribute *poc_count_attrs[] = {
-+	&poc_count_l1a_attr.attr,
++	&poc_count_l1_attr.attr,
 +	&poc_count_l2_attr.attr,
 +	&poc_count_l3_attr.attr,
-+	&poc_count_l1b_attr.attr,
 +	&poc_count_l4_attr.attr,
 +	&poc_count_l5_attr.attr,
++	&poc_count_l6_attr.attr,
 +	&poc_count_fallback_attr.attr,
 +	&poc_count_reset_attr.attr,
 +	NULL,
@@ -1199,8 +1286,8 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +#endif /* CONFIG_SYSFS */
 +#endif /* CONFIG_SCHED_POC_SELECTOR */
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2026-02-12 16:39:19.991128544 +0100
-+++ b/kernel/sched/sched.h	2026-02-12 16:38:52.240766195 +0100
+--- a/kernel/sched/sched.h	2026-02-14 14:29:35.921835726 +0100
++++ b/kernel/sched/sched.h	2026-02-14 14:28:38.786772668 +0100
 @@ -3363,6 +3363,107 @@ extern void nohz_run_idle_balance(int cp
  static inline void nohz_run_idle_balance(int cpu) { }
  #endif
@@ -1310,8 +1397,8 @@ diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
  
  #if defined(CONFIG_SCHED_CORE) && defined(CONFIG_SCHEDSTATS)
 diff -rupN a/kernel/sched/topology.c b/kernel/sched/topology.c
---- a/kernel/sched/topology.c	2026-02-12 15:47:53.000000000 +0100
-+++ b/kernel/sched/topology.c	2026-02-12 16:38:52.241020002 +0100
+--- a/kernel/sched/topology.c	2026-02-14 11:56:14.000000000 +0100
++++ b/kernel/sched/topology.c	2026-02-14 14:28:38.788041743 +0100
 @@ -1735,6 +1735,159 @@ sd_init(struct sched_domain_topology_lev
  		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
  		atomic_inc(&sd->shared->ref);
