@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 --- a/include/linux/sched/bore.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/include/linux/sched/bore.h	2026-02-03 12:51:05.295421698 +0100
++++ b/include/linux/sched/bore.h	2026-02-15 13:23:39.849916124 +0100
 @@ -0,0 +1,39 @@
 +#ifndef _KERNEL_SCHED_BORE_H
 +#define _KERNEL_SCHED_BORE_H
@@ -42,9 +42,9 @@ diff -rupN a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 +
 +#endif /* _KERNEL_SCHED_BORE_H */
 diff -rupN a/include/linux/sched.h b/include/linux/sched.h
---- a/include/linux/sched.h	2026-02-03 12:26:39.000000000 +0100
-+++ b/include/linux/sched.h	2026-02-03 12:51:05.296974397 +0100
-@@ -811,6 +811,37 @@ struct kmap_ctrl {
+--- a/include/linux/sched.h	2026-02-15 08:41:07.000000000 +0100
++++ b/include/linux/sched.h	2026-02-15 13:23:39.850668688 +0100
+@@ -816,6 +816,37 @@ struct kmap_ctrl {
  #endif
  };
  
@@ -82,7 +82,7 @@ diff -rupN a/include/linux/sched.h b/include/linux/sched.h
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -869,6 +900,9 @@ struct task_struct {
+@@ -874,6 +905,9 @@ struct task_struct {
  #ifdef CONFIG_SCHED_CLASS_EXT
  	struct sched_ext_entity		scx;
  #endif
@@ -93,9 +93,9 @@ diff -rupN a/include/linux/sched.h b/include/linux/sched.h
  
  #ifdef CONFIG_SCHED_CORE
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-02-03 12:26:39.000000000 +0100
-+++ b/init/Kconfig	2026-02-03 12:51:05.300235553 +0100
-@@ -1430,6 +1430,23 @@ config CHECKPOINT_RESTORE
+--- a/init/Kconfig	2026-02-15 08:41:07.000000000 +0100
++++ b/init/Kconfig	2026-02-15 13:23:39.852892862 +0100
+@@ -1441,6 +1441,23 @@ config CHECKPOINT_RESTORE
  
  	  If unsure, say N here.
  
@@ -120,8 +120,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Automatic process group scheduling"
  	select CGROUPS
 diff -rupN a/kernel/exit.c b/kernel/exit.c
---- a/kernel/exit.c	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/exit.c	2026-02-03 12:51:05.305235597 +0100
+--- a/kernel/exit.c	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/exit.c	2026-02-15 13:23:39.854044750 +0100
 @@ -147,7 +147,7 @@ static void __unhash_process(struct rele
  		detach_pid(post->pids, p, PIDTYPE_SID);
  
@@ -132,9 +132,9 @@ diff -rupN a/kernel/exit.c b/kernel/exit.c
  	}
  	list_del_rcu(&p->thread_node);
 diff -rupN a/kernel/fork.c b/kernel/fork.c
---- a/kernel/fork.c	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/fork.c	2026-02-03 12:51:05.309235631 +0100
-@@ -116,6 +116,10 @@
+--- a/kernel/fork.c	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/fork.c	2026-02-15 13:23:39.856964033 +0100
+@@ -117,6 +117,10 @@
  /* For dup_mmap(). */
  #include "../mm/internal.h"
  
@@ -145,7 +145,7 @@ diff -rupN a/kernel/fork.c b/kernel/fork.c
  #include <trace/events/sched.h>
  
  #define CREATE_TRACE_POINTS
-@@ -2360,6 +2364,11 @@ __latent_entropy struct task_struct *cop
+@@ -2362,6 +2366,11 @@ __latent_entropy struct task_struct *cop
  	p->start_time = ktime_get_ns();
  	p->start_boottime = ktime_get_boottime_ns();
  
@@ -157,7 +157,7 @@ diff -rupN a/kernel/fork.c b/kernel/fork.c
  	/*
  	 * Make it visible to the rest of the system, but dont wake it up yet.
  	 * Need tasklist lock for parent etc handling!
-@@ -2433,7 +2442,7 @@ __latent_entropy struct task_struct *cop
+@@ -2435,7 +2444,7 @@ __latent_entropy struct task_struct *cop
  			 */
  			p->signal->has_child_subreaper = p->real_parent->signal->has_child_subreaper ||
  							 p->real_parent->signal->is_child_subreaper;
@@ -167,8 +167,8 @@ diff -rupN a/kernel/fork.c b/kernel/fork.c
  			attach_pid(p, PIDTYPE_TGID);
  			attach_pid(p, PIDTYPE_PGID);
 diff -rupN a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
---- a/kernel/futex/waitwake.c	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/futex/waitwake.c	2026-02-03 12:51:05.313235665 +0100
+--- a/kernel/futex/waitwake.c	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/futex/waitwake.c	2026-02-15 13:23:39.858153386 +0100
 @@ -4,6 +4,9 @@
  #include <linux/sched/task.h>
  #include <linux/sched/signal.h>
@@ -196,8 +196,8 @@ diff -rupN a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
  	__set_current_state(TASK_RUNNING);
  }
 diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
---- a/kernel/Kconfig.hz	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/Kconfig.hz	2026-02-03 12:51:05.315746653 +0100
+--- a/kernel/Kconfig.hz	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/Kconfig.hz	2026-02-15 13:23:39.859488394 +0100
 @@ -57,3 +57,20 @@ config HZ
  
  config SCHED_HRTICK
@@ -221,7 +221,7 @@ diff -rupN a/kernel/Kconfig.hz b/kernel/Kconfig.hz
 +	 latency and poor system responsiveness.
 diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 --- a/kernel/sched/bore.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/bore.c	2026-02-03 12:51:05.316697913 +0100
++++ b/kernel/sched/bore.c	2026-02-15 13:23:39.860316448 +0100
 @@ -0,0 +1,415 @@
 +/*
 + *  Burst-Oriented Response Enhancer (BORE) CPU Scheduler
@@ -639,8 +639,8 @@ diff -rupN a/kernel/sched/bore.c b/kernel/sched/bore.c
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
 diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
---- a/kernel/sched/core.c	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/sched/core.c	2026-02-03 12:51:05.322235743 +0100
+--- a/kernel/sched/core.c	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/sched/core.c	2026-02-15 13:23:39.862370227 +0100
 @@ -100,6 +100,10 @@
  #include "../smpboot.h"
  #include "../locking/mutex.h"
@@ -676,8 +676,8 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  
  #ifdef CONFIG_FAIR_GROUP_SCHED
 diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
---- a/kernel/sched/debug.c	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/sched/debug.c	2026-02-03 12:51:05.324563871 +0100
+--- a/kernel/sched/debug.c	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/sched/debug.c	2026-02-15 13:23:39.874201011 +0100
 @@ -169,6 +169,53 @@ static const struct file_operations sche
  	.release	= single_release,
  };
@@ -781,8 +781,8 @@ diff -rupN a/kernel/sched/debug.c b/kernel/sched/debug.c
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/sched/fair.c	2026-02-03 12:51:05.332235829 +0100
+--- a/kernel/sched/fair.c	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/sched/fair.c	2026-02-15 13:23:39.879370375 +0100
 @@ -58,6 +58,10 @@
  #include "stats.h"
  #include "autogroup.h"
@@ -1110,8 +1110,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	set_task_max_allowed_capacity(p);
  
 diff -rupN a/kernel/sched/features.h b/kernel/sched/features.h
---- a/kernel/sched/features.h	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/sched/features.h	2026-02-03 12:51:05.346235950 +0100
+--- a/kernel/sched/features.h	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/sched/features.h	2026-02-15 13:23:39.893552395 +0100
 @@ -18,6 +18,9 @@ SCHED_FEAT(PLACE_REL_DEADLINE, true)
   * 0-lag point or until is has exhausted it's slice.
   */
@@ -1123,17 +1123,17 @@ diff -rupN a/kernel/sched/features.h b/kernel/sched/features.h
   * Allow wakeup of tasks with a shorter slice to cancel RUN_TO_PARITY for
   * current.
 diff -rupN a/kernel/sched/Makefile b/kernel/sched/Makefile
---- a/kernel/sched/Makefile	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/sched/Makefile	2026-02-03 12:51:05.348073662 +0100
+--- a/kernel/sched/Makefile	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/sched/Makefile	2026-02-15 13:23:39.894092732 +0100
 @@ -40,3 +40,4 @@ obj-y += core.o
  obj-y += fair.o
  obj-y += build_policy.o
  obj-y += build_utility.o
 +obj-$(CONFIG_SCHED_BORE) += bore.o
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2026-02-03 12:26:39.000000000 +0100
-+++ b/kernel/sched/sched.h	2026-02-03 12:51:05.349235976 +0100
-@@ -2212,7 +2212,11 @@ extern int group_balance_cpu(struct sche
+--- a/kernel/sched/sched.h	2026-02-15 08:41:07.000000000 +0100
++++ b/kernel/sched/sched.h	2026-02-15 13:23:39.895080262 +0100
+@@ -2216,7 +2216,11 @@ extern int group_balance_cpu(struct sche
  extern void update_sched_domain_debugfs(void);
  extern void dirty_sched_domain_sysctl(int cpu);
  
@@ -1145,7 +1145,7 @@ diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
  
  static inline const struct cpumask *task_user_cpus(struct task_struct *p)
  {
-@@ -2995,7 +2999,12 @@ extern void wakeup_preempt(struct rq *rq
+@@ -2999,7 +3003,12 @@ extern void wakeup_preempt(struct rq *rq
  extern __read_mostly unsigned int sysctl_sched_nr_migrate;
  extern __read_mostly unsigned int sysctl_sched_migration_cost;
  

@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-02-15
+* update patches (offset fixes only)
+* add '[hibernate](https://lore.kernel.org/linux-mm/20260215-hibernate-perf-v2-0-cf28c75b04b7@tencent.com/)'-patch
+
 ## 2026-02-14
 * upgrade POC selector patches to 2.0.0-rc3
 
