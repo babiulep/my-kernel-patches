@@ -5,6 +5,7 @@
 
 ## 2026-02-16
 * fix polly patch
+* upgrade POC selector patches to 2.0.0
 
 ## 2026-02-15
 * update patches (offset fixes only)
