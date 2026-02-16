@@ -1,13 +1,13 @@
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-02-15 13:33:22.685435928 +0100
-+++ b/init/Kconfig	2026-02-15 13:33:40.669666387 +0100
+--- a/init/Kconfig	2026-02-16 12:22:39.284300475 +0100
++++ b/init/Kconfig	2026-02-16 12:23:13.255708064 +0100
 @@ -302,6 +302,19 @@ config BUILD_SALT
  	  This is mostly useful for distributions which want to ensure the
  	  build is unique between builds. It's safe to leave the default.
  
 +config POLLY_CLANG
 +	bool "Use Clang Polly optimizations"
-+	depends on CC_IS_CLANG && $(cc-option,-mllvm -polly -fplugin=LLVMPolly.so)
++	depends on CC_IS_CLANG && $(cc-option,-mllvm -polly)
 +	depends on !COMPILE_TEST
 +	help
 +	  This option enables Clang's polyhedral loop optimizer known as
@@ -23,19 +23,14 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  
 diff -rupN a/Makefile b/Makefile
 --- a/Makefile	2026-02-15 08:41:07.000000000 +0100
-+++ b/Makefile	2026-02-15 13:33:40.672592176 +0100
-@@ -902,6 +902,23 @@ endif
++++ b/Makefile	2026-02-16 12:24:11.515562050 +0100
+@@ -902,6 +902,18 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
 +ifdef CONFIG_POLLY_CLANG
-+KBUILD_CFLAGS	+= -fplugin=LLVMPolly.so \
-+		   -mllvm -polly \
-+		   -mllvm -polly-ast-use-context \
-+		   -mllvm -polly-invariant-load-hoisting \
-+		   -mllvm -polly-loopfusion-greedy \
-+		   -mllvm -polly-run-inliner \
-+		   -mllvm -polly-vectorizer=stripmine
++KBUILD_CFLAGS	+= -mllvm -polly -mllvm -polly-omp-backend=LLVM -mllvm -polly-num-threads=4 -mllvm -polly-scheduling=dynamic -mllvm -polly-scheduling-chunksize=1 -mllvm -polly-ast-use-context -mllvm -polly-invariant-load-hoisting -mllvm -polly-loopfusion-greedy -mllvm -polly-run-inliner -mllvm -polly-vectorizer=stripmine
++
 +# Polly may optimise loops with dead paths beyound what the linker
 +# can understand. This may negate the effect of the linker's DCE
 +# so we tell Polly to perfom proven DCE on the loops it optimises
