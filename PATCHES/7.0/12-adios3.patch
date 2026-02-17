@@ -1,6 +1,6 @@
 diff -rupN a/block/adios.c b/block/adios.c
 --- a/block/adios.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/block/adios.c	2026-02-04 12:26:16.090222504 +0100
++++ b/block/adios.c	2026-02-17 11:58:25.630392900 +0100
 @@ -0,0 +1,2004 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -29,7 +29,7 @@ diff -rupN a/block/adios.c b/block/adios.c
 +#include "blk-mq.h"
 +#include "blk-mq-sched.h"
 +
-+#define ADIOS_VERSION "3.1.9"
++#define ADIOS_VERSION "3.1.11"
 +
 +/* Request Types:
 + *
@@ -928,7 +928,7 @@ diff -rupN a/block/adios.c b/block/adios.c
 +	 * separate barrier_queue. This ensures that no new requests are processed
 +	 * until all work preceding the barrier is complete.
 +	 */
-+	rq_is_flush = rq->cmd_flags & REQ_OP_FLUSH;
++	rq_is_flush = (rq->cmd_flags & REQ_OP_MASK) == REQ_OP_FLUSH;
 +	if (eval_adios_state(ad, ADIOS_STATE_BP) || rq_is_flush) {
 +		scoped_guard(spinlock_irqsave, &ad->barrier_lock) {
 +			if (rq_is_flush)
@@ -1308,7 +1308,7 @@ diff -rupN a/block/adios.c b/block/adios.c
 +					continue;
 +				}
 +
-+				if (trq->cmd_flags & REQ_OP_FLUSH)
++				if ((trq->cmd_flags & REQ_OP_MASK) == REQ_OP_FLUSH)
 +					break;
 +
 +				list_move_tail(&trq->queuelist, &local_list);
@@ -2008,8 +2008,8 @@ diff -rupN a/block/adios.c b/block/adios.c
 +MODULE_DESCRIPTION(ADIOS_PROGNAME);
 \ No newline at end of file
 diff -rupN a/block/elevator.c b/block/elevator.c
---- a/block/elevator.c	2026-02-03 20:15:24.000000000 +0100
-+++ b/block/elevator.c	2026-02-04 12:26:16.092480900 +0100
+--- a/block/elevator.c	2026-02-16 21:55:09.000000000 +0100
++++ b/block/elevator.c	2026-02-17 11:58:25.632899480 +0100
 @@ -740,6 +740,14 @@ void elevator_set_default(struct request
  	if (q->tag_set->flags & BLK_MQ_F_NO_SCHED_BY_DEFAULT)
  		return;
@@ -2044,8 +2044,8 @@ diff -rupN a/block/elevator.c b/block/elevator.c
  }
  
 diff -rupN a/block/Kconfig.iosched b/block/Kconfig.iosched
---- a/block/Kconfig.iosched	2026-02-03 20:15:24.000000000 +0100
-+++ b/block/Kconfig.iosched	2026-02-04 12:26:16.089421974 +0100
+--- a/block/Kconfig.iosched	2026-02-16 21:55:09.000000000 +0100
++++ b/block/Kconfig.iosched	2026-02-17 11:58:25.629816834 +0100
 @@ -16,6 +16,20 @@ config MQ_IOSCHED_KYBER
  	  synchronous writes, it will self-tune queue depths to achieve that
  	  goal.
@@ -2068,8 +2068,8 @@ diff -rupN a/block/Kconfig.iosched b/block/Kconfig.iosched
  	tristate "BFQ I/O scheduler"
  	select BLK_ICQ
 diff -rupN a/block/Makefile b/block/Makefile
---- a/block/Makefile	2026-02-03 20:15:24.000000000 +0100
-+++ b/block/Makefile	2026-02-04 12:26:16.089756191 +0100
+--- a/block/Makefile	2026-02-16 21:55:09.000000000 +0100
++++ b/block/Makefile	2026-02-17 11:58:25.630143366 +0100
 @@ -22,6 +22,7 @@ obj-$(CONFIG_BLK_CGROUP_IOLATENCY)	+= bl
  obj-$(CONFIG_BLK_CGROUP_IOCOST)	+= blk-iocost.o
  obj-$(CONFIG_MQ_IOSCHED_DEADLINE)	+= mq-deadline.o
