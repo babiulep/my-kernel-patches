@@ -4,6 +4,9 @@
 - [README 2025](README2025.md) 
 
 ## 2026-02-17
+* one NVIDIA patch for TIP & NEXT trees
+
+## 2026-02-17
 * upgrade ADIOS from 3.1.9 to 3.1.11
 
 ## 2026-02-16
