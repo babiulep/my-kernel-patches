@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-02-23
+* add bbr3 and block (mq & bfq) patches
+
 ## 2026-02-17
 * one NVIDIA patch for TIP & NEXT trees
 
