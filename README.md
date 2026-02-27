@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-02-27
+* split patches between NEXT and TIP
+* upgrade POC selector patches to 2.2.0
+
 ## 2026-02-23
 * add bbr3 and block (mq & bfq) patches
 
