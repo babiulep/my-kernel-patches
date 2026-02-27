@@ -9,6 +9,7 @@
 * TIP+NEXT: added nap-v0.1.0.patch (only compiles when using GCC)
 * TIP+NEXT: added Reflex-CPUFreq-Governor-v0.2.2.patch
 * TIP: added re-swappiness-v1.1.patch
+* TIP: add fix for unused variables in re-swappiness-v1.1.patch
 
 ## 2026-02-23
 * add bbr3 and block (mq & bfq) patches

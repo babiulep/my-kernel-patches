@@ -1,0 +1,13 @@
+diff -rupN a/mm/vmscan.c b/mm/vmscan.c
+--- a/mm/vmscan.c	2026-02-27 21:20:41.157275397 +0100
++++ b/mm/vmscan.c	2026-02-27 21:21:25.389929280 +0100
+@@ -4658,9 +4658,6 @@ static int get_type_to_scan(struct lruve
+ {
+ 	struct ctrl_pos sp, pv;
+ 
+-	struct lru_gen_folio *lrugen = &lruvec->lrugen;
+-	unsigned long anon_scanned, file_scanned;
+-
+ 	if (swappiness <= MIN_SWAPPINESS + 1)
+ 		return LRU_GEN_FILE;
+ 
