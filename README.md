@@ -5,10 +5,10 @@
 
 ## 2026-02-27
 * split patches between NEXT and TIP
-* upgrade POC selector patches to 2.2.0
-* added nap-v0.1.0.patch (only compiles when using GCC)
-* added Reflex-CPUFreq-Governor-v0.2.2.patch
-* added re-swappiness-v1.1.patch
+* TIP+NEXT: upgrade POC selector patches to 2.2.0
+* TIP+NEXT: added nap-v0.1.0.patch (only compiles when using GCC)
+* TIP+NEXT: added Reflex-CPUFreq-Governor-v0.2.2.patch
+* TIP: added re-swappiness-v1.1.patch
 
 ## 2026-02-23
 * add bbr3 and block (mq & bfq) patches
