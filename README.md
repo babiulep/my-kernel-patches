@@ -3,8 +3,12 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-03-01
+* TIP: upgrade nap: v0.1.6
+* TIP: upgrade POC selector: v2.2.5
+
 ## 2026-02-28
-* TIP: upgrade to nap-v0.1.2.patch
+* TIP: upgrade to nap v0.1.2
 
 ## 2026-02-27
 * split patches between NEXT and TIP
