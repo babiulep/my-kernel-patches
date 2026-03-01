@@ -4,8 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-03-01
-* TIP: revert nap back to: v0.1.2
-* TIP: upgrade nap: v0.1.6
+* TIP: upgrade nap: v0.1.6 (one for use with gcc, one for clang)
 * TIP: upgrade POC selector: v2.2.5
 
 ## 2026-02-28
