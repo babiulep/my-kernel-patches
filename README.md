@@ -3,6 +3,11 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-03-06
+* TIP: update nap: v0.2.0r2 (fixes clang compilation)
+* TIP: update POC: v2.2.8
+* TIP: update BORE: v6.7.3
+
 ## 2026-03-01
 * TIP: upgrade nap: v0.1.6 (one for use with gcc, one for clang)
 * TIP: upgrade POC selector: v2.2.5

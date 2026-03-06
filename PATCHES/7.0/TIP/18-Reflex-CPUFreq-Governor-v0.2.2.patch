@@ -1,6 +1,6 @@
 diff -rupN a/arch/x86/kernel/cpu/aperfmperf.c b/arch/x86/kernel/cpu/aperfmperf.c
---- a/arch/x86/kernel/cpu/aperfmperf.c	2026-03-01 08:31:51.000000000 +0100
-+++ b/arch/x86/kernel/cpu/aperfmperf.c	2026-03-01 11:16:25.367471655 +0100
+--- a/arch/x86/kernel/cpu/aperfmperf.c	2026-03-05 07:41:28.000000000 +0100
++++ b/arch/x86/kernel/cpu/aperfmperf.c	2026-03-05 16:32:28.112809461 +0100
 @@ -84,6 +84,7 @@ static void init_counter_refs(void *data
   */
  
@@ -10,8 +10,8 @@ diff -rupN a/arch/x86/kernel/cpu/aperfmperf.c b/arch/x86/kernel/cpu/aperfmperf.c
  static u64 arch_turbo_freq_ratio = SCHED_CAPACITY_SCALE;
  static u64 arch_max_freq_ratio = SCHED_CAPACITY_SCALE;
 diff -rupN a/drivers/cpufreq/cpufreq.c b/drivers/cpufreq/cpufreq.c
---- a/drivers/cpufreq/cpufreq.c	2026-03-01 08:31:51.000000000 +0100
-+++ b/drivers/cpufreq/cpufreq.c	2026-03-01 11:16:25.367787667 +0100
+--- a/drivers/cpufreq/cpufreq.c	2026-03-05 07:41:28.000000000 +0100
++++ b/drivers/cpufreq/cpufreq.c	2026-03-05 16:32:28.113338751 +0100
 @@ -2054,6 +2054,7 @@ bool cpufreq_driver_test_flags(u16 flags
  {
  	return !!(cpufreq_driver->flags & flags);
@@ -38,7 +38,7 @@ diff -rupN a/drivers/cpufreq/cpufreq.c b/drivers/cpufreq/cpufreq.c
  static int __target_intermediate(struct cpufreq_policy *policy,
 diff -rupN a/drivers/cpufreq/cpufreq_reflex.c b/drivers/cpufreq/cpufreq_reflex.c
 --- a/drivers/cpufreq/cpufreq_reflex.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/cpufreq/cpufreq_reflex.c	2026-03-01 11:16:25.368101482 +0100
++++ b/drivers/cpufreq/cpufreq_reflex.c	2026-03-05 16:32:28.113978619 +0100
 @@ -0,0 +1,1021 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -1063,8 +1063,8 @@ diff -rupN a/drivers/cpufreq/cpufreq_reflex.c b/drivers/cpufreq/cpufreq_reflex.c
 +MODULE_DESCRIPTION(CPUFREQ_REFLEX_PROGNAME);
 \ No newline at end of file
 diff -rupN a/drivers/cpufreq/Kconfig b/drivers/cpufreq/Kconfig
---- a/drivers/cpufreq/Kconfig	2026-03-01 08:31:51.000000000 +0100
-+++ b/drivers/cpufreq/Kconfig	2026-03-01 11:16:25.368428004 +0100
+--- a/drivers/cpufreq/Kconfig	2026-03-05 07:41:28.000000000 +0100
++++ b/drivers/cpufreq/Kconfig	2026-03-05 16:32:28.114244808 +0100
 @@ -203,6 +203,30 @@ config CPU_FREQ_GOV_SCHEDUTIL
  
  	  If in doubt, say N.
@@ -1097,8 +1097,8 @@ diff -rupN a/drivers/cpufreq/Kconfig b/drivers/cpufreq/Kconfig
  
  config CPUFREQ_DT
 diff -rupN a/drivers/cpufreq/Makefile b/drivers/cpufreq/Makefile
---- a/drivers/cpufreq/Makefile	2026-03-01 08:31:51.000000000 +0100
-+++ b/drivers/cpufreq/Makefile	2026-03-01 11:16:25.368564614 +0100
+--- a/drivers/cpufreq/Makefile	2026-03-05 07:41:28.000000000 +0100
++++ b/drivers/cpufreq/Makefile	2026-03-05 16:32:28.114524548 +0100
 @@ -13,6 +13,7 @@ obj-$(CONFIG_CPU_FREQ_GOV_ONDEMAND)	+= c
  obj-$(CONFIG_CPU_FREQ_GOV_CONSERVATIVE)	+= cpufreq_conservative.o
  obj-$(CONFIG_CPU_FREQ_GOV_COMMON)		+= cpufreq_governor.o
@@ -1108,8 +1108,8 @@ diff -rupN a/drivers/cpufreq/Makefile b/drivers/cpufreq/Makefile
  obj-$(CONFIG_CPUFREQ_DT)		+= cpufreq-dt.o
  obj-$(CONFIG_CPUFREQ_DT_RUST)		+= rcpufreq_dt.o
 diff -rupN a/include/linux/sched/cpufreq.h b/include/linux/sched/cpufreq.h
---- a/include/linux/sched/cpufreq.h	2026-03-01 08:31:51.000000000 +0100
-+++ b/include/linux/sched/cpufreq.h	2026-03-01 11:16:25.368688339 +0100
+--- a/include/linux/sched/cpufreq.h	2026-03-05 07:41:28.000000000 +0100
++++ b/include/linux/sched/cpufreq.h	2026-03-05 16:32:28.114676133 +0100
 @@ -33,6 +33,16 @@ static inline unsigned long map_util_per
  {
  	return util + (util >> 2);
@@ -1128,9 +1128,9 @@ diff -rupN a/include/linux/sched/cpufreq.h b/include/linux/sched/cpufreq.h
  
  #endif /* _LINUX_SCHED_CPUFREQ_H */
 diff -rupN a/kernel/kthread.c b/kernel/kthread.c
---- a/kernel/kthread.c	2026-03-01 08:31:51.000000000 +0100
-+++ b/kernel/kthread.c	2026-03-01 11:16:25.368865312 +0100
-@@ -619,6 +619,7 @@ void kthread_bind_mask(struct task_struc
+--- a/kernel/kthread.c	2026-03-05 07:41:28.000000000 +0100
++++ b/kernel/kthread.c	2026-03-05 16:32:28.114891517 +0100
+@@ -588,6 +588,7 @@ void kthread_bind_mask(struct task_struc
  	__kthread_bind_mask(p, mask, TASK_UNINTERRUPTIBLE);
  	WARN_ON_ONCE(kthread->started);
  }
@@ -1139,16 +1139,16 @@ diff -rupN a/kernel/kthread.c b/kernel/kthread.c
  /**
   * kthread_bind - bind a just-created kthread to a cpu.
 diff -rupN a/kernel/sched/cpufreq.c b/kernel/sched/cpufreq.c
---- a/kernel/sched/cpufreq.c	2026-03-01 08:31:51.000000000 +0100
-+++ b/kernel/sched/cpufreq.c	2026-03-01 11:16:25.369075134 +0100
+--- a/kernel/sched/cpufreq.c	2026-03-05 07:41:28.000000000 +0100
++++ b/kernel/sched/cpufreq.c	2026-03-05 16:32:28.115078547 +0100
 @@ -73,3 +73,4 @@ bool cpufreq_this_cpu_can_update(struct
  		(policy->dvfs_possible_from_any_cpu &&
  		 rcu_dereference_sched(*this_cpu_ptr(&cpufreq_update_util_data)));
  }
 +EXPORT_SYMBOL_GPL(cpufreq_this_cpu_can_update);
 diff -rupN a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
---- a/kernel/sched/cpufreq_schedutil.c	2026-03-01 08:31:51.000000000 +0100
-+++ b/kernel/sched/cpufreq_schedutil.c	2026-03-01 11:16:25.369101488 +0100
+--- a/kernel/sched/cpufreq_schedutil.c	2026-03-05 07:41:28.000000000 +0100
++++ b/kernel/sched/cpufreq_schedutil.c	2026-03-05 16:32:28.115235778 +0100
 @@ -935,3 +935,79 @@ bool sugov_is_governor(struct cpufreq_po
  }
  
@@ -1230,8 +1230,8 @@ diff -rupN a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
 +}
 +EXPORT_SYMBOL_GPL(cpufreq_scx_switched_all);
 diff -rupN a/kernel/time/tick-sched.c b/kernel/time/tick-sched.c
---- a/kernel/time/tick-sched.c	2026-03-01 08:31:51.000000000 +0100
-+++ b/kernel/time/tick-sched.c	2026-03-01 11:16:25.369436636 +0100
+--- a/kernel/time/tick-sched.c	2026-03-05 07:41:28.000000000 +0100
++++ b/kernel/time/tick-sched.c	2026-03-05 16:32:28.115585108 +0100
 @@ -1428,6 +1428,7 @@ unsigned long tick_nohz_get_idle_calls_c
  
  	return ts->idle_calls;
