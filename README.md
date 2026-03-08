@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-03-08
+* TIP: update re-swappiness: v1.2
+* TIP: added le9uo patch
+
 ## 2026-03-06
 * TIP: update nap: v0.2.0r2 (fixes clang compilation)
 * TIP: update POC: v2.2.8

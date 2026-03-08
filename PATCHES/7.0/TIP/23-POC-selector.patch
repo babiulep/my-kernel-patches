@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched/topology.h b/include/linux/sched/topology.h
---- a/include/linux/sched/topology.h	2026-03-06 06:24:28.000000000 +0100
-+++ b/include/linux/sched/topology.h	2026-03-06 14:13:19.751677966 +0100
+--- a/include/linux/sched/topology.h	2026-03-06 16:39:10.000000000 +0100
++++ b/include/linux/sched/topology.h	2026-03-06 23:00:11.551675730 +0100
 @@ -66,8 +66,37 @@ struct sched_group;
  struct sched_domain_shared {
  	atomic_t	ref;
@@ -42,8 +42,8 @@ diff -rupN a/include/linux/sched/topology.h b/include/linux/sched/topology.h
  
  struct sched_domain {
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-03-06 14:15:57.022014585 +0100
-+++ b/init/Kconfig	2026-03-06 14:13:19.751938806 +0100
+--- a/init/Kconfig	2026-03-06 23:13:45.741408505 +0100
++++ b/init/Kconfig	2026-03-06 23:00:11.551751251 +0100
 @@ -1488,6 +1488,19 @@ config SCHED_AUTOGROUP
  	  desktop applications.  Task group autogeneration is currently based
  	  upon task session.
@@ -65,8 +65,8 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool "Kernel->user space relay support (formerly relayfs)"
  	select IRQ_WORK
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2026-03-06 14:15:57.016703119 +0100
-+++ b/kernel/sched/fair.c	2026-03-06 14:14:03.259917527 +0100
+--- a/kernel/sched/fair.c	2026-03-06 23:13:45.736157696 +0100
++++ b/kernel/sched/fair.c	2026-03-06 23:11:33.908117576 +0100
 @@ -1246,7 +1246,7 @@ static bool update_deadline(struct cfs_r
  
  #include "pelt.h"
@@ -172,10 +172,11 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  
  	/*
  	 * Allow a per-cpu kthread to stack with the wakee if the
-@@ -8152,24 +8176,6 @@ static int select_idle_sibling(struct ta
+@@ -8151,25 +8175,6 @@ static int select_idle_sibling(struct ta
+ 	    asym_fits_cpu(task_util, util_min, util_max, prev)) {
  		return prev;
  	}
- 
+-
 -	/* Check a recently used CPU as a potential idle candidate: */
 -	recent_used_cpu = p->recent_used_cpu;
 -	p->recent_used_cpu = prev;
@@ -197,7 +198,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	/*
  	 * For asymmetric CPU capacity systems, our domain of interest is
  	 * sd_asym_cpucapacity rather than sd_llc.
-@@ -8194,6 +8200,69 @@ static int select_idle_sibling(struct ta
+@@ -8194,6 +8199,69 @@ static int select_idle_sibling(struct ta
  	if (!sd)
  		return target;
  
@@ -267,7 +268,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	if (sched_smt_active()) {
  		has_idle_core = test_idle_cores(target);
  
-@@ -8214,11 +8283,19 @@ static int select_idle_sibling(struct ta
+@@ -8214,11 +8282,19 @@ static int select_idle_sibling(struct ta
  	 * first. But prev_cpu or recent_used_cpu may also be a good candidate,
  	 * use them if possible when no idle CPU found in select_idle_cpu().
  	 */
@@ -287,7 +288,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	return target;
  }
  
-@@ -8901,7 +8978,7 @@ select_task_rq_fair(struct task_struct *
+@@ -8901,7 +8977,7 @@ select_task_rq_fair(struct task_struct *
  		new_cpu = sched_balance_find_dst_cpu(sd, p, cpu, prev_cpu, sd_flag);
  	} else if (wake_flags & WF_TTWU) { /* XXX always ? */
  		/* Fast path */
@@ -297,8 +298,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  	rcu_read_unlock();
  
 diff -rupN a/kernel/sched/idle.c b/kernel/sched/idle.c
---- a/kernel/sched/idle.c	2026-03-06 06:24:28.000000000 +0100
-+++ b/kernel/sched/idle.c	2026-03-06 14:13:19.757490947 +0100
+--- a/kernel/sched/idle.c	2026-03-06 16:39:10.000000000 +0100
++++ b/kernel/sched/idle.c	2026-03-06 23:00:11.554096943 +0100
 @@ -277,6 +277,11 @@ static void do_idle(void)
  	__current_set_polling();
  	tick_nohz_idle_enter();
@@ -325,8 +326,8 @@ diff -rupN a/kernel/sched/idle.c b/kernel/sched/idle.c
  	 * be set, propagate it into PREEMPT_NEED_RESCHED.
 diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 --- a/kernel/sched/poc_selector.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/poc_selector.c	2026-03-06 14:13:19.757737436 +0100
-@@ -0,0 +1,1532 @@
++++ b/kernel/sched/poc_selector.c	2026-03-06 23:00:11.554391651 +0100
+@@ -0,0 +1,1551 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Piece-Of-Cake (POC) CPU Selector
@@ -366,7 +367,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +#define SCHED_POC_SELECTOR_AUTHOR   "Masahito Suzuki"
 +#define SCHED_POC_SELECTOR_PROGNAME "Piece-Of-Cake (POC) CPU Selector"
 +
-+#define SCHED_POC_SELECTOR_VERSION  "2.2.8"
++#define SCHED_POC_SELECTOR_VERSION  "2.3.0"
 +
 +/**************************************************************
 + * Static keys:
@@ -507,7 +508,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 + *
 + * Each key can be toggled individually via its own sysctl, or
 + * set as a group via the sched_poc_compat preset sysctl.
-+ * All default to FALSE — zero overhead when compat is off.
++ * Default: native (compat=0).
 + */
 +
 +/*
@@ -515,7 +516,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 + * Check "target CPU idle" before core_mask computation,
 + * instead of "target core idle" (all SMT siblings idle).
 + */
-+DEFINE_STATIC_KEY_FALSE(sched_poc_compat_level1_cpu);
++DEFINE_STATIC_KEY_TRUE(sched_poc_compat_level1_cpu);
 +
 +/*
 + * No CFS gates (v1.9.3 / v2.1.0 behavior):
@@ -523,17 +524,21 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 + * and SIS_UTIL gate.  In the !core_mask block, Level 4 checks
 + * TARGET's SMT sibling instead of PREV's.
 + */
-+DEFINE_STATIC_KEY_FALSE(sched_poc_compat_no_cfs_gate);
++DEFINE_STATIC_KEY_TRUE(sched_poc_compat_no_cfs_gate);
 +
 +/*
 + * Cluster CTZ selection (v1.9.3 behavior):
 + * poc_cluster_search returns lowest-numbered idle CPU via CTZ
 + * instead of round-robin selection.
 + */
-+DEFINE_STATIC_KEY_FALSE(sched_poc_compat_cluster_ctz);
++DEFINE_STATIC_KEY_TRUE(sched_poc_compat_cluster_ctz);
 +
 +/*
-+ * Current compat mode: 0=v2.2.6 native, 19=v1.9.3, 21=v2.1.0
++ * Current compat mode:
++ *   0  = native (default)
++ *   1  = CFS-compatible
++ *   19 = v1.9.3 pure (early_clear off)
++ *   21 = v2.1.0
 + */
 +static unsigned int poc_compat_mode;
 +
@@ -837,7 +842,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +	cls_idle = mask & cls_mask;
 +
 +	if (cls_idle) {
-+		if (static_branch_unlikely(&sched_poc_compat_cluster_ctz))
++		if (static_branch_likely(&sched_poc_compat_cluster_ctz))
 +			return base + POC_CTZ64(cls_idle);
 +		return poc_select_rr(base, cls_idle, counter);
 +	}
@@ -1065,7 +1070,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +#ifdef CONFIG_SCHED_SMT
 +	if (sched_smt_active()) {
 +		/* Compat Level 1 (v1.9.3): CPU-level sticky — before core_mask */
-+		if (static_branch_unlikely(&sched_poc_compat_level1_cpu)
++		if (static_branch_likely(&sched_poc_compat_level1_cpu)
 +				&& (cpu_mask & (1ULL << tgt_bit))) {
 +			poc_count(POC_LV1A_CPU);
 +			poc_commit_selection(target, sd_share);
@@ -1084,14 +1089,14 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +			}
 +
 +			/* Level 1b: sync && target CPU idle (core busy OK) */
-+			if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++			if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +					&& sync && (cpu_mask & (1ULL << tgt_bit))) {
 +				poc_count(POC_LV1B);
 +				poc_commit_selection(target, sd_share);
 +				return target;
 +			}
 +
-+			if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++			if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +					&& static_branch_unlikely(&sched_poc_prefer_idle_smt)) {
 +				if (prev != target) {
 +					/* Level 4: prev or its SMT sibling (prev != target) */
@@ -1114,7 +1119,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +
 +			cpu_mask = core_mask;
 +		} else {
-+			if (static_branch_unlikely(&sched_poc_compat_no_cfs_gate)) {
++			if (static_branch_likely(&sched_poc_compat_no_cfs_gate)) {
 +				/* Compat Level 4: target's SMT sibling (v1.9.3/v2.1.0) */
 +				int cpu = poc_try_idle_smt(base, target, cpu_mask, sd_share);
 +				if (cpu >= 0) {
@@ -1169,7 +1174,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +		}
 +
 +		/* Level 4a: prev CPU idle (non-SMT) */
-+		if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++		if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +				&& prev != target) {
 +			int prev_bit = prev - base;
 +
@@ -1183,7 +1188,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +		}
 +
 +		/* Level 4b: recent CPU idle (high value, prev == target) */
-+		if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++		if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +				&& prev == target && recent >= 0) {
 +			int recent_bit = recent - base;
 +
@@ -1214,7 +1219,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +		}
 +
 +		/* Level 4b: recent idle (low value, prev != target) */
-+		if (!static_branch_unlikely(&sched_poc_compat_no_cfs_gate)
++		if (!static_branch_likely(&sched_poc_compat_no_cfs_gate)
 +				&& prev != target && recent >= 0) {
 +			int recent_bit = recent - base;
 +
@@ -1398,7 +1403,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +					      int write, void *buffer,
 +					      size_t *lenp, loff_t *ppos)
 +{
-+	unsigned int val = static_branch_unlikely(&sched_poc_compat_level1_cpu) ? 1 : 0;
++	unsigned int val = static_branch_likely(&sched_poc_compat_level1_cpu) ? 1 : 0;
 +	struct ctl_table tmp = {
 +		.data    = &val,
 +		.maxlen  = sizeof(val),
@@ -1420,7 +1425,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +					       int write, void *buffer,
 +					       size_t *lenp, loff_t *ppos)
 +{
-+	unsigned int val = static_branch_unlikely(&sched_poc_compat_no_cfs_gate) ? 1 : 0;
++	unsigned int val = static_branch_likely(&sched_poc_compat_no_cfs_gate) ? 1 : 0;
 +	struct ctl_table tmp = {
 +		.data    = &val,
 +		.maxlen  = sizeof(val),
@@ -1442,7 +1447,7 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +					       int write, void *buffer,
 +					       size_t *lenp, loff_t *ppos)
 +{
-+	unsigned int val = static_branch_unlikely(&sched_poc_compat_cluster_ctz) ? 1 : 0;
++	unsigned int val = static_branch_likely(&sched_poc_compat_cluster_ctz) ? 1 : 0;
 +	struct ctl_table tmp = {
 +		.data    = &val,
 +		.maxlen  = sizeof(val),
@@ -1475,31 +1480,44 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +		return ret;
 +
 +	switch (val) {
-+	case 0: /* v2.2.6 native — restore all defaults */
-+		static_branch_disable(&sched_poc_compat_level1_cpu);
-+		static_branch_disable(&sched_poc_compat_no_cfs_gate);
-+		static_branch_disable(&sched_poc_compat_cluster_ctz);
-+		static_branch_enable(&sched_poc_early_clear);
-+		static_branch_disable(&sched_poc_smt_fallback);
-+		static_branch_disable(&sched_poc_prefer_idle_smt);
-+		break;
-+
-+	case 19: /* v1.9.3 emulation */
++	case 0: /* native (default) */
 +		static_branch_enable(&sched_poc_compat_level1_cpu);
 +		static_branch_enable(&sched_poc_compat_no_cfs_gate);
 +		static_branch_enable(&sched_poc_compat_cluster_ctz);
-+		static_branch_disable(&sched_poc_early_clear);
-+		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_l2_cluster_search);
 +		static_branch_disable(&sched_poc_prefer_idle_smt);
++		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_early_clear);
++		break;
++
++	case 1: /* CFS-compatible */
++		static_branch_disable(&sched_poc_compat_level1_cpu);
++		static_branch_disable(&sched_poc_compat_no_cfs_gate);
++		static_branch_disable(&sched_poc_compat_cluster_ctz);
++		static_branch_enable(&sched_poc_l2_cluster_search);
++		static_branch_disable(&sched_poc_prefer_idle_smt);
++		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_early_clear);
++		break;
++
++	case 19: /* v1.9.3 pure (early_clear off) */
++		static_branch_enable(&sched_poc_compat_level1_cpu);
++		static_branch_enable(&sched_poc_compat_no_cfs_gate);
++		static_branch_enable(&sched_poc_compat_cluster_ctz);
++		static_branch_enable(&sched_poc_l2_cluster_search);
++		static_branch_disable(&sched_poc_prefer_idle_smt);
++		static_branch_disable(&sched_poc_smt_fallback);
++		static_branch_disable(&sched_poc_early_clear);
 +		break;
 +
 +	case 21: /* v2.1.0 emulation */
 +		static_branch_disable(&sched_poc_compat_level1_cpu);
 +		static_branch_enable(&sched_poc_compat_no_cfs_gate);
 +		static_branch_disable(&sched_poc_compat_cluster_ctz);
-+		static_branch_disable(&sched_poc_early_clear);
-+		static_branch_enable(&sched_poc_smt_fallback);
++		static_branch_enable(&sched_poc_l2_cluster_search);
 +		static_branch_enable(&sched_poc_prefer_idle_smt);
++		static_branch_enable(&sched_poc_smt_fallback);
++		static_branch_disable(&sched_poc_early_clear);
 +		break;
 +
 +	default:
@@ -1673,9 +1691,11 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +	const char *name;
 +
 +	switch (poc_compat_mode) {
-+	case 19: name = "v1.9.3"; break;
-+	case 21: name = "v2.1.0"; break;
-+	default: name = "off";    break;
++	case 0:  name = "native";     break;
++	case 1:  name = "CFS-compatible"; break;
++	case 19: name = "v1.9.3";    break;
++	case 21: name = "v2.1.0";    break;
++	default: name = "unknown";   break;
 +	}
 +	return sysfs_emit(buf, "%u (%s)\n", poc_compat_mode, name);
 +}
@@ -1860,8 +1880,8 @@ diff -rupN a/kernel/sched/poc_selector.c b/kernel/sched/poc_selector.c
 +#endif /* CONFIG_SYSFS */
 +#endif /* CONFIG_SCHED_POC_SELECTOR */
 diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
---- a/kernel/sched/sched.h	2026-03-06 14:15:57.020865397 +0100
-+++ b/kernel/sched/sched.h	2026-03-06 14:13:19.758296524 +0100
+--- a/kernel/sched/sched.h	2026-03-06 23:13:45.740338115 +0100
++++ b/kernel/sched/sched.h	2026-03-06 23:00:11.554710718 +0100
 @@ -3365,6 +3365,105 @@ extern void nohz_run_idle_balance(int cp
  static inline void nohz_run_idle_balance(int cpu) { }
  #endif
@@ -1969,8 +1989,8 @@ diff -rupN a/kernel/sched/sched.h b/kernel/sched/sched.h
  
  #if defined(CONFIG_SCHED_CORE) && defined(CONFIG_SCHEDSTATS)
 diff -rupN a/kernel/sched/topology.c b/kernel/sched/topology.c
---- a/kernel/sched/topology.c	2026-03-06 06:24:28.000000000 +0100
-+++ b/kernel/sched/topology.c	2026-03-06 14:13:19.759616057 +0100
+--- a/kernel/sched/topology.c	2026-03-06 16:39:10.000000000 +0100
++++ b/kernel/sched/topology.c	2026-03-06 23:00:11.555035197 +0100
 @@ -1738,6 +1738,189 @@ sd_init(struct sched_domain_topology_lev
  		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
  		atomic_inc(&sd->shared->ref);
