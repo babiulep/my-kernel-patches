@@ -1,7 +1,7 @@
 diff -rupN a/drivers/gpu/drm/Kconfig b/drivers/gpu/drm/Kconfig
---- a/drivers/gpu/drm/Kconfig	2026-02-25 17:51:28.000000000 +0100
-+++ b/drivers/gpu/drm/Kconfig	2026-02-25 19:04:34.098778757 +0100
-@@ -186,7 +186,7 @@ config DRM_LOAD_EDID_FIRMWARE
+--- a/drivers/gpu/drm/Kconfig	2026-03-06 16:41:24.000000000 +0100
++++ b/drivers/gpu/drm/Kconfig	2026-03-08 21:39:08.597429160 +0100
+@@ -196,7 +196,7 @@ config DRM_LOAD_EDID_FIRMWARE
  source "drivers/gpu/drm/display/Kconfig"
  
  config DRM_TTM
@@ -10,7 +10,7 @@ diff -rupN a/drivers/gpu/drm/Kconfig b/drivers/gpu/drm/Kconfig
  	depends on DRM && MMU
  	select SHMEM
  	help
-@@ -231,7 +231,7 @@ config DRM_VRAM_HELPER
+@@ -241,7 +241,7 @@ config DRM_VRAM_HELPER
  	  Helpers for VRAM memory management
  
  config DRM_TTM_HELPER

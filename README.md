@@ -4,6 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-03-08
+* NEXT: updated patches for next-20260306
 * TIP: update re-swappiness: v1.2
 * TIP: added le9uo patch
 

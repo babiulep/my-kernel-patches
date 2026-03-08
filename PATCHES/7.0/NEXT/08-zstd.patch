@@ -1,26 +1,27 @@
-From 58c6011c2e5b62716a4b2f87f574df82377ec2ff Mon Sep 17 00:00:00 2001
+From 6a68df31ee694796c6d2c88ccc865d9b58d91a9d Mon Sep 17 00:00:00 2001
 From: Piotr Gorski <lucjan.lucjanov@gmail.com>
-Date: Fri, 19 Dec 2025 07:50:37 +0100
-Subject: [PATCH 1/2] zstd-6.19: merge changes from dev tree
+Date: Fri, 27 Feb 2026 22:40:18 +0100
+Subject: [PATCH 1/2] zstd-7.0: merge changes from dev tree
 
 Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
 ---
- include/linux/zstd_lib.h                    |  69 +--
+ include/linux/zstd_lib.h                    |  69 ++-
  lib/zstd/common/bits.h                      |   2 +-
+ lib/zstd/common/bitstream.h                 |   4 +-
  lib/zstd/common/compiler.h                  |  12 +-
  lib/zstd/common/portability_macros.h        |  21 +-
  lib/zstd/common/zstd_common.c               |   9 +
  lib/zstd/common/zstd_internal.h             |   6 +-
- lib/zstd/compress/hist.c                    | 261 +++++++++-
+ lib/zstd/compress/hist.c                    | 261 ++++++++-
  lib/zstd/compress/hist.h                    |   4 +
  lib/zstd/compress/huf_compress.c            |   1 +
- lib/zstd/compress/zstd_compress.c           | 541 +++++++++++++++++++-
+ lib/zstd/compress/zstd_compress.c           | 553 +++++++++++++++++++-
  lib/zstd/compress/zstd_compress_internal.h  |   6 +-
  lib/zstd/compress/zstd_lazy.c               |  50 +-
  lib/zstd/compress/zstd_opt.c                |  12 +-
  lib/zstd/decompress/huf_decompress.c        | 101 ++--
- lib/zstd/decompress/zstd_decompress_block.c | 232 ++++++---
- 15 files changed, 1143 insertions(+), 184 deletions(-)
+ lib/zstd/decompress/zstd_decompress_block.c | 232 +++++---
+ 16 files changed, 1155 insertions(+), 188 deletions(-)
 
 diff --git a/include/linux/zstd_lib.h b/include/linux/zstd_lib.h
 index e295d4125..3cf5ea133 100644
@@ -139,6 +140,21 @@ index c5faaa3d7..3fb55774b 100644
 +        return DeBruijnBytePos[((U32) ((val & (0-val)) * 0x077CB531U)) >> 27];
      }
  }
+ 
+diff --git a/lib/zstd/common/bitstream.h b/lib/zstd/common/bitstream.h
+index 86439da0e..fad3104d0 100644
+--- a/lib/zstd/common/bitstream.h
++++ b/lib/zstd/common/bitstream.h
+@@ -96,8 +96,8 @@ typedef enum { BIT_DStream_unfinished = 0,  /* fully refilled */
+     } BIT_DStream_status;  /* result of BIT_reloadDStream() */
+ 
+ MEM_STATIC size_t   BIT_initDStream(BIT_DStream_t* bitD, const void* srcBuffer, size_t srcSize);
+-MEM_STATIC BitContainerType BIT_readBits(BIT_DStream_t* bitD, unsigned nbBits);
+-MEM_STATIC BIT_DStream_status BIT_reloadDStream(BIT_DStream_t* bitD);
++FORCE_INLINE_TEMPLATE BitContainerType BIT_readBits(BIT_DStream_t* bitD, unsigned nbBits);
++FORCE_INLINE_TEMPLATE BIT_DStream_status BIT_reloadDStream(BIT_DStream_t* bitD);
+ MEM_STATIC unsigned BIT_endOfDStream(const BIT_DStream_t* bitD);
+ 
  
 diff --git a/lib/zstd/common/compiler.h b/lib/zstd/common/compiler.h
 index dc9bd15e1..d985659ea 100644
@@ -602,7 +618,7 @@ index 0b229f5d2..281c0bc40 100644
                      U32 const highPos = rankLast[nBitsToDecrease];
                      U32 const lowPos = rankLast[nBitsToDecrease-1];
 diff --git a/lib/zstd/compress/zstd_compress.c b/lib/zstd/compress/zstd_compress.c
-index c41a74741..7e9479c46 100644
+index c41a74741..e236699af 100644
 --- a/lib/zstd/compress/zstd_compress.c
 +++ b/lib/zstd/compress/zstd_compress.c
 @@ -54,6 +54,14 @@
@@ -620,7 +636,49 @@ index c41a74741..7e9479c46 100644
  /*-*************************************
  *  Helper functions
  ***************************************/
-@@ -6901,7 +6909,7 @@ size_t ZSTD_compressSequences(ZSTD_CCtx* cctx,
+@@ -1691,15 +1699,19 @@ size_t ZSTD_estimateCCtxSize_usingCCtxParams(const ZSTD_CCtx_params* params)
+ {
+     ZSTD_compressionParameters const cParams =
+                 ZSTD_getCParamsFromCCtxParams(params, ZSTD_CONTENTSIZE_UNKNOWN, 0, ZSTD_cpm_noAttachDict);
++    ldmParams_t ldmParams = params->ldmParams;
+     ZSTD_ParamSwitch_e const useRowMatchFinder = ZSTD_resolveRowMatchFinderMode(params->useRowMatchFinder,
+                                                                                &cParams);
+ 
+     RETURN_ERROR_IF(params->nbWorkers > 0, GENERIC, "Estimate CCtx size is supported for single-threaded compression only.");
++    if (ldmParams.enableLdm == ZSTD_ps_enable) {
++        ZSTD_ldm_adjustParameters(&ldmParams, &cParams);
++    }
+     /* estimateCCtxSize is for one-shot compression. So no buffers should
+      * be needed. However, we still allocate two 0-sized buffers, which can
+      * take space under ASAN. */
+     return ZSTD_estimateCCtxSize_usingCCtxParams_internal(
+-        &cParams, &params->ldmParams, 1, useRowMatchFinder, 0, 0, ZSTD_CONTENTSIZE_UNKNOWN, ZSTD_hasExtSeqProd(params), params->maxBlockSize);
++        &cParams, &ldmParams, 1, useRowMatchFinder, 0, 0, ZSTD_CONTENTSIZE_UNKNOWN, ZSTD_hasExtSeqProd(params), params->maxBlockSize);
+ }
+ 
+ size_t ZSTD_estimateCCtxSize_usingCParams(ZSTD_compressionParameters cParams)
+@@ -1749,6 +1761,7 @@ size_t ZSTD_estimateCStreamSize_usingCCtxParams(const ZSTD_CCtx_params* params)
+     RETURN_ERROR_IF(params->nbWorkers > 0, GENERIC, "Estimate CCtx size is supported for single-threaded compression only.");
+     {   ZSTD_compressionParameters const cParams =
+                 ZSTD_getCParamsFromCCtxParams(params, ZSTD_CONTENTSIZE_UNKNOWN, 0, ZSTD_cpm_noAttachDict);
++        ldmParams_t ldmParams = params->ldmParams;
+         size_t const blockSize = MIN(ZSTD_resolveMaxBlockSize(params->maxBlockSize), (size_t)1 << cParams.windowLog);
+         size_t const inBuffSize = (params->inBufferMode == ZSTD_bm_buffered)
+                 ? ((size_t)1 << cParams.windowLog) + blockSize
+@@ -1758,8 +1771,11 @@ size_t ZSTD_estimateCStreamSize_usingCCtxParams(const ZSTD_CCtx_params* params)
+                 : 0;
+         ZSTD_ParamSwitch_e const useRowMatchFinder = ZSTD_resolveRowMatchFinderMode(params->useRowMatchFinder, &params->cParams);
+ 
++        if (ldmParams.enableLdm == ZSTD_ps_enable) {
++            ZSTD_ldm_adjustParameters(&ldmParams, &cParams);
++        }
+         return ZSTD_estimateCCtxSize_usingCCtxParams_internal(
+-            &cParams, &params->ldmParams, 1, useRowMatchFinder, inBuffSize, outBuffSize,
++            &cParams, &ldmParams, 1, useRowMatchFinder, inBuffSize, outBuffSize,
+             ZSTD_CONTENTSIZE_UNKNOWN, ZSTD_hasExtSeqProd(params), params->maxBlockSize);
+     }
+ }
+@@ -6901,7 +6917,7 @@ size_t ZSTD_compressSequences(ZSTD_CCtx* cctx,
  }
  
  
@@ -629,7 +687,7 @@ index c41a74741..7e9479c46 100644
  
  #include <immintrin.h>  /* AVX2 intrinsics */
  
-@@ -6921,7 +6929,7 @@ size_t ZSTD_compressSequences(ZSTD_CCtx* cctx,
+@@ -6921,7 +6937,7 @@ size_t ZSTD_compressSequences(ZSTD_CCtx* cctx,
   * @returns > 0 if there is one long length (> 65535),
   * indicating the position, and type.
   */
@@ -638,7 +696,7 @@ index c41a74741..7e9479c46 100644
      SeqDef* dstSeqs,
      const ZSTD_Sequence* inSeqs,
      size_t nbSequences)
-@@ -7067,13 +7075,378 @@ static size_t convertSequences_noRepcodes(
+@@ -7067,13 +7083,378 @@ static size_t convertSequences_noRepcodes(
      return longLen;
  }
  
@@ -1019,7 +1077,7 @@ index c41a74741..7e9479c46 100644
      SeqDef* dstSeqs,
      const ZSTD_Sequence* inSeqs,
      size_t nbSequences)
-@@ -7084,7 +7457,7 @@ static size_t convertSequences_noRepcodes(
+@@ -7084,7 +7465,7 @@ static size_t convertSequences_noRepcodes(
          dstSeqs[n].offBase = OFFSET_TO_OFFBASE(inSeqs[n].offset);
          dstSeqs[n].litLength = (U16)inSeqs[n].litLength;
          dstSeqs[n].mlBase = (U16)(inSeqs[n].matchLength - MINMATCH);
@@ -1028,7 +1086,7 @@ index c41a74741..7e9479c46 100644
          if (UNLIKELY(inSeqs[n].matchLength > 65535+MINMATCH)) {
              assert(longLen == 0);
              longLen = n + 1;
-@@ -7234,34 +7607,172 @@ BlockSummary ZSTD_get1BlockSummary(const ZSTD_Sequence* seqs, size_t nbSeqs)
+@@ -7234,34 +7615,172 @@ BlockSummary ZSTD_get1BlockSummary(const ZSTD_Sequence* seqs, size_t nbSeqs)
      }
  }
  
@@ -2064,10 +2122,10 @@ index 710eb0ffd..698a2e3c0 100644
           * Offsets are long if they are larger than ZSTD_maxShortOffset().
           * We don't expect that to be the case in 64-bit mode.
 -- 
-2.52.0
+2.53.0
 
 
-From ab3075b561b168415ccb710aabea9dcc107e706a Mon Sep 17 00:00:00 2001
+From ba11fd7b4f975996493a54d1d346373b361ee89a Mon Sep 17 00:00:00 2001
 From: Nick Terrell <terrelln@meta.com>
 Date: Sat, 22 Mar 2025 22:07:49 -0700
 Subject: [PATCH 2/2] zstd: Work around gcc segfault on versions older than
@@ -2119,5 +2177,5 @@ index c9c509fe7..ec1b26358 100644
        && !defined(__BMI2__)
  #    define DYNAMIC_BMI2 1
 -- 
-2.52.0
+2.53.0
 
