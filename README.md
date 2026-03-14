@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-03-14
+* TIP: downgrade BORE: from v6.7.3 to v6.6.2
+* TIP: upgrade POC selector: v2.4.1
+
 ## 2026-03-09
 * TIP+NEXT: remove objtool patch
 
