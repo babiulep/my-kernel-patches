@@ -234,7 +234,7 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
 +	 * If the previous CPU is cache affine and idle, don't be stupid:
 +	 */
 +	if (prev != target && cpus_share_cache(prev, target) &&
-+	    (available_idle_cpu(prev) || sched_idle_cpu(prev)) &&
++	    (available_idle_cpu(prev) || sched_idle_rq(prev)) &&
 +	    asym_fits_cpu(task_util, util_min, util_max, prev)) {
 +
 +		if (!static_branch_unlikely(&sched_cluster_active) ||
