@@ -3,7 +3,7 @@
 
 - [README 2025](README2025.md) 
 
-## 2026-03-14
+## 2026-03-15
 * TIP: added Cambyses Migration Selector v0.1.0 by Masahito Suzuki  
   (had to disable SIMD when using Clang)
 
