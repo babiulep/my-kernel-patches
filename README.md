@@ -8,7 +8,7 @@
   (had to disable SIMD when using Clang, works with GCC)
 
 ## 2026-03-14
-* TIP: ported firelzrd's [kcompressd-unofficial](https://github.com/firelzrd/kcompressd-unofficial/tree/main) patch
+* TIP: ported firelzrd's [kcompressd-unofficial](https://github.com/firelzrd/kcompressd-unofficial) patch
 * TIP: downgrade BORE: from v6.7.3 to v6.6.2
 
 ## 2026-03-09
