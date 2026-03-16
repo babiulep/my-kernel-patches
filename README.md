@@ -4,8 +4,8 @@
 - [README 2025](README2025.md) 
 
 ## 2026-03-15
-* TIP: added Cambyses Migration Selector v0.1.0 by Masahito Suzuki  
-  (had to disable SIMD when using Clang)
+* TIP: added [Cambyses Migration Selector](https://github.com/firelzrd/cambyses) v0.1.0 by Masahito Suzuki  
+  (had to disable SIMD when using Clang, works with GCC)
 
 ## 2026-03-14
 * TIP: ported firelzrd's [kcompressd-unofficial](https://github.com/firelzrd/kcompressd-unofficial/tree/main) patch
