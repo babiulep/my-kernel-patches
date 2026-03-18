@@ -4,8 +4,9 @@
 - [README 2025](README2025.md) 
 
 ## 2026-03-18
-* NEXT: update Camsyses to v0.2.5
+* NEXT: update Camsyses to v0.2.6
 * NEXT: update zstd
+* NEXT: add mglru patch
 
 ## 2026-03-16
 * TIP+MEXT: update patches

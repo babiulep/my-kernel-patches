@@ -1,6 +1,6 @@
 diff -rupN a/include/linux/sched.h b/include/linux/sched.h
---- a/include/linux/sched.h	2026-03-18 18:39:27.458161546 +0100
-+++ b/include/linux/sched.h	2026-03-18 18:39:48.474385261 +0100
+--- a/include/linux/sched.h	2026-03-18 22:45:12.912059867 +0100
++++ b/include/linux/sched.h	2026-03-18 22:46:46.377952760 +0100
 @@ -586,7 +586,22 @@ struct sched_entity {
  	unsigned char			sched_delayed;
  	unsigned char			rel_deadline;
@@ -25,8 +25,8 @@ diff -rupN a/include/linux/sched.h b/include/linux/sched.h
  	u64				exec_start;
  	u64				sum_exec_runtime;
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-03-18 18:39:27.501012484 +0100
-+++ b/init/Kconfig	2026-03-18 18:39:48.475152572 +0100
+--- a/init/Kconfig	2026-03-18 22:45:12.955062116 +0100
++++ b/init/Kconfig	2026-03-18 22:46:46.379952773 +0100
 @@ -1485,6 +1485,44 @@ config SCHED_BORE
  
  	  If unsure, say Y here.
@@ -74,7 +74,7 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	select CGROUPS
 diff -rupN a/kernel/sched/cambyses.c b/kernel/sched/cambyses.c
 --- a/kernel/sched/cambyses.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/cambyses.c	2026-03-18 18:39:48.477328813 +0100
++++ b/kernel/sched/cambyses.c	2026-03-18 22:46:46.380952779 +0100
 @@ -0,0 +1,692 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -98,14 +98,14 @@ diff -rupN a/kernel/sched/cambyses.c b/kernel/sched/cambyses.c
 +#define CAMBYSES_PROGNAME "Cambyses Migration Selector"
 +#define CAMBYSES_AUTHOR   "Masahito Suzuki"
 +
-+#define CAMBYSES_VERSION  "0.2.5"
++#define CAMBYSES_VERSION  "0.2.6"
 +
 +/* Runtime toggle — NOP-patched when disabled */
 +DEFINE_STATIC_KEY_TRUE(sched_cambyses);
 +
-+/* Default weights: uniform w0=w1=w2=w3=1 */
-+u8 sysctl_cambyses_w0 = 1;
-+u8 sysctl_cambyses_w1 = 1;
++/* Default weights: w0=2, w1=3 (CPU lightness dominant), w2=w3=1 */
++u8 sysctl_cambyses_w0 = 2;
++u8 sysctl_cambyses_w1 = 3;
 +u8 sysctl_cambyses_w2 = 1;
 +u8 sysctl_cambyses_w3 = 1;
 +
@@ -770,7 +770,7 @@ diff -rupN a/kernel/sched/cambyses.c b/kernel/sched/cambyses.c
 +#endif /* CONFIG_SYSCTL */
 diff -rupN a/kernel/sched/cambyses.h b/kernel/sched/cambyses.h
 --- a/kernel/sched/cambyses.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/cambyses.h	2026-03-18 18:39:48.477615624 +0100
++++ b/kernel/sched/cambyses.h	2026-03-18 22:46:46.381309727 +0100
 @@ -0,0 +1,158 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -932,7 +932,7 @@ diff -rupN a/kernel/sched/cambyses.h b/kernel/sched/cambyses.h
 +#endif /* _KERNEL_SCHED_CAMBYSES_H */
 diff -rupN a/kernel/sched/cambyses_simd_avx2.c b/kernel/sched/cambyses_simd_avx2.c
 --- a/kernel/sched/cambyses_simd_avx2.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/cambyses_simd_avx2.c	2026-03-18 18:39:48.477859838 +0100
++++ b/kernel/sched/cambyses_simd_avx2.c	2026-03-18 22:46:46.381414660 +0100
 @@ -0,0 +1,97 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -1033,7 +1033,7 @@ diff -rupN a/kernel/sched/cambyses_simd_avx2.c b/kernel/sched/cambyses_simd_avx2
 +#endif /* CONFIG_SCHED_CAMBYSES_SIMD */
 diff -rupN a/kernel/sched/cambyses_simd_neon.c b/kernel/sched/cambyses_simd_neon.c
 --- a/kernel/sched/cambyses_simd_neon.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/cambyses_simd_neon.c	2026-03-18 18:39:48.477926619 +0100
++++ b/kernel/sched/cambyses_simd_neon.c	2026-03-18 22:46:46.381489092 +0100
 @@ -0,0 +1,112 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -1149,7 +1149,7 @@ diff -rupN a/kernel/sched/cambyses_simd_neon.c b/kernel/sched/cambyses_simd_neon
 +#endif /* CONFIG_SCHED_CAMBYSES_SIMD */
 diff -rupN a/kernel/sched/cambyses_simd_ssse3.c b/kernel/sched/cambyses_simd_ssse3.c
 --- a/kernel/sched/cambyses_simd_ssse3.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/kernel/sched/cambyses_simd_ssse3.c	2026-03-18 18:39:48.477993479 +0100
++++ b/kernel/sched/cambyses_simd_ssse3.c	2026-03-18 22:46:46.381564040 +0100
 @@ -0,0 +1,211 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -1363,8 +1363,8 @@ diff -rupN a/kernel/sched/cambyses_simd_ssse3.c b/kernel/sched/cambyses_simd_sss
 +
 +#endif /* CONFIG_SCHED_CAMBYSES_SIMD */
 diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
---- a/kernel/sched/core.c	2026-03-18 18:39:27.461922014 +0100
-+++ b/kernel/sched/core.c	2026-03-18 18:39:48.478528221 +0100
+--- a/kernel/sched/core.c	2026-03-18 22:45:12.916115360 +0100
++++ b/kernel/sched/core.c	2026-03-18 22:46:46.381952785 +0100
 @@ -90,6 +90,7 @@
  
  #include "sched.h"
@@ -1385,8 +1385,8 @@ diff -rupN a/kernel/sched/core.c b/kernel/sched/core.c
  		psi_account_irqtime(rq, prev, next);
  		psi_sched_switch(prev, next, !task_on_rq_queued(prev) ||
 diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
---- a/kernel/sched/fair.c	2026-03-18 18:39:27.501582257 +0100
-+++ b/kernel/sched/fair.c	2026-03-18 18:39:48.480152613 +0100
+--- a/kernel/sched/fair.c	2026-03-18 22:45:12.955952671 +0100
++++ b/kernel/sched/fair.c	2026-03-18 22:46:46.383952798 +0100
 @@ -62,6 +62,11 @@
  #include <linux/sched/bore.h>
  #endif /* CONFIG_SCHED_BORE */
@@ -1469,8 +1469,8 @@ diff -rupN a/kernel/sched/fair.c b/kernel/sched/fair.c
  		/*
  		 * We don't want to steal all, otherwise we may be treated likewise,
 diff -rupN a/kernel/sched/Makefile b/kernel/sched/Makefile
---- a/kernel/sched/Makefile	2026-03-18 18:39:27.469542004 +0100
-+++ b/kernel/sched/Makefile	2026-03-18 18:40:19.814136317 +0100
+--- a/kernel/sched/Makefile	2026-03-18 22:45:12.922112554 +0100
++++ b/kernel/sched/Makefile	2026-03-18 22:47:46.478319273 +0100
 @@ -41,3 +41,33 @@ obj-y += fair.o
  obj-y += build_policy.o
  obj-y += build_utility.o
