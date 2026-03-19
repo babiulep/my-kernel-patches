@@ -1,11 +1,12 @@
-From 6a68df31ee694796c6d2c88ccc865d9b58d91a9d Mon Sep 17 00:00:00 2001
+From e98eb750b07bcf6f0843699d076dea538f4a87c0 Mon Sep 17 00:00:00 2001
 From: Piotr Gorski <lucjan.lucjanov@gmail.com>
-Date: Fri, 27 Feb 2026 22:40:18 +0100
+Date: Wed, 18 Mar 2026 06:59:18 +0100
 Subject: [PATCH 1/2] zstd-7.0: merge changes from dev tree
 
 Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
 ---
  include/linux/zstd_lib.h                    |  69 ++-
+ lib/zstd/common/allocations.h               |   8 +-
  lib/zstd/common/bits.h                      |   2 +-
  lib/zstd/common/bitstream.h                 |   4 +-
  lib/zstd/common/compiler.h                  |  12 +-
@@ -18,10 +19,11 @@ Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
  lib/zstd/compress/zstd_compress.c           | 553 +++++++++++++++++++-
  lib/zstd/compress/zstd_compress_internal.h  |   6 +-
  lib/zstd/compress/zstd_lazy.c               |  50 +-
+ lib/zstd/compress/zstd_ldm.c                |   6 +-
  lib/zstd/compress/zstd_opt.c                |  12 +-
  lib/zstd/decompress/huf_decompress.c        | 101 ++--
  lib/zstd/decompress/zstd_decompress_block.c | 232 +++++---
- 16 files changed, 1155 insertions(+), 188 deletions(-)
+ 18 files changed, 1166 insertions(+), 191 deletions(-)
 
 diff --git a/include/linux/zstd_lib.h b/include/linux/zstd_lib.h
 index e295d4125..3cf5ea133 100644
@@ -128,6 +130,26 @@ index e295d4125..3cf5ea133 100644
  
  /* ========================================= */
  /*       Block level API (DEPRECATED)       */
+diff --git a/lib/zstd/common/allocations.h b/lib/zstd/common/allocations.h
+index 16c3d08e8..ee7dfeb4f 100644
+--- a/lib/zstd/common/allocations.h
++++ b/lib/zstd/common/allocations.h
+@@ -34,9 +34,13 @@ MEM_STATIC void* ZSTD_customMalloc(size_t size, ZSTD_customMem customMem)
+ MEM_STATIC void* ZSTD_customCalloc(size_t size, ZSTD_customMem customMem)
+ {
+     if (customMem.customAlloc) {
+-        /* calloc implemented as malloc+memset;
+-         * not as efficient as calloc, but next best guess for custom malloc */
++        /* calloc implemented as malloc+memset */
+         void* const ptr = customMem.customAlloc(customMem.opaque, size);
++
++        if (ptr == NULL) {
++            return NULL;
++        }
++
+         ZSTD_memset(ptr, 0, size);
+         return ptr;
+     }
 diff --git a/lib/zstd/common/bits.h b/lib/zstd/common/bits.h
 index c5faaa3d7..3fb55774b 100644
 --- a/lib/zstd/common/bits.h
@@ -1373,6 +1395,23 @@ index 88e2501fe..e49dd0308 100644
      /* SWAR */
      {   const int chunkSize = sizeof(size_t);
          const size_t shiftAmount = ((chunkSize * 8) - chunkSize);
+diff --git a/lib/zstd/compress/zstd_ldm.c b/lib/zstd/compress/zstd_ldm.c
+index 54eefad9c..0b62196f6 100644
+--- a/lib/zstd/compress/zstd_ldm.c
++++ b/lib/zstd/compress/zstd_ldm.c
+@@ -153,7 +153,11 @@ void ZSTD_ldm_adjustParameters(ldmParams_t* params,
+         }
+     }
+     if (params->hashLog == 0) {
+-        params->hashLog = BOUNDED(ZSTD_HASHLOG_MIN, params->windowLog - params->hashRateLog, ZSTD_HASHLOG_MAX);
++        if (params->windowLog <= params->hashRateLog) {
++            params->hashLog = ZSTD_HASHLOG_MIN;
++        } else {
++            params->hashLog = BOUNDED(ZSTD_HASHLOG_MIN, params->windowLog - params->hashRateLog, ZSTD_HASHLOG_MAX);
++        }
+     }
+     if (params->minMatchLength == 0) {
+         params->minMatchLength = LDM_MIN_MATCH_LENGTH;
 diff --git a/lib/zstd/compress/zstd_opt.c b/lib/zstd/compress/zstd_opt.c
 index b62fd1b0d..b3b33eb43 100644
 --- a/lib/zstd/compress/zstd_opt.c
@@ -2125,7 +2164,7 @@ index 710eb0ffd..698a2e3c0 100644
 2.53.0
 
 
-From ba11fd7b4f975996493a54d1d346373b361ee89a Mon Sep 17 00:00:00 2001
+From d378a7972218e3871ac19b5e2cc5053f7e475779 Mon Sep 17 00:00:00 2001
 From: Nick Terrell <terrelln@meta.com>
 Date: Sat, 22 Mar 2025 22:07:49 -0700
 Subject: [PATCH 2/2] zstd: Work around gcc segfault on versions older than
