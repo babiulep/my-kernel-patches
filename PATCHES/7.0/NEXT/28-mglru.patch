@@ -1,6 +1,6 @@
 diff -rupN a/mm/vmscan.c b/mm/vmscan.c
---- a/mm/vmscan.c	2026-03-18 22:45:12.968108984 +0100
-+++ b/mm/vmscan.c	2026-03-18 23:01:53.629750244 +0100
+--- a/mm/vmscan.c	2026-03-19 16:07:58.482271005 +0100
++++ b/mm/vmscan.c	2026-03-19 16:07:19.257645408 +0100
 @@ -183,7 +183,6 @@ struct scan_control {
  		unsigned int congested;
  		unsigned int writeback;
@@ -132,7 +132,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  }
  
  static int get_tier_idx(struct lruvec *lruvec, int type)
-@@ -4949,19 +4932,21 @@ static int get_type_to_scan(struct lruve
+@@ -4949,25 +4932,27 @@ static int get_type_to_scan(struct lruve
  
  static int isolate_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
  			  struct scan_control *sc, int swappiness,
@@ -158,6 +158,13 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  			return scanned;
  
  		type = !type;
+ 	}
+ 
+-	return 0;
++	return scanned;
+ }
+ 
+ static int evict_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
 @@ -4976,6 +4961,7 @@ static int evict_folios(unsigned long nr
  	int type;
  	int scanned;
@@ -311,14 +318,14 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
 +			need_rotate = true;
  			break;
 +		}
-+
+ 
+-		delta = evict_folios(nr_to_scan, lruvec, sc, swappiness);
 +		if (should_run_aging(lruvec, max_seq, sc, swappiness)) {
 +			if (try_to_inc_max_seq(lruvec, max_seq, swappiness, false))
 +				need_rotate = true;
 +			should_age = true;
 +		}
- 
--		delta = evict_folios(nr_to_scan, lruvec, sc, swappiness);
++
 +		nr_batch = min(nr_to_scan, MIN_LRU_BATCH);
 +		delta = evict_folios(nr_batch, lruvec, sc, swappiness);
  		if (!delta)
