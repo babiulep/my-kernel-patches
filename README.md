@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-03-20
+* TIP+NEXT: add kbuild patch
+* TIP+NEXT: sync patches
+
 ## 2026-03-19
 * NEXT: remove POC selector (for now...)
 * TIP: update Camsyses to v0.2.6
