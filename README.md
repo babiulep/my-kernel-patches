@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-03-27
+* TIP+NEXT: remove Camsyses (Project Discontinued)
+
 ## 2026-03-24
 * AMNEZIAWG: remove blake2s.patch, fixed in lates amneziawg
 
