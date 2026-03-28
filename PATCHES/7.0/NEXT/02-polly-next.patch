@@ -1,6 +1,6 @@
 diff -rupN a/init/Kconfig b/init/Kconfig
---- a/init/Kconfig	2026-03-16 20:10:02.638549043 +0100
-+++ b/init/Kconfig	2026-03-16 20:10:35.797216381 +0100
+--- a/init/Kconfig	2026-03-27 23:01:31.000000000 +0100
++++ b/init/Kconfig	2026-03-28 14:12:55.071299738 +0100
 @@ -307,6 +307,19 @@ config BUILD_SALT
  	  This is mostly useful for distributions which want to ensure the
  	  build is unique between builds. It's safe to leave the default.
@@ -22,15 +22,19 @@ diff -rupN a/init/Kconfig b/init/Kconfig
  	bool
  
 diff -rupN a/Makefile b/Makefile
---- a/Makefile	2026-03-16 19:57:25.000000000 +0100
-+++ b/Makefile	2026-03-16 20:10:35.799780382 +0100
-@@ -914,6 +914,18 @@ endif
+--- a/Makefile	2026-03-28 14:12:39.069859178 +0100
++++ b/Makefile	2026-03-28 14:12:55.072030972 +0100
+@@ -918,6 +918,22 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
 +ifdef CONFIG_POLLY_CLANG
-+KBUILD_CFLAGS	+= -mllvm -polly -mllvm -polly-omp-backend=LLVM -mllvm -polly-num-threads=4 -mllvm -polly-scheduling=dynamic -mllvm -polly-scheduling-chunksize=1 -mllvm -polly-ast-use-context -mllvm -polly-invariant-load-hoisting -mllvm -polly-loopfusion-greedy -mllvm -polly-run-inliner -mllvm -polly-vectorizer=stripmine
-+
++KBUILD_CFLAGS	+= -mllvm -polly \
++		   -mllvm -polly-ast-use-context \
++		   -mllvm -polly-invariant-load-hoisting \
++		   -mllvm -polly-loopfusion-greedy \
++		   -mllvm -polly-run-inliner \
++		   -mllvm -polly-vectorizer=stripmine
 +# Polly may optimise loops with dead paths beyound what the linker
 +# can understand. This may negate the effect of the linker's DCE
 +# so we tell Polly to perfom proven DCE on the loops it optimises

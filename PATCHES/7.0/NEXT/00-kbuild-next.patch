@@ -1,6 +1,6 @@
 diff -rupN a/arch/Kconfig b/arch/Kconfig
---- a/arch/Kconfig	2026-03-20 16:08:06.000000000 +0100
-+++ b/arch/Kconfig	2026-03-20 16:25:51.891028383 +0100
+--- a/arch/Kconfig	2026-03-27 23:01:31.000000000 +0100
++++ b/arch/Kconfig	2026-03-28 14:04:28.781702321 +0100
 @@ -861,6 +861,25 @@ config LTO_CLANG_THIN
  	    https://clang.llvm.org/docs/ThinLTO.html
  
@@ -28,8 +28,8 @@ diff -rupN a/arch/Kconfig b/arch/Kconfig
  
  config ARCH_SUPPORTS_AUTOFDO_CLANG
 diff -rupN a/.gitignore b/.gitignore
---- a/.gitignore	2026-03-20 16:08:06.000000000 +0100
-+++ b/.gitignore	2026-03-20 16:25:51.890319223 +0100
+--- a/.gitignore	2026-03-27 23:01:31.000000000 +0100
++++ b/.gitignore	2026-03-28 14:04:28.780808304 +0100
 @@ -56,6 +56,7 @@
  *.zst
  Module.symvers
@@ -47,24 +47,24 @@ diff -rupN a/.gitignore b/.gitignore
  /vmlinux-gdb.py
  /vmlinuz
 diff -rupN a/Makefile b/Makefile
---- a/Makefile	2026-03-20 16:30:02.098379848 +0100
-+++ b/Makefile	2026-03-20 16:28:45.541851179 +0100
-@@ -1060,11 +1060,11 @@ export CC_FLAGS_SCS
+--- a/Makefile	2026-03-27 23:01:31.000000000 +0100
++++ b/Makefile	2026-03-28 14:08:28.859607641 +0100
+@@ -1048,11 +1048,11 @@ export CC_FLAGS_SCS
  endif
  
  ifdef CONFIG_LTO_CLANG
 -ifdef CONFIG_LTO_CLANG_THIN
 -CC_FLAGS_LTO	:= -flto=thin -fsplit-lto-unit
  KBUILD_LDFLAGS += $(call ld-option,--lto-whole-program-visibility -mllvm -always-rename-promoted-locals=false)
--else
 +ifdef CONFIG_LTO_CLANG_FULL
- CC_FLAGS_LTO	:= -flto
-+else
++CC_FLAGS_LTO   := -flto
+ else
+-CC_FLAGS_LTO	:= -flto
 +CC_FLAGS_LTO   := -flto=thin -fsplit-lto-unit
  endif
  CC_FLAGS_LTO	+= -fvisibility=hidden
  
-@@ -1280,7 +1280,7 @@ export ARCH_DRIVERS	:= $(drivers-y) $(dr
+@@ -1268,7 +1268,7 @@ export ARCH_DRIVERS	:= $(drivers-y) $(dr
  KBUILD_VMLINUX_OBJS := built-in.a $(patsubst %/, %/lib.a, $(filter %/, $(libs-y)))
  KBUILD_VMLINUX_LIBS := $(filter-out %/, $(libs-y))
  
@@ -73,7 +73,7 @@ diff -rupN a/Makefile b/Makefile
  export KBUILD_LDS          := arch/$(SRCARCH)/kernel/vmlinux.lds
  
  ifdef CONFIG_TRIM_UNUSED_KSYMS
-@@ -1289,16 +1289,12 @@ ifdef CONFIG_TRIM_UNUSED_KSYMS
+@@ -1277,16 +1277,12 @@ ifdef CONFIG_TRIM_UNUSED_KSYMS
  KBUILD_MODULES := y
  endif
  
@@ -96,7 +96,7 @@ diff -rupN a/Makefile b/Makefile
  
  PHONY += vmlinux_o
  vmlinux_o: vmlinux.a $(KBUILD_VMLINUX_LIBS)
-@@ -1677,6 +1673,7 @@ endif # CONFIG_MODULES
+@@ -1665,6 +1661,7 @@ endif # CONFIG_MODULES
  CLEAN_FILES += vmlinux.symvers modules-only.symvers \
  	       modules.builtin modules.builtin.modinfo modules.nsdeps \
  	       modules.builtin.ranges vmlinux.o.map vmlinux.unstripped \
@@ -104,7 +104,7 @@ diff -rupN a/Makefile b/Makefile
  	       compile_commands.json rust/test \
  	       rust-project.json .vmlinux.objs .vmlinux.export.c \
                 .builtin-dtbs-list .builtin-dtbs.S
-@@ -2138,7 +2135,7 @@ clean: $(clean-dirs)
+@@ -2126,7 +2123,7 @@ clean: $(clean-dirs)
  	$(call cmd,rmfiles)
  	@find . $(RCS_FIND_IGNORE) \
  		\( -name '*.[aios]' -o -name '*.rsi' -o -name '*.ko' -o -name '.*.cmd' \
@@ -114,8 +114,8 @@ diff -rupN a/Makefile b/Makefile
  		-o -name '*.dtb.S' -o -name '*.dtbo.S' \
  		-o -name '*.dt.yaml' -o -name 'dtbs-list' \
 diff -rupN a/scripts/Makefile.lib b/scripts/Makefile.lib
---- a/scripts/Makefile.lib	2026-03-20 16:08:06.000000000 +0100
-+++ b/scripts/Makefile.lib	2026-03-20 16:25:51.891159880 +0100
+--- a/scripts/Makefile.lib	2026-03-27 23:01:31.000000000 +0100
++++ b/scripts/Makefile.lib	2026-03-28 14:04:28.781845370 +0100
 @@ -249,6 +249,12 @@ ifdef CONFIG_LTO_CLANG
  cmd_ld_single = $(if $(objtool-enabled)$(is-single-obj-m), ; $(LD) $(ld_flags) -r -o $(tmp-target) $@; mv $(tmp-target) $@)
  endif
@@ -139,7 +139,7 @@ diff -rupN a/scripts/Makefile.lib b/scripts/Makefile.lib
  	$(call cmd,gen_objtooldep)
 diff -rupN a/scripts/Makefile.thinlto b/scripts/Makefile.thinlto
 --- a/scripts/Makefile.thinlto	1970-01-01 01:00:00.000000000 +0100
-+++ b/scripts/Makefile.thinlto	2026-03-20 16:25:51.891236202 +0100
++++ b/scripts/Makefile.thinlto	2026-03-28 14:04:28.781918943 +0100
 @@ -0,0 +1,40 @@
 +PHONY := __default
 +__default:
@@ -183,7 +183,7 @@ diff -rupN a/scripts/Makefile.thinlto b/scripts/Makefile.thinlto
 +.PHONY: $(PHONY)
 diff -rupN a/scripts/Makefile.vmlinux_a b/scripts/Makefile.vmlinux_a
 --- a/scripts/Makefile.vmlinux_a	1970-01-01 01:00:00.000000000 +0100
-+++ b/scripts/Makefile.vmlinux_a	2026-03-20 16:25:51.891309345 +0100
++++ b/scripts/Makefile.vmlinux_a	2026-03-28 14:04:28.781992364 +0100
 @@ -0,0 +1,83 @@
 +# SPDX-License-Identifier: GPL-2.0-only
 +
@@ -269,8 +269,8 @@ diff -rupN a/scripts/Makefile.vmlinux_a b/scripts/Makefile.vmlinux_a
 +
 +.PHONY: $(PHONY)
 diff -rupN a/scripts/mod/modpost.c b/scripts/mod/modpost.c
---- a/scripts/mod/modpost.c	2026-03-20 16:08:06.000000000 +0100
-+++ b/scripts/mod/modpost.c	2026-03-20 16:25:51.891438283 +0100
+--- a/scripts/mod/modpost.c	2026-03-27 23:01:31.000000000 +0100
++++ b/scripts/mod/modpost.c	2026-03-28 14:04:28.782130211 +0100
 @@ -1482,13 +1482,22 @@ static void extract_crcs_for_object(cons
  	char cmd_file[PATH_MAX];
  	char *buf, *p;
