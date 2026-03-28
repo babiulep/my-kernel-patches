@@ -1,6 +1,6 @@
-diff -rupN a/include/linux/mm_inline.h b/include/linux/mm_inline.h
---- a/include/linux/mm_inline.h	2026-03-19 11:41:17.921213983 +0100
-+++ b/include/linux/mm_inline.h	2026-03-19 11:58:45.817180068 +0100
+diff -rupN b/include/linux/mm_inline.h a/include/linux/mm_inline.h
+--- b/include/linux/mm_inline.h	2026-03-28 16:16:54.000000000 +0100
++++ a/include/linux/mm_inline.h	2026-03-28 16:27:36.376759299 +0100
 @@ -102,6 +102,12 @@ static __always_inline enum lru_list fol
  
  #ifdef CONFIG_LRU_GEN
@@ -26,10 +26,10 @@ diff -rupN a/include/linux/mm_inline.h b/include/linux/mm_inline.h
  
  static inline bool lru_gen_in_fault(void)
  {
-diff -rupN a/mm/rmap.c b/mm/rmap.c
---- a/mm/rmap.c	2026-03-16 12:42:33.000000000 +0100
-+++ b/mm/rmap.c	2026-03-19 11:59:53.406009014 +0100
-@@ -958,7 +958,7 @@ static bool folio_referenced_one(struct
+diff -rupN b/mm/rmap.c a/mm/rmap.c
+--- b/mm/rmap.c	2026-03-28 16:16:54.000000000 +0100
++++ a/mm/rmap.c	2026-03-28 16:27:36.377110532 +0100
+@@ -965,7 +965,7 @@ static bool folio_referenced_one(struct
  			return false;
  		}
  
@@ -38,10 +38,10 @@ diff -rupN a/mm/rmap.c b/mm/rmap.c
  			if (lru_gen_look_around(&pvmw))
  				referenced++;
  		} else if (pvmw.pte) {
-diff -rupN a/mm/vmscan.c b/mm/vmscan.c
---- a/mm/vmscan.c	2026-03-19 11:41:17.926277013 +0100
-+++ b/mm/vmscan.c	2026-03-19 11:58:45.820199074 +0100
-@@ -929,7 +929,7 @@ static enum folio_references folio_check
+diff -rupN b/mm/vmscan.c a/mm/vmscan.c
+--- b/mm/vmscan.c	2026-03-28 16:16:54.000000000 +0100
++++ a/mm/vmscan.c	2026-03-28 16:27:36.378110542 +0100
+@@ -905,7 +905,7 @@ static enum folio_references folio_check
  	if (referenced_ptes == -1)
  		return FOLIOREF_KEEP;
  
@@ -50,7 +50,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  		if (!referenced_ptes)
  			return FOLIOREF_RECLAIM;
  
-@@ -2347,7 +2347,7 @@ static void prepare_scan_control(pg_data
+@@ -2319,7 +2319,7 @@ static void prepare_scan_control(pg_data
  	unsigned long file;
  	struct lruvec *target_lruvec;
  
@@ -59,7 +59,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  		return;
  
  	target_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, pgdat);
-@@ -2793,6 +2793,7 @@ static void prepare_workingset_protectio
+@@ -2658,6 +2658,7 @@ static bool can_age_anon_pages(struct lr
  
  #ifdef CONFIG_LRU_GEN
  
@@ -67,7 +67,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  #ifdef CONFIG_LRU_GEN_ENABLED
  DEFINE_STATIC_KEY_ARRAY_TRUE(lru_gen_caps, NR_LRU_GEN_CAPS);
  #define get_cap(cap)	static_branch_likely(&lru_gen_caps[cap])
-@@ -5365,6 +5366,8 @@ static void lru_gen_change_state(bool en
+@@ -5178,6 +5179,8 @@ static void lru_gen_change_state(bool en
  	if (enabled == lru_gen_enabled())
  		goto unlock;
  
@@ -76,7 +76,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	if (enabled)
  		static_branch_enable_cpuslocked(&lru_gen_caps[LRU_GEN_CORE]);
  	else
-@@ -5395,6 +5398,9 @@ static void lru_gen_change_state(bool en
+@@ -5208,6 +5211,9 @@ static void lru_gen_change_state(bool en
  
  		cond_resched();
  	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
@@ -86,7 +86,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  unlock:
  	mutex_unlock(&state_mutex);
  	put_online_mems();
-@@ -6014,9 +6020,12 @@ static void shrink_lruvec(struct lruvec
+@@ -5780,9 +5786,12 @@ static void shrink_lruvec(struct lruvec
  	bool proportional_reclaim;
  	struct blk_plug plug;
  
@@ -101,7 +101,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	}
  
  	get_scan_count(lruvec, sc, nr);
-@@ -6276,10 +6285,13 @@ static void shrink_node(pg_data_t *pgdat
+@@ -6042,10 +6051,13 @@ static void shrink_node(pg_data_t *pgdat
  	struct lruvec *target_lruvec;
  	bool reclaimable = false;
  
@@ -117,7 +117,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	}
  
  	target_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, pgdat);
-@@ -6551,7 +6563,7 @@ static void snapshot_refaults(struct mem
+@@ -6315,7 +6327,7 @@ static void snapshot_refaults(struct mem
  	struct lruvec *target_lruvec;
  	unsigned long refaults;
  
@@ -126,7 +126,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  		return;
  
  	target_lruvec = mem_cgroup_lruvec(target_memcg, pgdat);
-@@ -6940,9 +6952,12 @@ static void kswapd_age_node(struct pglis
+@@ -6704,9 +6716,12 @@ static void kswapd_age_node(struct pglis
  	struct mem_cgroup *memcg;
  	struct lruvec *lruvec;
  

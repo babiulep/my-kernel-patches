@@ -4,7 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-03-28
-* NEXT: rebuild patches from scratch
+* TIP+NEXT: rebuild patches from scratch
 
 ## 2026-03-27
 * TIP+NEXT: remove Camsyses (Project Discontinued)
