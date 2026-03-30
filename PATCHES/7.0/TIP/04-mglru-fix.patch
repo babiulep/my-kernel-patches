@@ -1,0 +1,22 @@
+diff -rupN a/mm/vmscan.c b/mm/vmscan.c
+--- a/mm/vmscan.c	2026-03-30 22:36:53.434214256 +0200
++++ b/mm/vmscan.c	2026-03-30 22:38:27.849791825 +0200
+@@ -4834,7 +4834,8 @@ static bool should_abort_scan(struct lru
+ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
+ {
+ 	bool need_rotate = false, should_age = false;
+-	long nr_batch, nr_to_scan;
++	unsigned long nr_batch;
++	long nr_to_scan;
+ 	int swappiness = get_swappiness(lruvec, sc);
+ 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+ 
+@@ -5453,7 +5454,7 @@ static int run_aging(struct lruvec *lruv
+ static int run_eviction(struct lruvec *lruvec, unsigned long seq, struct scan_control *sc,
+ 			int swappiness, unsigned long nr_to_reclaim)
+ {
+-	int nr_batch;
++	unsigned long nr_batch;
+ 	DEFINE_MAX_SEQ(lruvec);
+ 
+ 	if (seq + MIN_NR_GENS > max_seq)

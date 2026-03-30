@@ -1,0 +1,44 @@
+diff -rupN a/messages.h b/messages.h
+--- a/messages.h	2026-02-10 11:32:49.000000000 +0100
++++ b/messages.h	2026-03-30 21:27:37.801685907 +0200
+@@ -140,6 +140,9 @@ enum message_size {
+ #define DATA_PACKET_HEAD_ROOM \
+ 	ALIGN(sizeof(struct message_data) + SKB_HEADER_LEN, 4)
+ 
+-enum { HANDSHAKE_DSCP = 0x88 /* AF41, plus 00 ECN */ };
++enum {
++	HANDSHAKE_DSCP = 0x88, /* AF41, plus 00 ECN */
++	JUNK_DSCP = 0xb8, /* EF, plus 00 ECN */
++};
+ 
+ #endif /* _WG_MESSAGES_H */
+diff -rupN a/send.c b/send.c
+--- a/send.c	2026-03-30 01:25:05.123041231 +0200
++++ b/send.c	2026-03-30 21:27:37.801974769 +0200
+@@ -29,7 +29,6 @@ static void wg_packet_send_handshake_ini
+ 	struct message_handshake_initiation packet;
+ 	struct wg_device *wg = peer->device;
+ 	void *buffer;
+-	u8 ds;
+ 	u16 junk_packet_count, junk_packet_size;
+ 	int i;
+ 	struct jp_spec* spec;
+@@ -50,7 +49,7 @@ static void wg_packet_send_handshake_ini
+ 		if (spec->pkt_size > 0) {
+ 			mutex_lock(&spec->lock);
+ 			jp_spec_applymods(spec, peer);
+-			wg_socket_send_buffer_to_peer(peer, spec->pkt, spec->pkt_size, 0, 0);
++			wg_socket_send_buffer_to_peer(peer, spec->pkt, spec->pkt_size, JUNK_DSCP, 0);
+ 			atomic_inc(&peer->jp_packet_counter);
+ 			mutex_unlock(&spec->lock);
+ 		}
+@@ -68,8 +67,7 @@ static void wg_packet_send_handshake_ini
+ 			junk_packet_size = (u16) get_random_u32_inclusive(wg->jmin, wg->jmax);
+ 
+ 			get_random_bytes(buffer, junk_packet_size);
+-			get_random_bytes(&ds, 1);
+-			wg_socket_send_buffer_to_peer(peer, buffer, junk_packet_size, ds, 0);
++			wg_socket_send_buffer_to_peer(peer, buffer, junk_packet_size, JUNK_DSCP, 0);
+ 		}
+ 
+ 		kfree(buffer);
