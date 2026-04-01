@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-04-01
+* TIP+NEXT: update patches
+* TIP+NEXT: add amneziawg patch to include it in-tree
+
 ## 2026-03-31
 * AMNEZIAWG TIP+NEXT: junk patch
 * AMNEZIAWG NEXT: ipv6_stub patch

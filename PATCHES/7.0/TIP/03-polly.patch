@@ -29,7 +29,7 @@ diff -rupN a/Makefile b/Makefile
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
 +ifdef CONFIG_POLLY_CLANG
-+KBUILD_CFLAGS	+= -mllvm -polly \
++KBUILD_CFLAGS	+= -mllvm -polly -mllvm -polly-omp-backend=LLVM -mllvm -polly-num-threads=8 \
 +		   -mllvm -polly-ast-use-context \
 +		   -mllvm -polly-invariant-load-hoisting \
 +		   -mllvm -polly-loopfusion-greedy \
