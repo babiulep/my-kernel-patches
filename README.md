@@ -6,7 +6,6 @@
 ## 2026-04-01
 * TIP+NEXT: update patches
 * TIP+NEXT: add amneziawg patch to include it in-tree
-* TIP: add vhba patch to include it in-tree
 
 ## 2026-03-31
 * AMNEZIAWG TIP+NEXT: junk patch
