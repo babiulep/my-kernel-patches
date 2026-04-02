@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-04-02
+* TIP: add [vhba](https://cdemu.sourceforge.io/about/vhba/) patch
+
 ## 2026-04-01
 * TIP+NEXT: update patches
 * TIP+NEXT: add amneziawg patch to include it in-tree
