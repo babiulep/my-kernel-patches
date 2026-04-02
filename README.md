@@ -4,7 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-04-02
-* TIP: add [vhba](https://cdemu.sourceforge.io/about/vhba/) patch
+* TIP: add [vhba](https://cdemu.sourceforge.io/about/vhba/) patch to include it in-tree
 
 ## 2026-04-01
 * TIP+NEXT: update patches
