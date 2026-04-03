@@ -4,6 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-04-03
+* NVIDIA NEXT: add patch for 595.58.03
 * NEXT: add mglru patch + fix several warnings
 
 ## 2026-04-02

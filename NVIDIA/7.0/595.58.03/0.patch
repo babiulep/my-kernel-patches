@@ -1,0 +1,54 @@
+diff -rupN a/common/inc/nv-linux.h b/common/inc/nv-linux.h
+--- a/common/inc/nv-linux.h	2026-03-17 21:33:21.000000000 +0100
++++ b/common/inc/nv-linux.h	2026-04-03 20:27:59.877573145 +0200
+@@ -1696,7 +1696,7 @@ typedef enum
+ #include <linux/reset.h>
+ #include <linux/dma-buf.h>
+ #include <linux/gpio.h>
+-#include <linux/of_gpio.h>
++#include "of_gpio.h"
+ #include <linux/of_device.h>
+ #include <linux/of_platform.h>
+ 
+diff -rupN a/common/inc/of_gpio.h b/common/inc/of_gpio.h
+--- a/common/inc/of_gpio.h	1970-01-01 01:00:00.000000000 +0100
++++ b/common/inc/of_gpio.h	2026-04-03 20:27:59.877942825 +0200
+@@ -0,0 +1,38 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++/*
++ * OF helpers for the GPIO API
++ *
++ * Copyright (c) 2007-2008  MontaVista Software, Inc.
++ *
++ * Author: Anton Vorontsov <avorontsov@ru.mvista.com>
++ */
++
++#ifndef __LINUX_OF_GPIO_H
++#define __LINUX_OF_GPIO_H
++
++#include <linux/compiler.h>
++#include <linux/gpio/driver.h>
++#include <linux/gpio.h>		/* FIXME: Shouldn't be here */
++#include <linux/of.h>
++
++struct device_node;
++
++#ifdef CONFIG_OF_GPIO
++
++extern int of_get_named_gpio(const struct device_node *np,
++			     const char *list_name, int index);
++
++#else /* CONFIG_OF_GPIO */
++
++#include <linux/errno.h>
++
++/* Drivers may not strictly depend on the GPIO support, so let them link. */
++static inline int of_get_named_gpio(const struct device_node *np,
++                                   const char *propname, int index)
++{
++	return -ENOSYS;
++}
++
++#endif /* CONFIG_OF_GPIO */
++
++#endif /* __LINUX_OF_GPIO_H */
