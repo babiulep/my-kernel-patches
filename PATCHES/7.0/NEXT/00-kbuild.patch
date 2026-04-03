@@ -1,6 +1,6 @@
 diff -rupN a/arch/Kconfig b/arch/Kconfig
---- a/arch/Kconfig	2026-04-01 16:32:03.000000000 +0200
-+++ b/arch/Kconfig	2026-04-01 19:23:16.652839153 +0200
+--- a/arch/Kconfig	2026-04-03 16:37:54.000000000 +0200
++++ b/arch/Kconfig	2026-04-03 20:08:46.103925939 +0200
 @@ -861,6 +861,25 @@ config LTO_CLANG_THIN
  	    https://clang.llvm.org/docs/ThinLTO.html
  
@@ -27,9 +27,33 @@ diff -rupN a/arch/Kconfig b/arch/Kconfig
  endchoice
  
  config ARCH_SUPPORTS_AUTOFDO_CLANG
+diff -rupN a/certs/extract-cert.c b/certs/extract-cert.c
+--- a/certs/extract-cert.c	2026-04-03 16:37:54.000000000 +0200
++++ b/certs/extract-cert.c	2026-04-03 20:09:20.695956431 +0200
+@@ -41,7 +41,9 @@ void format(void)
+ 	exit(2);
+ }
+ 
++#ifdef USE_PKCS11_ENGINE
+ static const char *key_pass;
++#endif
+ static BIO *wb;
+ static char *cert_dst;
+ static bool verbose;
+@@ -133,7 +135,9 @@ int main(int argc, char **argv)
+ 	if (verbose_env && strchr(verbose_env, '1'))
+ 		verbose = true;
+ 
+-        key_pass = getenv("KBUILD_SIGN_PIN");
++#ifdef USE_PKCS11_ENGINE
++	key_pass = getenv("KBUILD_SIGN_PIN");
++#endif
+ 
+ 	if (argc != 3)
+ 		format();
 diff -rupN a/.gitignore b/.gitignore
---- a/.gitignore	2026-04-01 16:32:03.000000000 +0200
-+++ b/.gitignore	2026-04-01 19:23:16.656451624 +0200
+--- a/.gitignore	2026-04-03 16:37:54.000000000 +0200
++++ b/.gitignore	2026-04-03 20:08:46.106662726 +0200
 @@ -57,6 +57,7 @@
  *.zst
  Module.symvers
@@ -47,9 +71,26 @@ diff -rupN a/.gitignore b/.gitignore
  /vmlinux-gdb.py
  /vmlinuz
 diff -rupN a/Makefile b/Makefile
---- a/Makefile	2026-04-01 16:32:03.000000000 +0200
-+++ b/Makefile	2026-04-01 19:23:16.657839183 +0200
-@@ -1269,7 +1269,7 @@ export ARCH_DRIVERS	:= $(drivers-y) $(dr
+--- a/Makefile	2026-04-03 16:37:54.000000000 +0200
++++ b/Makefile	2026-04-03 20:08:46.107651025 +0200
+@@ -1050,11 +1050,13 @@ export CC_FLAGS_SCS
+ endif
+ 
+ ifdef CONFIG_LTO_CLANG
+-ifdef CONFIG_LTO_CLANG_THIN
+-CC_FLAGS_LTO	:= -flto=thin -fsplit-lto-unit
+ KBUILD_LDFLAGS += $(call ld-option,--lto-whole-program-visibility -mllvm -always-rename-promoted-locals=false)
+-else
++ifdef CONFIG_LTO_CLANG_FULL
+ CC_FLAGS_LTO	:= -flto
++else
++CC_FLAGS_LTO   := -flto=thin -fsplit-lto-unit
++ifdef CONFIG_LTO_CLANG_THIN
++endif
+ endif
+ CC_FLAGS_LTO	+= -fvisibility=hidden
+ 
+@@ -1270,7 +1272,7 @@ export ARCH_DRIVERS	:= $(drivers-y) $(dr
  KBUILD_VMLINUX_OBJS := built-in.a $(patsubst %/, %/lib.a, $(filter %/, $(libs-y)))
  KBUILD_VMLINUX_LIBS := $(filter-out %/, $(libs-y))
  
@@ -58,7 +99,7 @@ diff -rupN a/Makefile b/Makefile
  export KBUILD_LDS          := arch/$(SRCARCH)/kernel/vmlinux.lds
  
  ifdef CONFIG_TRIM_UNUSED_KSYMS
-@@ -1278,16 +1278,12 @@ ifdef CONFIG_TRIM_UNUSED_KSYMS
+@@ -1279,16 +1281,12 @@ ifdef CONFIG_TRIM_UNUSED_KSYMS
  KBUILD_MODULES := y
  endif
  
@@ -81,7 +122,7 @@ diff -rupN a/Makefile b/Makefile
  
  PHONY += vmlinux_o
  vmlinux_o: vmlinux.a $(KBUILD_VMLINUX_LIBS)
-@@ -1666,6 +1662,7 @@ endif # CONFIG_MODULES
+@@ -1667,6 +1665,7 @@ endif # CONFIG_MODULES
  CLEAN_FILES += vmlinux.symvers modules-only.symvers \
  	       modules.builtin modules.builtin.modinfo modules.nsdeps \
  	       modules.builtin.ranges vmlinux.o.map vmlinux.unstripped \
@@ -89,7 +130,7 @@ diff -rupN a/Makefile b/Makefile
  	       compile_commands.json rust/test \
  	       rust-project.json .vmlinux.objs .vmlinux.export.c \
                 .builtin-dtbs-list .builtin-dtbs.S
-@@ -2128,7 +2125,7 @@ clean: $(clean-dirs)
+@@ -2129,7 +2128,7 @@ clean: $(clean-dirs)
  	$(call cmd,rmfiles)
  	@find . $(RCS_FIND_IGNORE) \
  		\( -name '*.[aios]' -o -name '*.rsi' -o -name '*.ko' -o -name '.*.cmd' \
@@ -98,31 +139,9 @@ diff -rupN a/Makefile b/Makefile
  		-o -name '*.dtb' -o -name '*.dtbo' \
  		-o -name '*.dtb.S' -o -name '*.dtbo.S' \
  		-o -name '*.dt.yaml' -o -name 'dtbs-list' \
-diff -rupN a/Makefile.rej b/Makefile.rej
---- a/Makefile.rej	1970-01-01 01:00:00.000000000 +0100
-+++ b/Makefile.rej	2026-04-01 19:23:16.659504765 +0200
-@@ -0,0 +1,18 @@
-+--- Makefile	2026-04-01 08:30:55.000000000 +0200
-++++ Makefile	2026-04-01 11:18:44.081199515 +0200
-+@@ -1033,10 +1033,12 @@ export CC_FLAGS_SCS
-+ endif
-+ 
-+ ifdef CONFIG_LTO_CLANG
-+-ifdef CONFIG_LTO_CLANG_THIN
-+-CC_FLAGS_LTO	:= -flto=thin -fsplit-lto-unit
-+-else
-++ifdef CONFIG_LTO_CLANG_FULL
-+ CC_FLAGS_LTO	:= -flto
-++else
-++CC_FLAGS_LTO	:= -flto=thin -fsplit-lto-unit
-++ifdef CONFIG_LTO_CLANG_THIN
-++endif
-+ endif
-+ CC_FLAGS_LTO	+= -fvisibility=hidden
-+ 
 diff -rupN a/scripts/Makefile.lib b/scripts/Makefile.lib
---- a/scripts/Makefile.lib	2026-04-01 16:32:03.000000000 +0200
-+++ b/scripts/Makefile.lib	2026-04-01 19:23:16.660292266 +0200
+--- a/scripts/Makefile.lib	2026-04-03 16:37:54.000000000 +0200
++++ b/scripts/Makefile.lib	2026-04-03 20:08:46.111009674 +0200
 @@ -249,6 +249,12 @@ ifdef CONFIG_LTO_CLANG
  cmd_ld_single = $(if $(objtool-enabled)$(is-single-obj-m), ; $(LD) $(ld_flags) -r -o $(tmp-target) $@; mv $(tmp-target) $@)
  endif
@@ -146,7 +165,7 @@ diff -rupN a/scripts/Makefile.lib b/scripts/Makefile.lib
  	$(call cmd,gen_objtooldep)
 diff -rupN a/scripts/Makefile.thinlto b/scripts/Makefile.thinlto
 --- a/scripts/Makefile.thinlto	1970-01-01 01:00:00.000000000 +0100
-+++ b/scripts/Makefile.thinlto	2026-04-01 19:23:16.661514666 +0200
++++ b/scripts/Makefile.thinlto	2026-04-03 20:08:46.112109515 +0200
 @@ -0,0 +1,40 @@
 +PHONY := __default
 +__default:
@@ -190,7 +209,7 @@ diff -rupN a/scripts/Makefile.thinlto b/scripts/Makefile.thinlto
 +.PHONY: $(PHONY)
 diff -rupN a/scripts/Makefile.vmlinux_a b/scripts/Makefile.vmlinux_a
 --- a/scripts/Makefile.vmlinux_a	1970-01-01 01:00:00.000000000 +0100
-+++ b/scripts/Makefile.vmlinux_a	2026-04-01 19:23:16.661855418 +0200
++++ b/scripts/Makefile.vmlinux_a	2026-04-03 20:08:46.112370012 +0200
 @@ -0,0 +1,83 @@
 +# SPDX-License-Identifier: GPL-2.0-only
 +
@@ -276,8 +295,8 @@ diff -rupN a/scripts/Makefile.vmlinux_a b/scripts/Makefile.vmlinux_a
 +
 +.PHONY: $(PHONY)
 diff -rupN a/scripts/mod/modpost.c b/scripts/mod/modpost.c
---- a/scripts/mod/modpost.c	2026-04-01 16:32:03.000000000 +0200
-+++ b/scripts/mod/modpost.c	2026-04-01 19:23:16.662573489 +0200
+--- a/scripts/mod/modpost.c	2026-04-03 16:37:54.000000000 +0200
++++ b/scripts/mod/modpost.c	2026-04-03 20:08:46.113040845 +0200
 @@ -1487,13 +1487,22 @@ static void extract_crcs_for_object(cons
  	char cmd_file[PATH_MAX];
  	char *buf, *p;

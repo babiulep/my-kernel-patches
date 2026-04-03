@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-04-03
+* NEXT: add mglru patch + fix several warnings
+
 ## 2026-04-02
 * TIP+NEXT: add [vhba](https://cdemu.sourceforge.io/about/vhba/) patch to include it in-tree
 
