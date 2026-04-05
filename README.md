@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+# 2026-04-05:
+* MAINLINE: new patches for the mainline tree
+* MAINLINE: add [Piece-of-Cake](https://github.com/firelzrd/poc-selector) and [Cambyses](https://github.com/firelzrd/cambyses) patches
+
 ## 2026-04-03
 * NVIDIA NEXT: add patch for 595.58.03
 * NEXT: add mglru patch + fix several warnings
