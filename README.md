@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+# 2026-04-08
+* TIP: add adios and bbr3 patches
+* NEXT: add adios patch
+
 # 2026-04-05:
 * MAINLINE: new patches for the mainline tree
 * MAINLINE: add [Piece-of-Cake](https://github.com/firelzrd/poc-selector) and [Cambyses](https://github.com/firelzrd/cambyses) patches
