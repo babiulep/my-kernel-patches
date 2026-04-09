@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-04-09
+* TIP+NEXT: added objtool patch again
+
 ## 2026-04-08
 * TIP: add adios and bbr3 patches
 * NEXT: add adios patch
