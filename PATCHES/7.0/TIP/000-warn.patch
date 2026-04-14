@@ -33,19 +33,3 @@ index 7d6d468ed..54ecd1024 100644
  
  	if (argc != 3)
  		format();
-diff --git a/scripts/mod/modpost.c b/scripts/mod/modpost.c
-index 0c25b5ad4..c3bc801d8 100644
---- a/scripts/mod/modpost.c
-+++ b/scripts/mod/modpost.c
-@@ -56,7 +56,7 @@ static bool allow_missing_ns_imports;
- 
- static bool error_occurred;
- 
--static bool extra_warn;
-+static bool extra_warn __attribute__((unused));
- 
- bool target_is_big_endian;
- bool host_is_big_endian;
--- 
-cgit v1.3
-
