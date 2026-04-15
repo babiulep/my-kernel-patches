@@ -4,7 +4,8 @@
 - [README 2025](README2025.md) 
 
 ## 2026-04-15
-* TIP: update patches
+* TIP+NEXT: update patches
+* TIP+NEXT: update nap v0.3.1 to v0.3.2
 
 ## 2026-04-14
 * TIP+NEXT: added [Neural Adaptive Predictor](https://github.com/firelzrd/nap)
