@@ -4,6 +4,9 @@
 - [README 2025](README2025.md) 
 
 ## 2026-04-15
+* TIP: update patches
+
+## 2026-04-14
 * TIP+NEXT: added [Neural Adaptive Predictor](https://github.com/firelzrd/nap)
 * TIP+NEXT:  
   objtool only needed when compiling the kernel with GCC and you don't have  
