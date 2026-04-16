@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-04-16
+* TIP+NEXT: update Nap CPUIdle Governor to v0.4.0
+* TIP: remove mglru patch
+
 ## 2026-04-15
 * TIP+NEXT: update patches
 * TIP+NEXT: update nap v0.3.1 to v0.3.2
