@@ -1,6 +1,7 @@
-diff -rupN a/mm/vmscan.c b/mm/vmscan.c
---- a/mm/vmscan.c	2026-04-03 16:37:54.000000000 +0200
-+++ b/mm/vmscan.c	2026-04-03 18:55:19.485546207 +0200
+diff --git a/mm/vmscan.c b/mm/vmscan.c
+index bd1b1aa..dde297c 100644
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
 @@ -169,11 +169,9 @@ struct scan_control {
  
  	struct {
@@ -33,7 +34,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
 +	 * the flushers simply cannot keep up with the allocation
 +	 * rate. Nudge the flusher threads in case they are asleep.
 +	 */
-+	if (stat->nr_unqueued_dirty == nr_taken && nr_taken) {
++	if (stat->nr_unqueued_dirty == nr_taken) {
 +		wakeup_flusher_threads(WB_REASON_VMSCAN);
 +		/*
 +		 * For cgroupv1 dirty throttling is achieved by waking up
@@ -58,7 +59,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  /*
   * shrink_inactive_list() is a helper for shrink_node().  It returns the number
   * of reclaimed pages
-@@ -2007,42 +2043,7 @@ static unsigned long shrink_inactive_lis
+@@ -2007,42 +2043,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
  	lruvec_lock_irq(lruvec);
  	lru_note_cost_unlock_irq(lruvec, file, stat.nr_pageout,
  					nr_scanned - nr_reclaimed);
@@ -102,7 +103,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	trace_mm_vmscan_lru_shrink_inactive(pgdat->node_id,
  			nr_scanned, nr_reclaimed, &stat, sc->priority, file);
  	return nr_reclaimed;
-@@ -3220,7 +3221,7 @@ static int folio_update_gen(struct folio
+@@ -3220,7 +3221,7 @@ static int folio_update_gen(struct folio *folio, int gen)
  }
  
  /* protect pages accessed multiple times through file descriptors */
@@ -111,7 +112,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  {
  	int type = folio_is_file_lru(folio);
  	struct lru_gen_folio *lrugen = &lruvec->lrugen;
-@@ -3239,9 +3240,6 @@ static int folio_inc_gen(struct lruvec *
+@@ -3239,9 +3240,6 @@ static int folio_inc_gen(struct lruvec *lruvec, struct folio *folio, bool reclai
  
  		new_flags = old_flags & ~(LRU_GEN_MASK | LRU_REFS_FLAGS);
  		new_flags |= (new_gen + 1UL) << LRU_GEN_PGOFF;
@@ -121,7 +122,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	} while (!try_cmpxchg(&folio->flags.f, &old_flags, new_flags));
  
  	lru_gen_update_size(lruvec, folio, old_gen, new_gen);
-@@ -3855,7 +3853,7 @@ static bool inc_min_seq(struct lruvec *l
+@@ -3855,7 +3853,7 @@ static bool inc_min_seq(struct lruvec *lruvec, int type, int swappiness)
  			VM_WARN_ON_ONCE_FOLIO(folio_is_file_lru(folio) != type, folio);
  			VM_WARN_ON_ONCE_FOLIO(folio_zonenum(folio) != zone, folio);
  
@@ -167,7 +168,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  }
  
  static bool inc_max_seq(struct lruvec *lruvec, unsigned long seq, int swappiness)
-@@ -4084,27 +4077,33 @@ static void set_initial_priority(struct
+@@ -4084,27 +4077,33 @@ static void set_initial_priority(struct pglist_data *pgdat, struct scan_control
  	sc->priority = clamp(priority, DEF_PRIORITY / 2, DEF_PRIORITY);
  }
  
@@ -208,7 +209,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	/* whether the size is big enough to be helpful */
  	return mem_cgroup_online(memcg) ? (total >> sc->priority) : total;
  }
-@@ -4577,7 +4576,6 @@ static bool sort_folio(struct lruvec *lr
+@@ -4577,7 +4576,6 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_c
  		       int tier_idx)
  {
  	bool success;
@@ -216,7 +217,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	int gen = folio_lru_gen(folio);
  	int type = folio_is_file_lru(folio);
  	int zone = folio_zonenum(folio);
-@@ -4607,7 +4605,7 @@ static bool sort_folio(struct lruvec *lr
+@@ -4607,7 +4605,7 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_c
  
  	/* protected */
  	if (tier > tier_idx || refs + workingset == BIT(LRU_REFS_WIDTH) + 1) {
@@ -225,7 +226,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  		list_move(&folio->lru, &lrugen->folios[gen][type][zone]);
  
  		/* don't count the workingset being lazily promoted */
-@@ -4622,26 +4620,11 @@ static bool sort_folio(struct lruvec *lr
+@@ -4622,26 +4620,11 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_c
  
  	/* ineligible */
  	if (zone > sc->reclaim_idx) {
@@ -253,7 +254,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	return false;
  }
  
-@@ -4649,12 +4632,6 @@ static bool isolate_folio(struct lruvec
+@@ -4649,12 +4632,6 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
  {
  	bool success;
  
@@ -266,7 +267,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	/* raced with release_pages() */
  	if (!folio_try_get(folio))
  		return false;
-@@ -4669,9 +4646,6 @@ static bool isolate_folio(struct lruvec
+@@ -4669,9 +4646,6 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
  	if (!folio_test_referenced(folio))
  		set_mask_bits(&folio->flags.f, LRU_REFS_MASK, 0);
  
@@ -276,7 +277,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	success = lru_gen_del_folio(lruvec, folio, true);
  	VM_WARN_ON_ONCE_FOLIO(!success, folio);
  
-@@ -4680,7 +4654,7 @@ static bool isolate_folio(struct lruvec
+@@ -4680,7 +4654,7 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
  
  static int scan_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
  		       struct scan_control *sc, int type, int tier,
@@ -285,7 +286,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  {
  	int i;
  	int gen;
-@@ -4689,10 +4663,10 @@ static int scan_folios(unsigned long nr_
+@@ -4689,10 +4663,10 @@ static int scan_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
  	int scanned = 0;
  	int isolated = 0;
  	int skipped = 0;
@@ -298,7 +299,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	VM_WARN_ON_ONCE(!list_empty(list));
  
  	if (get_nr_gens(lruvec, type) == MIN_NR_GENS)
-@@ -4745,16 +4719,12 @@ static int scan_folios(unsigned long nr_
+@@ -4745,16 +4719,12 @@ static int scan_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
  	mod_lruvec_state(lruvec, item, isolated);
  	mod_lruvec_state(lruvec, PGREFILL, sorted);
  	mod_lruvec_state(lruvec, PGSCAN_ANON + type, isolated);
@@ -319,7 +320,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  }
  
  static int get_tier_idx(struct lruvec *lruvec, int type)
-@@ -4798,33 +4768,36 @@ static int get_type_to_scan(struct lruve
+@@ -4798,33 +4768,36 @@ static int get_type_to_scan(struct lruvec *lruvec, int swappiness)
  
  static int isolate_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
  			  struct scan_control *sc, int swappiness,
@@ -366,7 +367,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	LIST_HEAD(list);
  	LIST_HEAD(clean);
  	struct folio *folio;
-@@ -4832,19 +4805,23 @@ static int evict_folios(unsigned long nr
+@@ -4832,19 +4805,23 @@ static int evict_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
  	enum node_stat_item item;
  	struct reclaim_stat stat;
  	struct lru_gen_mm_walk *walk;
@@ -395,20 +396,23 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  
  	lruvec_unlock_irq(lruvec);
  
-@@ -4852,10 +4829,10 @@ static int evict_folios(unsigned long nr
+@@ -4852,10 +4829,13 @@ static int evict_folios(unsigned long nr_to_scan, struct lruvec *lruvec,
  		return scanned;
  retry:
  	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false, memcg);
 -	sc->nr.unqueued_dirty += stat.nr_unqueued_dirty;
  	sc->nr_reclaimed += reclaimed;
 +	handle_reclaim_writeback(isolated, pgdat, sc, &stat);
++	/* Retry pass is only meant for clean folios without new isolation */
++	if (isolated)
++		handle_reclaim_writeback(isolated, pgdat, sc, &stat);
  	trace_mm_vmscan_lru_shrink_inactive(pgdat->node_id,
 -			scanned, reclaimed, &stat, sc->priority,
 +			type_scanned, reclaimed, &stat, sc->priority,
  			type ? LRU_INACTIVE_FILE : LRU_INACTIVE_ANON);
  
  	list_for_each_entry_safe_reverse(folio, next, &list, lru) {
-@@ -4900,6 +4877,7 @@ retry:
+@@ -4900,6 +4880,7 @@ retry:
  
  	if (!list_empty(&list)) {
  		skip_retry = true;
@@ -416,7 +420,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  		goto retry;
  	}
  
-@@ -4907,63 +4885,44 @@ retry:
+@@ -4907,63 +4888,44 @@ retry:
  }
  
  static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
@@ -435,7 +439,10 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  
 -	for_each_evictable_type(type, swappiness) {
 -		unsigned long seq;
--
++	/* try to get away with not aging at the default priority */
++	if (sc->priority == DEF_PRIORITY)
++		return false;
+ 
 -		for (seq = min_seq[type]; seq <= max_seq; seq++) {
 -			gen = lru_gen_from_seq(seq);
 -
@@ -443,10 +450,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
 -				size += max(READ_ONCE(lrugen->nr_pages[gen][type][zone]), 0L);
 -		}
 -	}
-+	/* try to get away with not aging at the default priority */
-+	if (sc->priority == DEF_PRIORITY)
-+		return false;
- 
+-
 -	*nr_to_scan = size;
  	/* better to run aging even though eviction is still possible */
  	return evictable_min_seq(min_seq, swappiness) + MIN_NR_GENS == max_seq;
@@ -498,7 +502,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  }
  
  static bool should_abort_scan(struct lruvec *lruvec, struct scan_control *sc)
-@@ -4993,62 +4952,57 @@ static bool should_abort_scan(struct lru
+@@ -4993,62 +4955,57 @@ static bool should_abort_scan(struct lruvec *lruvec, struct scan_control *sc)
  	return true;
  }
  
@@ -528,14 +532,14 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
 +			need_rotate = true;
  			break;
 +		}
-+
+ 
+-		delta = evict_folios(nr_to_scan, lruvec, sc, swappiness);
 +		if (should_run_aging(lruvec, max_seq, sc, swappiness)) {
 +			if (try_to_inc_max_seq(lruvec, max_seq, swappiness, false))
 +				need_rotate = true;
 +			should_age = true;
 +		}
- 
--		delta = evict_folios(nr_to_scan, lruvec, sc, swappiness);
++
 +		nr_batch = min(nr_to_scan, MIN_LRU_BATCH);
 +		delta = evict_folios(nr_batch, lruvec, sc, swappiness);
  		if (!delta)
@@ -543,14 +547,15 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  
 -		scanned += delta;
 -		if (scanned >= nr_to_scan)
-+		if (should_abort_scan(lruvec, sc))
+-			break;
+-
+ 		if (should_abort_scan(lruvec, sc))
  			break;
  
--		if (should_abort_scan(lruvec, sc))
 +		/* For cgroup reclaim, fairness is handled by iterator, not rotation */
 +		if (root_reclaim(sc) && should_age)
- 			break;
- 
++			break;
++
 +		nr_to_scan -= delta;
  		cond_resched();
  	}
@@ -589,7 +594,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	unsigned long scanned = sc->nr_scanned;
  	unsigned long reclaimed = sc->nr_reclaimed;
  	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
-@@ -5066,7 +5020,7 @@ static int shrink_one(struct lruvec *lru
+@@ -5066,7 +5023,7 @@ static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
  		memcg_memory_event(memcg, MEMCG_LOW);
  	}
  
@@ -598,7 +603,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  
  	shrink_slab(sc->gfp_mask, pgdat->node_id, memcg, sc->priority);
  
-@@ -5076,10 +5030,10 @@ static int shrink_one(struct lruvec *lru
+@@ -5076,10 +5033,10 @@ static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
  
  	flush_reclaim_state(sc);
  
@@ -611,7 +616,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  		return 0;
  
  	/* one retry if offlined or too small */
-@@ -5631,6 +5585,7 @@ static int run_aging(struct lruvec *lruv
+@@ -5631,6 +5588,7 @@ static int run_aging(struct lruvec *lruvec, unsigned long seq,
  static int run_eviction(struct lruvec *lruvec, unsigned long seq, struct scan_control *sc,
  			int swappiness, unsigned long nr_to_reclaim)
  {
@@ -619,7 +624,7 @@ diff -rupN a/mm/vmscan.c b/mm/vmscan.c
  	DEFINE_MAX_SEQ(lruvec);
  
  	if (seq + MIN_NR_GENS > max_seq)
-@@ -5647,8 +5602,8 @@ static int run_eviction(struct lruvec *l
+@@ -5647,8 +5605,8 @@ static int run_eviction(struct lruvec *lruvec, unsigned long seq, struct scan_co
  		if (sc->nr_reclaimed >= nr_to_reclaim)
  			return 0;
  

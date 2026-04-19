@@ -1,7 +1,7 @@
 diff -rupN a/Makefile b/Makefile
---- a/Makefile	2026-03-28 16:27:11.897247763 +0100
-+++ b/Makefile	2026-03-28 16:29:03.898492758 +0100
-@@ -891,7 +891,7 @@ endif # need-config
+--- a/Makefile	2026-04-15 12:29:01.167452851 +0200
++++ b/Makefile	2026-04-15 12:29:21.962224487 +0200
+@@ -923,7 +923,7 @@ endif # need-config
  KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
  
  ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE

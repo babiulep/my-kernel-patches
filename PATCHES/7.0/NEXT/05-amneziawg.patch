@@ -1,6 +1,6 @@
 diff -rupN a/drivers/net/Makefile b/drivers/net/Makefile
 --- a/drivers/net/Makefile	2026-04-15 14:29:32.000000000 +0200
-+++ b/drivers/net/Makefile	2026-04-15 14:49:37.187302082 +0200
++++ b/drivers/net/Makefile	2026-04-15 14:53:04.004176297 +0200
 @@ -10,7 +10,6 @@ obj-$(CONFIG_BONDING) += bonding/
  obj-$(CONFIG_IPVLAN) += ipvlan/
  obj-$(CONFIG_IPVTAP) += ipvlan/
@@ -5315,7 +5315,7 @@ diff -rupN a/drivers/net/wireguard/version.h b/drivers/net/wireguard/version.h
 -#define WIREGUARD_VERSION "1.0.0"
 diff -rupN a/net/Kconfig b/net/Kconfig
 --- a/net/Kconfig	2026-04-15 14:29:32.000000000 +0200
-+++ b/net/Kconfig	2026-04-15 14:49:41.095382933 +0200
++++ b/net/Kconfig	2026-04-15 14:53:04.006882702 +0200
 @@ -134,6 +134,7 @@ config INET
  	  Short answer: say Y.
  
@@ -5326,7 +5326,7 @@ diff -rupN a/net/Kconfig b/net/Kconfig
  source "net/netlabel/Kconfig"
 diff -rupN a/net/Makefile b/net/Makefile
 --- a/net/Makefile	2026-04-15 14:29:32.000000000 +0200
-+++ b/net/Makefile	2026-04-15 14:49:41.097103680 +0200
++++ b/net/Makefile	2026-04-15 14:53:04.007178918 +0200
 @@ -14,6 +14,7 @@ obj-$(CONFIG_COMPAT)		+= compat.o
  obj-$(CONFIG_LLC)		+= llc/
  obj-y				+= ethernet/ 802/ sched/ netlink/ bpf/ ethtool/
@@ -5337,7 +5337,7 @@ diff -rupN a/net/Makefile b/net/Makefile
  obj-$(CONFIG_XFRM)		+= xfrm/
 diff -rupN a/net/wireguard/allowedips.c b/net/wireguard/allowedips.c
 --- a/net/wireguard/allowedips.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/allowedips.c	2026-04-15 14:49:41.098192086 +0200
++++ b/net/wireguard/allowedips.c	2026-04-15 14:53:04.007371696 +0200
 @@ -0,0 +1,429 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -5770,7 +5770,7 @@ diff -rupN a/net/wireguard/allowedips.c b/net/wireguard/allowedips.c
 +#include "selftest/allowedips.c"
 diff -rupN a/net/wireguard/allowedips.h b/net/wireguard/allowedips.h
 --- a/net/wireguard/allowedips.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/allowedips.h	2026-04-15 14:49:41.098556968 +0200
++++ b/net/wireguard/allowedips.h	2026-04-15 14:53:04.007434959 +0200
 @@ -0,0 +1,63 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -5837,7 +5837,7 @@ diff -rupN a/net/wireguard/allowedips.h b/net/wireguard/allowedips.h
 +#endif /* _WG_ALLOWEDIPS_H */
 diff -rupN a/net/wireguard/compat/checksum/checksum_partial_compat.h b/net/wireguard/compat/checksum/checksum_partial_compat.h
 --- a/net/wireguard/compat/checksum/checksum_partial_compat.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/checksum/checksum_partial_compat.h	2026-04-15 14:49:41.099251341 +0200
++++ b/net/wireguard/compat/checksum/checksum_partial_compat.h	2026-04-15 14:53:04.007573188 +0200
 @@ -0,0 +1,208 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -6049,7 +6049,7 @@ diff -rupN a/net/wireguard/compat/checksum/checksum_partial_compat.h b/net/wireg
 +}
 diff -rupN a/net/wireguard/compat/compat-asm.h b/net/wireguard/compat/compat-asm.h
 --- a/net/wireguard/compat/compat-asm.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/compat-asm.h	2026-04-15 14:49:41.099689985 +0200
++++ b/net/wireguard/compat/compat-asm.h	2026-04-15 14:53:04.007650209 +0200
 @@ -0,0 +1,86 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -6139,7 +6139,7 @@ diff -rupN a/net/wireguard/compat/compat-asm.h b/net/wireguard/compat/compat-asm
 +#endif /* _WG_COMPATASM_H */
 diff -rupN a/net/wireguard/compat/compat.h b/net/wireguard/compat/compat.h
 --- a/net/wireguard/compat/compat.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/compat.h	2026-04-15 14:49:41.100334249 +0200
++++ b/net/wireguard/compat/compat.h	2026-04-15 14:53:04.007697860 +0200
 @@ -0,0 +1,1410 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -7553,27 +7553,27 @@ diff -rupN a/net/wireguard/compat/compat.h b/net/wireguard/compat/compat.h
 +#endif /* _WG_COMPAT_H */
 diff -rupN a/net/wireguard/compat/crypto/blake2s/include/crypto/blake2s.h b/net/wireguard/compat/crypto/blake2s/include/crypto/blake2s.h
 --- a/net/wireguard/compat/crypto/blake2s/include/crypto/blake2s.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/crypto/blake2s/include/crypto/blake2s.h	2026-04-15 14:49:41.101951926 +0200
++++ b/net/wireguard/compat/crypto/blake2s/include/crypto/blake2s.h	2026-04-15 14:53:04.008054858 +0200
 @@ -0,0 +1 @@
 +#include <zinc/blake2s.h>
 diff -rupN a/net/wireguard/compat/crypto/chacha20poly1305/include/crypto/chacha20poly1305.h b/net/wireguard/compat/crypto/chacha20poly1305/include/crypto/chacha20poly1305.h
 --- a/net/wireguard/compat/crypto/chacha20poly1305/include/crypto/chacha20poly1305.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/crypto/chacha20poly1305/include/crypto/chacha20poly1305.h	2026-04-15 14:49:41.102572317 +0200
++++ b/net/wireguard/compat/crypto/chacha20poly1305/include/crypto/chacha20poly1305.h	2026-04-15 14:53:04.008160116 +0200
 @@ -0,0 +1 @@
 +#include <zinc/chacha20poly1305.h>
 diff -rupN a/net/wireguard/compat/crypto/curve25519/include/crypto/curve25519.h b/net/wireguard/compat/crypto/curve25519/include/crypto/curve25519.h
 --- a/net/wireguard/compat/crypto/curve25519/include/crypto/curve25519.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/crypto/curve25519/include/crypto/curve25519.h	2026-04-15 14:49:41.103133994 +0200
++++ b/net/wireguard/compat/crypto/curve25519/include/crypto/curve25519.h	2026-04-15 14:53:04.008279095 +0200
 @@ -0,0 +1 @@
 +#include <zinc/curve25519.h>
 diff -rupN a/net/wireguard/compat/crypto/utils/include/crypto/utils.h b/net/wireguard/compat/crypto/utils/include/crypto/utils.h
 --- a/net/wireguard/compat/crypto/utils/include/crypto/utils.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/crypto/utils/include/crypto/utils.h	2026-04-15 14:49:41.103704676 +0200
++++ b/net/wireguard/compat/crypto/utils/include/crypto/utils.h	2026-04-15 14:53:04.008409566 +0200
 @@ -0,0 +1 @@
 +#include <crypto/algapi.h>
 diff -rupN a/net/wireguard/compat/dst_cache/dst_cache.c b/net/wireguard/compat/dst_cache/dst_cache.c
 --- a/net/wireguard/compat/dst_cache/dst_cache.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/dst_cache/dst_cache.c	2026-04-15 14:49:41.104282209 +0200
++++ b/net/wireguard/compat/dst_cache/dst_cache.c	2026-04-15 14:53:04.008524528 +0200
 @@ -0,0 +1,177 @@
 +/*
 + * net/core/dst_cache.c - dst entry cache
@@ -7754,7 +7754,7 @@ diff -rupN a/net/wireguard/compat/dst_cache/dst_cache.c b/net/wireguard/compat/d
 +}
 diff -rupN a/net/wireguard/compat/dst_cache/include/net/dst_cache.h b/net/wireguard/compat/dst_cache/include/net/dst_cache.h
 --- a/net/wireguard/compat/dst_cache/include/net/dst_cache.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/dst_cache/include/net/dst_cache.h	2026-04-15 14:49:41.104894335 +0200
++++ b/net/wireguard/compat/dst_cache/include/net/dst_cache.h	2026-04-15 14:53:04.008632280 +0200
 @@ -0,0 +1,97 @@
 +#ifndef _WG_NET_DST_CACHE_H
 +#define _WG_NET_DST_CACHE_H
@@ -7855,19 +7855,19 @@ diff -rupN a/net/wireguard/compat/dst_cache/include/net/dst_cache.h b/net/wiregu
 +#endif /* _WG_NET_DST_CACHE_H */
 diff -rupN a/net/wireguard/compat/dstmetadata/include/net/dst_metadata.h b/net/wireguard/compat/dstmetadata/include/net/dst_metadata.h
 --- a/net/wireguard/compat/dstmetadata/include/net/dst_metadata.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/dstmetadata/include/net/dst_metadata.h	2026-04-15 14:49:41.105422504 +0200
++++ b/net/wireguard/compat/dstmetadata/include/net/dst_metadata.h	2026-04-15 14:53:04.008735674 +0200
 @@ -0,0 +1,3 @@
 +#ifndef skb_valid_dst
 +#define skb_valid_dst(skb) (!!skb_dst(skb))
 +#endif
 diff -rupN a/net/wireguard/compat/fpu-x86/include/asm/fpu/api.h b/net/wireguard/compat/fpu-x86/include/asm/fpu/api.h
 --- a/net/wireguard/compat/fpu-x86/include/asm/fpu/api.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/fpu-x86/include/asm/fpu/api.h	2026-04-15 14:49:41.106079669 +0200
++++ b/net/wireguard/compat/fpu-x86/include/asm/fpu/api.h	2026-04-15 14:53:04.008856882 +0200
 @@ -0,0 +1 @@
 +#include <asm/i387.h>
 diff -rupN a/net/wireguard/compat/gso/include/net/gso.h b/net/wireguard/compat/gso/include/net/gso.h
 --- a/net/wireguard/compat/gso/include/net/gso.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/gso/include/net/gso.h	2026-04-15 14:49:41.106660660 +0200
++++ b/net/wireguard/compat/gso/include/net/gso.h	2026-04-15 14:53:04.008960796 +0200
 @@ -0,0 +1,6 @@
 +#ifndef _AWG_COMPAT_NET_GSO
 +#define _AWG_COMPAT_NET_GSO
@@ -7878,7 +7878,7 @@ diff -rupN a/net/wireguard/compat/gso/include/net/gso.h b/net/wireguard/compat/g
 \ No newline at end of file
 diff -rupN a/net/wireguard/compat/intel-family-x86/include/asm/intel-family.h b/net/wireguard/compat/intel-family-x86/include/asm/intel-family.h
 --- a/net/wireguard/compat/intel-family-x86/include/asm/intel-family.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/intel-family-x86/include/asm/intel-family.h	2026-04-15 14:49:41.107272859 +0200
++++ b/net/wireguard/compat/intel-family-x86/include/asm/intel-family.h	2026-04-15 14:53:04.009075668 +0200
 @@ -0,0 +1,73 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _ASM_X86_INTEL_FAMILY_H
@@ -7955,7 +7955,7 @@ diff -rupN a/net/wireguard/compat/intel-family-x86/include/asm/intel-family.h b/
 +#endif /* _ASM_X86_INTEL_FAMILY_H */
 diff -rupN a/net/wireguard/compat/Kbuild.include b/net/wireguard/compat/Kbuild.include
 --- a/net/wireguard/compat/Kbuild.include	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/Kbuild.include	2026-04-15 14:49:41.107721248 +0200
++++ b/net/wireguard/compat/Kbuild.include	2026-04-15 14:53:04.009155935 +0200
 @@ -0,0 +1,137 @@
 +# SPDX-License-Identifier: GPL-2.0
 +#
@@ -8096,12 +8096,12 @@ diff -rupN a/net/wireguard/compat/Kbuild.include b/net/wireguard/compat/Kbuild.i
 +endif
 diff -rupN a/net/wireguard/compat/kstrtox/include/linux/kstrtox.h b/net/wireguard/compat/kstrtox/include/linux/kstrtox.h
 --- a/net/wireguard/compat/kstrtox/include/linux/kstrtox.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/kstrtox/include/linux/kstrtox.h	2026-04-15 14:49:41.108296727 +0200
++++ b/net/wireguard/compat/kstrtox/include/linux/kstrtox.h	2026-04-15 14:53:04.009281959 +0200
 @@ -0,0 +1 @@
 +#include <linux/kernel.h>
 diff -rupN a/net/wireguard/compat/memneq/include.h b/net/wireguard/compat/memneq/include.h
 --- a/net/wireguard/compat/memneq/include.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/memneq/include.h	2026-04-15 14:49:41.108726105 +0200
++++ b/net/wireguard/compat/memneq/include.h	2026-04-15 14:53:04.009359875 +0200
 @@ -0,0 +1,5 @@
 +extern noinline unsigned long __crypto_memneq(const void *a, const void *b, size_t size);
 +static inline int crypto_memneq(const void *a, const void *b, size_t size)
@@ -8110,7 +8110,7 @@ diff -rupN a/net/wireguard/compat/memneq/include.h b/net/wireguard/compat/memneq
 +}
 diff -rupN a/net/wireguard/compat/memneq/memneq.c b/net/wireguard/compat/memneq/memneq.c
 --- a/net/wireguard/compat/memneq/memneq.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/memneq/memneq.c	2026-04-15 14:49:41.108992273 +0200
++++ b/net/wireguard/compat/memneq/memneq.c	2026-04-15 14:53:04.009412697 +0200
 @@ -0,0 +1,170 @@
 +/*
 + * Constant-time equality testing of memory regions.
@@ -8284,7 +8284,7 @@ diff -rupN a/net/wireguard/compat/memneq/memneq.c b/net/wireguard/compat/memneq/
 +#endif /* __HAVE_ARCH_CRYPTO_MEMNEQ */
 diff -rupN a/net/wireguard/compat/neon-arm/include/asm/neon.h b/net/wireguard/compat/neon-arm/include/asm/neon.h
 --- a/net/wireguard/compat/neon-arm/include/asm/neon.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/neon-arm/include/asm/neon.h	2026-04-15 14:49:41.109856010 +0200
++++ b/net/wireguard/compat/neon-arm/include/asm/neon.h	2026-04-15 14:53:04.009560241 +0200
 @@ -0,0 +1,7 @@
 +#ifndef _ARCH_ARM_ASM_NEON
 +#define _ARCH_ARM_ASM_NEON
@@ -8295,7 +8295,7 @@ diff -rupN a/net/wireguard/compat/neon-arm/include/asm/neon.h b/net/wireguard/co
 +#endif
 diff -rupN a/net/wireguard/compat/ptr_ring/include/linux/ptr_ring.h b/net/wireguard/compat/ptr_ring/include/linux/ptr_ring.h
 --- a/net/wireguard/compat/ptr_ring/include/linux/ptr_ring.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/ptr_ring/include/linux/ptr_ring.h	2026-04-15 14:49:41.110334299 +0200
++++ b/net/wireguard/compat/ptr_ring/include/linux/ptr_ring.h	2026-04-15 14:53:04.009733513 +0200
 @@ -0,0 +1,674 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +/*
@@ -8973,7 +8973,7 @@ diff -rupN a/net/wireguard/compat/ptr_ring/include/linux/ptr_ring.h b/net/wiregu
 +#endif /* _LINUX_PTR_RING_H  */
 diff -rupN a/net/wireguard/compat/simd/include/linux/simd.h b/net/wireguard/compat/simd/include/linux/simd.h
 --- a/net/wireguard/compat/simd/include/linux/simd.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/simd/include/linux/simd.h	2026-04-15 14:49:41.111691557 +0200
++++ b/net/wireguard/compat/simd/include/linux/simd.h	2026-04-15 14:53:04.009872935 +0200
 @@ -0,0 +1,69 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -9046,7 +9046,7 @@ diff -rupN a/net/wireguard/compat/simd/include/linux/simd.h b/net/wireguard/comp
 +#endif /* _WG_SIMD_H */
 diff -rupN a/net/wireguard/compat/simd-asm/include/asm/simd.h b/net/wireguard/compat/simd-asm/include/asm/simd.h
 --- a/net/wireguard/compat/simd-asm/include/asm/simd.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/simd-asm/include/asm/simd.h	2026-04-15 14:49:41.112405930 +0200
++++ b/net/wireguard/compat/simd-asm/include/asm/simd.h	2026-04-15 14:53:04.009979346 +0200
 @@ -0,0 +1,21 @@
 +#ifndef _COMPAT_ASM_SIMD_H
 +#define _COMPAT_ASM_SIMD_H
@@ -9071,7 +9071,7 @@ diff -rupN a/net/wireguard/compat/simd-asm/include/asm/simd.h b/net/wireguard/co
 +#endif
 diff -rupN a/net/wireguard/compat/siphash/include/linux/siphash.h b/net/wireguard/compat/siphash/include/linux/siphash.h
 --- a/net/wireguard/compat/siphash/include/linux/siphash.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/siphash/include/linux/siphash.h	2026-04-15 14:49:41.113204731 +0200
++++ b/net/wireguard/compat/siphash/include/linux/siphash.h	2026-04-15 14:53:04.010119312 +0200
 @@ -0,0 +1,134 @@
 +/* Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 + *
@@ -9209,7 +9209,7 @@ diff -rupN a/net/wireguard/compat/siphash/include/linux/siphash.h b/net/wireguar
 +#endif /* _WG_LINUX_SIPHASH_H */
 diff -rupN a/net/wireguard/compat/siphash/siphash.c b/net/wireguard/compat/siphash/siphash.c
 --- a/net/wireguard/compat/siphash/siphash.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/siphash/siphash.c	2026-04-15 14:49:41.113920721 +0200
++++ b/net/wireguard/compat/siphash/siphash.c	2026-04-15 14:53:04.010238982 +0200
 @@ -0,0 +1,539 @@
 +/* Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
 + *
@@ -9752,7 +9752,7 @@ diff -rupN a/net/wireguard/compat/siphash/siphash.c b/net/wireguard/compat/sipha
 +#endif
 diff -rupN a/net/wireguard/compat/skb_array/include/linux/skb_array.h b/net/wireguard/compat/skb_array/include/linux/skb_array.h
 --- a/net/wireguard/compat/skb_array/include/linux/skb_array.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/skb_array/include/linux/skb_array.h	2026-04-15 14:49:41.114646751 +0200
++++ b/net/wireguard/compat/skb_array/include/linux/skb_array.h	2026-04-15 14:53:04.010377413 +0200
 @@ -0,0 +1,11 @@
 +#ifndef _WG_SKB_ARRAY_H
 +#define _WG_SKB_ARRAY_H
@@ -9767,13 +9767,13 @@ diff -rupN a/net/wireguard/compat/skb_array/include/linux/skb_array.h b/net/wire
 +#endif
 diff -rupN a/net/wireguard/compat/sprintf/include/linux/sprintf.h b/net/wireguard/compat/sprintf/include/linux/sprintf.h
 --- a/net/wireguard/compat/sprintf/include/linux/sprintf.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/sprintf/include/linux/sprintf.h	2026-04-15 14:49:41.115185668 +0200
++++ b/net/wireguard/compat/sprintf/include/linux/sprintf.h	2026-04-15 14:53:04.010501803 +0200
 @@ -0,0 +1 @@
 +#include <linux/kernel.h>
 \ No newline at end of file
 diff -rupN a/net/wireguard/compat/udp_tunnel/include/net/udp_tunnel.h b/net/wireguard/compat/udp_tunnel/include/net/udp_tunnel.h
 --- a/net/wireguard/compat/udp_tunnel/include/net/udp_tunnel.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/udp_tunnel/include/net/udp_tunnel.h	2026-04-15 14:49:41.115880471 +0200
++++ b/net/wireguard/compat/udp_tunnel/include/net/udp_tunnel.h	2026-04-15 14:53:04.010655724 +0200
 @@ -0,0 +1,95 @@
 +#ifndef _WG_NET_UDP_TUNNEL_H
 +#define _WG_NET_UDP_TUNNEL_H
@@ -9872,7 +9872,7 @@ diff -rupN a/net/wireguard/compat/udp_tunnel/include/net/udp_tunnel.h b/net/wire
 +#endif /* _WG_NET_UDP_TUNNEL_H */
 diff -rupN a/net/wireguard/compat/udp_tunnel/udp_tunnel.c b/net/wireguard/compat/udp_tunnel/udp_tunnel.c
 --- a/net/wireguard/compat/udp_tunnel/udp_tunnel.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/udp_tunnel/udp_tunnel.c	2026-04-15 14:49:41.116334329 +0200
++++ b/net/wireguard/compat/udp_tunnel/udp_tunnel.c	2026-04-15 14:53:04.010765178 +0200
 @@ -0,0 +1,397 @@
 +#include <linux/module.h>
 +#include <linux/errno.h>
@@ -10273,7 +10273,7 @@ diff -rupN a/net/wireguard/compat/udp_tunnel/udp_tunnel.c b/net/wireguard/compat
 +#endif
 diff -rupN a/net/wireguard/compat/udp_tunnel/udp_tunnel_partial_compat.h b/net/wireguard/compat/udp_tunnel/udp_tunnel_partial_compat.h
 --- a/net/wireguard/compat/udp_tunnel/udp_tunnel_partial_compat.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/udp_tunnel/udp_tunnel_partial_compat.h	2026-04-15 14:49:41.116904694 +0200
++++ b/net/wireguard/compat/udp_tunnel/udp_tunnel_partial_compat.h	2026-04-15 14:53:04.010828866 +0200
 @@ -0,0 +1,236 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -10513,7 +10513,7 @@ diff -rupN a/net/wireguard/compat/udp_tunnel/udp_tunnel_partial_compat.h b/net/w
 +#endif
 diff -rupN a/net/wireguard/compat/version/linux/version.h b/net/wireguard/compat/version/linux/version.h
 --- a/net/wireguard/compat/version/linux/version.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/compat/version/linux/version.h	2026-04-15 14:49:41.117723843 +0200
++++ b/net/wireguard/compat/version/linux/version.h	2026-04-15 14:53:04.010979884 +0200
 @@ -0,0 +1,10 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -10527,7 +10527,7 @@ diff -rupN a/net/wireguard/compat/version/linux/version.h b/net/wireguard/compat
 +#define LINUX_VERSION_CODE KERNEL_VERSION(COMPAT_VERSION, COMPAT_PATCHLEVEL, COMPAT_SUBLEVEL)
 diff -rupN a/net/wireguard/cookie.c b/net/wireguard/cookie.c
 --- a/net/wireguard/cookie.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/cookie.c	2026-04-15 14:49:41.118208500 +0200
++++ b/net/wireguard/cookie.c	2026-04-15 14:53:04.011069124 +0200
 @@ -0,0 +1,236 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -10767,7 +10767,7 @@ diff -rupN a/net/wireguard/cookie.c b/net/wireguard/cookie.c
 +}
 diff -rupN a/net/wireguard/cookie.h b/net/wireguard/cookie.h
 --- a/net/wireguard/cookie.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/cookie.h	2026-04-15 14:49:41.118631505 +0200
++++ b/net/wireguard/cookie.h	2026-04-15 14:53:04.011132754 +0200
 @@ -0,0 +1,59 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -10830,7 +10830,7 @@ diff -rupN a/net/wireguard/cookie.h b/net/wireguard/cookie.h
 +#endif /* _WG_COOKIE_H */
 diff -rupN a/net/wireguard/crypto/include/zinc/blake2s.h b/net/wireguard/crypto/include/zinc/blake2s.h
 --- a/net/wireguard/crypto/include/zinc/blake2s.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/include/zinc/blake2s.h	2026-04-15 14:49:41.119178175 +0200
++++ b/net/wireguard/crypto/include/zinc/blake2s.h	2026-04-15 14:53:04.011297511 +0200
 @@ -0,0 +1,56 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -10890,7 +10890,7 @@ diff -rupN a/net/wireguard/crypto/include/zinc/blake2s.h b/net/wireguard/crypto/
 +#endif /* _ZINC_BLAKE2S_H */
 diff -rupN a/net/wireguard/crypto/include/zinc/chacha20.h b/net/wireguard/crypto/include/zinc/chacha20.h
 --- a/net/wireguard/crypto/include/zinc/chacha20.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/include/zinc/chacha20.h	2026-04-15 14:49:41.119334344 +0200
++++ b/net/wireguard/crypto/include/zinc/chacha20.h	2026-04-15 14:53:04.011353990 +0200
 @@ -0,0 +1,70 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -10964,7 +10964,7 @@ diff -rupN a/net/wireguard/crypto/include/zinc/chacha20.h b/net/wireguard/crypto
 +#endif /* _ZINC_CHACHA20_H */
 diff -rupN a/net/wireguard/crypto/include/zinc/chacha20poly1305.h b/net/wireguard/crypto/include/zinc/chacha20poly1305.h
 --- a/net/wireguard/crypto/include/zinc/chacha20poly1305.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/include/zinc/chacha20poly1305.h	2026-04-15 14:49:41.119968888 +0200
++++ b/net/wireguard/crypto/include/zinc/chacha20poly1305.h	2026-04-15 14:53:04.011425049 +0200
 @@ -0,0 +1,50 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -11018,7 +11018,7 @@ diff -rupN a/net/wireguard/crypto/include/zinc/chacha20poly1305.h b/net/wireguar
 +#endif /* _ZINC_CHACHA20POLY1305_H */
 diff -rupN a/net/wireguard/crypto/include/zinc/curve25519.h b/net/wireguard/crypto/include/zinc/curve25519.h
 --- a/net/wireguard/crypto/include/zinc/curve25519.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/include/zinc/curve25519.h	2026-04-15 14:49:41.120331190 +0200
++++ b/net/wireguard/crypto/include/zinc/curve25519.h	2026-04-15 14:53:04.011520287 +0200
 @@ -0,0 +1,28 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -11050,7 +11050,7 @@ diff -rupN a/net/wireguard/crypto/include/zinc/curve25519.h b/net/wireguard/cryp
 +#endif /* _ZINC_CURVE25519_H */
 diff -rupN a/net/wireguard/crypto/include/zinc/poly1305.h b/net/wireguard/crypto/include/zinc/poly1305.h
 --- a/net/wireguard/crypto/include/zinc/poly1305.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/include/zinc/poly1305.h	2026-04-15 14:49:41.120718989 +0200
++++ b/net/wireguard/crypto/include/zinc/poly1305.h	2026-04-15 14:53:04.011585449 +0200
 @@ -0,0 +1,31 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -11085,7 +11085,7 @@ diff -rupN a/net/wireguard/crypto/include/zinc/poly1305.h b/net/wireguard/crypto
 +#endif /* _ZINC_POLY1305_H */
 diff -rupN a/net/wireguard/crypto/Kbuild.include b/net/wireguard/crypto/Kbuild.include
 --- a/net/wireguard/crypto/Kbuild.include	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/Kbuild.include	2026-04-15 14:49:41.121144283 +0200
++++ b/net/wireguard/crypto/Kbuild.include	2026-04-15 14:53:04.011665697 +0200
 @@ -0,0 +1,57 @@
 +ifeq ($(CONFIG_X86_64)$(if $(CONFIG_UML),y,n),yn)
 +CONFIG_ZINC_ARCH_X86_64 := y
@@ -11146,7 +11146,7 @@ diff -rupN a/net/wireguard/crypto/Kbuild.include b/net/wireguard/crypto/Kbuild.i
 +ccflags-$(CONFIG_WIREGUARD_DEBUG) += -DCONFIG_ZINC_SELFTEST
 diff -rupN a/net/wireguard/crypto/zinc/blake2s/blake2s.c b/net/wireguard/crypto/zinc/blake2s/blake2s.c
 --- a/net/wireguard/crypto/zinc/blake2s/blake2s.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/blake2s/blake2s.c	2026-04-15 14:49:41.121786678 +0200
++++ b/net/wireguard/crypto/zinc/blake2s/blake2s.c	2026-04-15 14:53:04.011782108 +0200
 @@ -0,0 +1,271 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -11421,7 +11421,7 @@ diff -rupN a/net/wireguard/crypto/zinc/blake2s/blake2s.c b/net/wireguard/crypto/
 +#endif
 diff -rupN a/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64-glue.c b/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64-glue.c
 --- a/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64-glue.c	2026-04-15 14:49:41.122114319 +0200
++++ b/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64-glue.c	2026-04-15 14:53:04.011843017 +0200
 @@ -0,0 +1,72 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -11497,7 +11497,7 @@ diff -rupN a/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64-glue.c b/net/wireg
 +}
 diff -rupN a/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64.S b/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64.S
 --- a/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64.S	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64.S	2026-04-15 14:49:41.122749596 +0200
++++ b/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64.S	2026-04-15 14:53:04.011915271 +0200
 @@ -0,0 +1,258 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -11759,7 +11759,7 @@ diff -rupN a/net/wireguard/crypto/zinc/blake2s/blake2s-x86_64.S b/net/wireguard/
 +#endif /* CONFIG_AS_AVX512 */
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-arm64.pl b/net/wireguard/crypto/zinc/chacha20/chacha20-arm64.pl
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-arm64.pl	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-arm64.pl	2026-04-15 14:49:41.123334364 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-arm64.pl	2026-04-15 14:53:04.012145380 +0200
 @@ -0,0 +1,1163 @@
 +#!/usr/bin/env perl
 +# SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
@@ -12926,7 +12926,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-arm64.pl b/net/wireguar
 +close STDOUT;	# flush
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-arm-glue.c b/net/wireguard/crypto/zinc/chacha20/chacha20-arm-glue.c
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-arm-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-arm-glue.c	2026-04-15 14:49:41.124431577 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-arm-glue.c	2026-04-15 14:53:04.012253279 +0200
 @@ -0,0 +1,98 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -13028,7 +13028,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-arm-glue.c b/net/wiregu
 +}
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-arm.pl b/net/wireguard/crypto/zinc/chacha20/chacha20-arm.pl
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-arm.pl	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-arm.pl	2026-04-15 14:49:41.125334374 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-arm.pl	2026-04-15 14:53:04.012348705 +0200
 @@ -0,0 +1,1227 @@
 +#!/usr/bin/env perl
 +# SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
@@ -14259,7 +14259,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-arm.pl b/net/wireguard/
 +close STDOUT;
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20.c b/net/wireguard/crypto/zinc/chacha20/chacha20.c
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20.c	2026-04-15 14:49:41.126334379 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20.c	2026-04-15 14:53:04.012586079 +0200
 @@ -0,0 +1,191 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -14454,7 +14454,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20.c b/net/wireguard/crypt
 +#endif
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-mips-glue.c b/net/wireguard/crypto/zinc/chacha20/chacha20-mips-glue.c
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-mips-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-mips-glue.c	2026-04-15 14:49:41.126784911 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-mips-glue.c	2026-04-15 14:53:04.012678335 +0200
 @@ -0,0 +1,27 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -14485,7 +14485,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-mips-glue.c b/net/wireg
 +}
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-mips.S b/net/wireguard/crypto/zinc/chacha20/chacha20-mips.S
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-mips.S	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-mips.S	2026-04-15 14:49:41.127334384 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-mips.S	2026-04-15 14:53:04.012744907 +0200
 @@ -0,0 +1,424 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -14913,7 +14913,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-mips.S b/net/wireguard/
 +.set at
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-unrolled-arm.S b/net/wireguard/crypto/zinc/chacha20/chacha20-unrolled-arm.S
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-unrolled-arm.S	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-unrolled-arm.S	2026-04-15 14:49:41.127796838 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-unrolled-arm.S	2026-04-15 14:53:04.012868687 +0200
 @@ -0,0 +1,461 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -15378,7 +15378,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-unrolled-arm.S b/net/wi
 +SYM_FUNC_END(hchacha20_arm)
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64-glue.c b/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64-glue.c
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64-glue.c	2026-04-15 14:49:41.128438126 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64-glue.c	2026-04-15 14:53:04.012991874 +0200
 @@ -0,0 +1,105 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -15487,7 +15487,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64-glue.c b/net/wir
 +}
 diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64.pl b/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64.pl
 --- a/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64.pl	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64.pl	2026-04-15 14:49:41.131334404 +0200
++++ b/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64.pl	2026-04-15 14:53:04.013348710 +0200
 @@ -0,0 +1,4106 @@
 +#!/usr/bin/env perl
 +# SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
@@ -19597,7 +19597,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20/chacha20-x86_64.pl b/net/wiregua
 +close STDOUT;
 diff -rupN a/net/wireguard/crypto/zinc/chacha20poly1305.c b/net/wireguard/crypto/zinc/chacha20poly1305.c
 --- a/net/wireguard/crypto/zinc/chacha20poly1305.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/chacha20poly1305.c	2026-04-15 14:49:41.132969899 +0200
++++ b/net/wireguard/crypto/zinc/chacha20poly1305.c	2026-04-15 14:53:04.013819571 +0200
 @@ -0,0 +1,398 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -19999,7 +19999,7 @@ diff -rupN a/net/wireguard/crypto/zinc/chacha20poly1305.c b/net/wireguard/crypto
 +#endif
 diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-arm-glue.c b/net/wireguard/crypto/zinc/curve25519/curve25519-arm-glue.c
 --- a/net/wireguard/crypto/zinc/curve25519/curve25519-arm-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/curve25519/curve25519-arm-glue.c	2026-04-15 14:49:41.133550499 +0200
++++ b/net/wireguard/crypto/zinc/curve25519/curve25519-arm-glue.c	2026-04-15 14:53:04.013926920 +0200
 @@ -0,0 +1,43 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -20046,7 +20046,7 @@ diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-arm-glue.c b/net/wi
 +}
 diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-arm.S b/net/wireguard/crypto/zinc/curve25519/curve25519-arm.S
 --- a/net/wireguard/crypto/zinc/curve25519/curve25519-arm.S	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/curve25519/curve25519-arm.S	2026-04-15 14:49:41.134334419 +0200
++++ b/net/wireguard/crypto/zinc/curve25519/curve25519-arm.S	2026-04-15 14:53:04.013980930 +0200
 @@ -0,0 +1,2064 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -22114,7 +22114,7 @@ diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-arm.S b/net/wiregua
 +#endif
 diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519.c b/net/wireguard/crypto/zinc/curve25519/curve25519.c
 --- a/net/wireguard/crypto/zinc/curve25519/curve25519.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/curve25519/curve25519.c	2026-04-15 14:49:41.135687737 +0200
++++ b/net/wireguard/crypto/zinc/curve25519/curve25519.c	2026-04-15 14:53:04.014318850 +0200
 @@ -0,0 +1,109 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -22227,7 +22227,7 @@ diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519.c b/net/wireguard/c
 +#endif
 diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-fiat32.c b/net/wireguard/crypto/zinc/curve25519/curve25519-fiat32.c
 --- a/net/wireguard/crypto/zinc/curve25519/curve25519-fiat32.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/curve25519/curve25519-fiat32.c	2026-04-15 14:49:41.136334429 +0200
++++ b/net/wireguard/crypto/zinc/curve25519/curve25519-fiat32.c	2026-04-15 14:53:04.014411413 +0200
 @@ -0,0 +1,860 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -23091,7 +23091,7 @@ diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-fiat32.c b/net/wire
 +}
 diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-hacl64.c b/net/wireguard/crypto/zinc/curve25519/curve25519-hacl64.c
 --- a/net/wireguard/crypto/zinc/curve25519/curve25519-hacl64.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/curve25519/curve25519-hacl64.c	2026-04-15 14:49:41.137365298 +0200
++++ b/net/wireguard/crypto/zinc/curve25519/curve25519-hacl64.c	2026-04-15 14:53:04.014633362 +0200
 @@ -0,0 +1,779 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -23874,7 +23874,7 @@ diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-hacl64.c b/net/wire
 +}
 diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64.c b/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64.c
 --- a/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64.c	2026-04-15 14:49:41.139334444 +0200
++++ b/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64.c	2026-04-15 14:53:04.014801509 +0200
 @@ -0,0 +1,1580 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -25458,7 +25458,7 @@ diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64.c b/net/wire
 +}
 diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64-glue.c b/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64-glue.c
 --- a/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64-glue.c	2026-04-15 14:49:41.140041937 +0200
++++ b/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64-glue.c	2026-04-15 14:53:04.015115443 +0200
 @@ -0,0 +1,44 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -25506,7 +25506,7 @@ diff -rupN a/net/wireguard/crypto/zinc/curve25519/curve25519-x86_64-glue.c b/net
 +}
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-arm64.pl b/net/wireguard/crypto/zinc/poly1305/poly1305-arm64.pl
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-arm64.pl	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-arm64.pl	2026-04-15 14:49:41.141225597 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-arm64.pl	2026-04-15 14:53:04.015320977 +0200
 @@ -0,0 +1,974 @@
 +#!/usr/bin/env perl
 +# SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
@@ -26484,7 +26484,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-arm64.pl b/net/wireguar
 +close STDOUT;
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-arm-glue.c b/net/wireguard/crypto/zinc/poly1305/poly1305-arm-glue.c
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-arm-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-arm-glue.c	2026-04-15 14:49:41.141721048 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-arm-glue.c	2026-04-15 14:53:04.015415795 +0200
 @@ -0,0 +1,140 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -26628,7 +26628,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-arm-glue.c b/net/wiregu
 +}
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-arm.pl b/net/wireguard/crypto/zinc/poly1305/poly1305-arm.pl
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-arm.pl	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-arm.pl	2026-04-15 14:49:41.142334459 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-arm.pl	2026-04-15 14:53:04.015635088 +0200
 @@ -0,0 +1,1276 @@
 +#!/usr/bin/env perl
 +# SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
@@ -27908,7 +27908,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-arm.pl b/net/wireguard/
 +close STDOUT; # enforce flush
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305.c b/net/wireguard/crypto/zinc/poly1305/poly1305.c
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305.c	2026-04-15 14:49:41.143769498 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305.c	2026-04-15 14:53:04.015869906 +0200
 @@ -0,0 +1,165 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -28077,7 +28077,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305.c b/net/wireguard/crypt
 +#endif
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-donna32.c b/net/wireguard/crypto/zinc/poly1305/poly1305-donna32.c
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-donna32.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-donna32.c	2026-04-15 14:49:41.144051311 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-donna32.c	2026-04-15 14:53:04.015983117 +0200
 @@ -0,0 +1,205 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -28286,7 +28286,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-donna32.c b/net/wiregua
 +}
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-donna64.c b/net/wireguard/crypto/zinc/poly1305/poly1305-donna64.c
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-donna64.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-donna64.c	2026-04-15 14:49:41.144703606 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-donna64.c	2026-04-15 14:53:04.016078625 +0200
 @@ -0,0 +1,182 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -28472,7 +28472,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-donna64.c b/net/wiregua
 +}
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-mips64.pl b/net/wireguard/crypto/zinc/poly1305/poly1305-mips64.pl
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-mips64.pl	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-mips64.pl	2026-04-15 14:49:41.144979451 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-mips64.pl	2026-04-15 14:53:04.016165590 +0200
 @@ -0,0 +1,467 @@
 +#!/usr/bin/env perl
 +# SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
@@ -28943,7 +28943,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-mips64.pl b/net/wiregua
 +
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-mips-glue.c b/net/wireguard/crypto/zinc/poly1305/poly1305-mips-glue.c
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-mips-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-mips-glue.c	2026-04-15 14:49:41.145679635 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-mips-glue.c	2026-04-15 14:53:04.016295282 +0200
 @@ -0,0 +1,37 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -28984,7 +28984,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-mips-glue.c b/net/wireg
 +}
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-mips.S b/net/wireguard/crypto/zinc/poly1305/poly1305-mips.S
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-mips.S	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-mips.S	2026-04-15 14:49:41.146057560 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-mips.S	2026-04-15 14:53:04.016372897 +0200
 @@ -0,0 +1,407 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -29395,7 +29395,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-mips.S b/net/wireguard/
 +.end poly1305_init_mips
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64-glue.c b/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64-glue.c
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64-glue.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64-glue.c	2026-04-15 14:49:41.146677396 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64-glue.c	2026-04-15 14:53:04.016494705 +0200
 @@ -0,0 +1,156 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -29555,7 +29555,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64-glue.c b/net/wir
 +}
 diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64.pl b/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64.pl
 --- a/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64.pl	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64.pl	2026-04-15 14:49:41.149334494 +0200
++++ b/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64.pl	2026-04-15 14:53:04.016616794 +0200
 @@ -0,0 +1,4266 @@
 +#!/usr/bin/env perl
 +# SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
@@ -33825,7 +33825,7 @@ diff -rupN a/net/wireguard/crypto/zinc/poly1305/poly1305-x86_64.pl b/net/wiregua
 +close STDOUT;
 diff -rupN a/net/wireguard/crypto/zinc/selftest/blake2s.c b/net/wireguard/crypto/zinc/selftest/blake2s.c
 --- a/net/wireguard/crypto/zinc/selftest/blake2s.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/selftest/blake2s.c	2026-04-15 14:49:41.152334509 +0200
++++ b/net/wireguard/crypto/zinc/selftest/blake2s.c	2026-04-15 14:53:04.017348730 +0200
 @@ -0,0 +1,2090 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -35919,7 +35919,7 @@ diff -rupN a/net/wireguard/crypto/zinc/selftest/blake2s.c b/net/wireguard/crypto
 +}
 diff -rupN a/net/wireguard/crypto/zinc/selftest/chacha20.c b/net/wireguard/crypto/zinc/selftest/chacha20.c
 --- a/net/wireguard/crypto/zinc/selftest/chacha20.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/selftest/chacha20.c	2026-04-15 14:49:41.155334524 +0200
++++ b/net/wireguard/crypto/zinc/selftest/chacha20.c	2026-04-15 14:53:04.017892430 +0200
 @@ -0,0 +1,2698 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -38621,7 +38621,7 @@ diff -rupN a/net/wireguard/crypto/zinc/selftest/chacha20.c b/net/wireguard/crypt
 +}
 diff -rupN a/net/wireguard/crypto/zinc/selftest/chacha20poly1305.c b/net/wireguard/crypto/zinc/selftest/chacha20poly1305.c
 --- a/net/wireguard/crypto/zinc/selftest/chacha20poly1305.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/selftest/chacha20poly1305.c	2026-04-15 14:49:41.166334579 +0200
++++ b/net/wireguard/crypto/zinc/selftest/chacha20poly1305.c	2026-04-15 14:53:04.019348740 +0200
 @@ -0,0 +1,9076 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -47701,7 +47701,7 @@ diff -rupN a/net/wireguard/crypto/zinc/selftest/chacha20poly1305.c b/net/wiregua
 +}
 diff -rupN a/net/wireguard/crypto/zinc/selftest/curve25519.c b/net/wireguard/crypto/zinc/selftest/curve25519.c
 --- a/net/wireguard/crypto/zinc/selftest/curve25519.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/selftest/curve25519.c	2026-04-15 14:49:41.167334584 +0200
++++ b/net/wireguard/crypto/zinc/selftest/curve25519.c	2026-04-15 14:53:04.020502737 +0200
 @@ -0,0 +1,1315 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -49020,7 +49020,7 @@ diff -rupN a/net/wireguard/crypto/zinc/selftest/curve25519.c b/net/wireguard/cry
 +}
 diff -rupN a/net/wireguard/crypto/zinc/selftest/poly1305.c b/net/wireguard/crypto/zinc/selftest/poly1305.c
 --- a/net/wireguard/crypto/zinc/selftest/poly1305.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/selftest/poly1305.c	2026-04-15 14:49:41.169334594 +0200
++++ b/net/wireguard/crypto/zinc/selftest/poly1305.c	2026-04-15 14:53:04.020883971 +0200
 @@ -0,0 +1,1107 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
@@ -50131,7 +50131,7 @@ diff -rupN a/net/wireguard/crypto/zinc/selftest/poly1305.c b/net/wireguard/crypt
 +}
 diff -rupN a/net/wireguard/crypto/zinc/selftest/run.h b/net/wireguard/crypto/zinc/selftest/run.h
 --- a/net/wireguard/crypto/zinc/selftest/run.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc/selftest/run.h	2026-04-15 14:49:41.170173745 +0200
++++ b/net/wireguard/crypto/zinc/selftest/run.h	2026-04-15 14:53:04.021158042 +0200
 @@ -0,0 +1,48 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -50183,7 +50183,7 @@ diff -rupN a/net/wireguard/crypto/zinc/selftest/run.h b/net/wireguard/crypto/zin
 +#endif
 diff -rupN a/net/wireguard/crypto/zinc.h b/net/wireguard/crypto/zinc.h
 --- a/net/wireguard/crypto/zinc.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/crypto/zinc.h	2026-04-15 14:49:41.170678118 +0200
++++ b/net/wireguard/crypto/zinc.h	2026-04-15 14:53:04.021254519 +0200
 @@ -0,0 +1,15 @@
 +/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 +/*
@@ -50202,7 +50202,7 @@ diff -rupN a/net/wireguard/crypto/zinc.h b/net/wireguard/crypto/zinc.h
 +#endif
 diff -rupN a/net/wireguard/device.c b/net/wireguard/device.c
 --- a/net/wireguard/device.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/device.c	2026-04-15 14:49:41.171390024 +0200
++++ b/net/wireguard/device.c	2026-04-15 14:53:04.021395608 +0200
 @@ -0,0 +1,625 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -50831,7 +50831,7 @@ diff -rupN a/net/wireguard/device.c b/net/wireguard/device.c
 +}
 diff -rupN a/net/wireguard/device.h b/net/wireguard/device.h
 --- a/net/wireguard/device.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/device.h	2026-04-15 14:49:41.171802140 +0200
++++ b/net/wireguard/device.h	2026-04-15 14:53:04.021480808 +0200
 @@ -0,0 +1,73 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -50906,18 +50906,9 @@ diff -rupN a/net/wireguard/device.h b/net/wireguard/device.h
 +int wg_device_handle_post_config(struct wg_device *wg);
 +
 +#endif /* _WG_DEVICE_H */
-diff -rupN a/net/wireguard/dkms.conf b/net/wireguard/dkms.conf
---- a/net/wireguard/dkms.conf	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/dkms.conf	2026-04-15 14:49:41.172182828 +0200
-@@ -0,0 +1,5 @@
-+PACKAGE_NAME="amneziawg"
-+PACKAGE_VERSION="1.0.0"
-+AUTOINSTALL=yes
-+BUILT_MODULE_NAME="amneziawg"
-+DEST_MODULE_LOCATION="/kernel/net"
 diff -rupN a/net/wireguard/junk.c b/net/wireguard/junk.c
 --- a/net/wireguard/junk.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/junk.c	2026-04-15 14:49:41.172768199 +0200
++++ b/net/wireguard/junk.c	2026-04-15 14:53:04.021624375 +0200
 @@ -0,0 +1,345 @@
 +#include "junk.h"
 +#include "messages.h"
@@ -51266,7 +51257,7 @@ diff -rupN a/net/wireguard/junk.c b/net/wireguard/junk.c
 +}
 diff -rupN a/net/wireguard/junk.h b/net/wireguard/junk.h
 --- a/net/wireguard/junk.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/junk.h	2026-04-15 14:49:41.173067452 +0200
++++ b/net/wireguard/junk.h	2026-04-15 14:53:04.021736125 +0200
 @@ -0,0 +1,43 @@
 +#ifndef _AWG_JUNK_H
 +#define _AWG_JUNK_H
@@ -51314,7 +51305,7 @@ diff -rupN a/net/wireguard/junk.h b/net/wireguard/junk.h
 \ No newline at end of file
 diff -rupN a/net/wireguard/Kbuild b/net/wireguard/Kbuild
 --- a/net/wireguard/Kbuild	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/Kbuild	2026-04-15 14:49:41.173429762 +0200
++++ b/net/wireguard/Kbuild	2026-04-15 14:53:04.021805423 +0200
 @@ -0,0 +1,24 @@
 +# SPDX-License-Identifier: GPL-2.0
 +#
@@ -51342,7 +51333,7 @@ diff -rupN a/net/wireguard/Kbuild b/net/wireguard/Kbuild
 +obj-$(if $(KBUILD_EXTMOD),m,$(CONFIG_AMNEZIAWG)) := amneziawg.o
 diff -rupN a/net/wireguard/Kconfig b/net/wireguard/Kconfig
 --- a/net/wireguard/Kconfig	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/Kconfig	2026-04-15 14:49:41.173769505 +0200
++++ b/net/wireguard/Kconfig	2026-04-15 14:53:04.021872176 +0200
 @@ -0,0 +1,33 @@
 +config AMNEZIAWG
 +	tristate "IP: AmneziaWG secure network tunnel"
@@ -51379,7 +51370,7 @@ diff -rupN a/net/wireguard/Kconfig b/net/wireguard/Kconfig
 +	  Say N here unless you know what you're doing.
 diff -rupN a/net/wireguard/magic_header.c b/net/wireguard/magic_header.c
 --- a/net/wireguard/magic_header.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/magic_header.c	2026-04-15 14:49:41.174088200 +0200
++++ b/net/wireguard/magic_header.c	2026-04-15 14:53:04.021939194 +0200
 @@ -0,0 +1,47 @@
 +#include "magic_header.h"
 +
@@ -51431,7 +51422,7 @@ diff -rupN a/net/wireguard/magic_header.c b/net/wireguard/magic_header.c
 \ No newline at end of file
 diff -rupN a/net/wireguard/magic_header.h b/net/wireguard/magic_header.h
 --- a/net/wireguard/magic_header.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/magic_header.h	2026-04-15 14:49:41.174419773 +0200
++++ b/net/wireguard/magic_header.h	2026-04-15 14:53:04.022005966 +0200
 @@ -0,0 +1,17 @@
 +#ifndef H_MAGIC_HEADER
 +#define H_MAGIC_HEADER
@@ -51453,7 +51444,7 @@ diff -rupN a/net/wireguard/magic_header.h b/net/wireguard/magic_header.h
 \ No newline at end of file
 diff -rupN a/net/wireguard/main.c b/net/wireguard/main.c
 --- a/net/wireguard/main.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/main.c	2026-04-15 14:49:41.174750578 +0200
++++ b/net/wireguard/main.c	2026-04-15 14:53:04.022069668 +0200
 @@ -0,0 +1,90 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -51547,8 +51538,8 @@ diff -rupN a/net/wireguard/main.c b/net/wireguard/main.c
 +MODULE_INFO(intree, "Y");
 diff -rupN a/net/wireguard/Makefile b/net/wireguard/Makefile
 --- a/net/wireguard/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/Makefile	2026-04-15 14:49:41.175103377 +0200
-@@ -0,0 +1,60 @@
++++ b/net/wireguard/Makefile	2026-04-15 16:40:45.890708558 +0200
+@@ -0,0 +1,56 @@
 +# SPDX-License-Identifier: GPL-2.0
 +#
 +# Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -51561,7 +51552,6 @@ diff -rupN a/net/wireguard/Makefile b/net/wireguard/Makefile
 +PREFIX ?= /usr
 +DESTDIR ?=
 +SRCDIR ?= $(PREFIX)/src
-+DKMSDIR ?= $(SRCDIR)/amneziawg-$(WIREGUARD_VERSION)
 +DEPMOD ?= depmod
 +DEPMODBASEDIR ?= /
 +
@@ -51590,9 +51580,6 @@ diff -rupN a/net/wireguard/Makefile b/net/wireguard/Makefile
 +install: module-install
 +
 +rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
-+DKMS_SOURCES := version.h Makefile Kbuild Kconfig dkms.conf $(filter-out version.h wireguard.mod.c tests/%,$(call rwildcard,,*.c *.h *.S *.pl *.include))
-+dkms-install: $(DKMS_SOURCES)
-+	@$(foreach f,$(DKMS_SOURCES),install -v -m0644 -D $(f) $(DESTDIR)$(DKMSDIR)/$(f);)
 +
 +style:
 +	$(KERNELDIR)/scripts/checkpatch.pl -f --max-line-length=4000 --codespell --color=always $(filter-out wireguard.mod.c,$(wildcard *.c)) $(wildcard *.h) $(wildcard selftest/*.c)
@@ -51608,10 +51595,10 @@ diff -rupN a/net/wireguard/Makefile b/net/wireguard/Makefile
 +
 +-include tests/debug.mk
 +
-+.PHONY: all module module-debug apply-patches module-install install dkms-install clean cloc check style
++.PHONY: all module module-debug apply-patches module-install install clean cloc check style
 diff -rupN a/net/wireguard/messages.h b/net/wireguard/messages.h
 --- a/net/wireguard/messages.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/messages.h	2026-04-15 14:49:41.175334624 +0200
++++ b/net/wireguard/messages.h	2026-04-15 14:53:04.022218735 +0200
 @@ -0,0 +1,148 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -51763,7 +51750,7 @@ diff -rupN a/net/wireguard/messages.h b/net/wireguard/messages.h
 +#endif /* _WG_MESSAGES_H */
 diff -rupN a/net/wireguard/netlink.c b/net/wireguard/netlink.c
 --- a/net/wireguard/netlink.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/netlink.c	2026-04-15 14:49:41.176334629 +0200
++++ b/net/wireguard/netlink.c	2026-04-15 14:53:04.022348755 +0200
 @@ -0,0 +1,1075 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -52843,7 +52830,7 @@ diff -rupN a/net/wireguard/netlink.c b/net/wireguard/netlink.c
 \ No newline at end of file
 diff -rupN a/net/wireguard/netlink.h b/net/wireguard/netlink.h
 --- a/net/wireguard/netlink.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/netlink.h	2026-04-15 14:49:41.177082228 +0200
++++ b/net/wireguard/netlink.h	2026-04-15 14:53:04.022544872 +0200
 @@ -0,0 +1,21 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -52868,7 +52855,7 @@ diff -rupN a/net/wireguard/netlink.h b/net/wireguard/netlink.h
 +#endif /* _WG_NETLINK_H */
 diff -rupN a/net/wireguard/noise.c b/net/wireguard/noise.c
 --- a/net/wireguard/noise.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/noise.c	2026-04-15 14:49:41.177334634 +0200
++++ b/net/wireguard/noise.c	2026-04-15 14:53:04.022627383 +0200
 @@ -0,0 +1,877 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -53749,7 +53736,7 @@ diff -rupN a/net/wireguard/noise.c b/net/wireguard/noise.c
 +}
 diff -rupN a/net/wireguard/noise.h b/net/wireguard/noise.h
 --- a/net/wireguard/noise.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/noise.h	2026-04-15 14:49:41.178590072 +0200
++++ b/net/wireguard/noise.h	2026-04-15 14:53:04.022843139 +0200
 @@ -0,0 +1,135 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -53888,7 +53875,7 @@ diff -rupN a/net/wireguard/noise.h b/net/wireguard/noise.h
 +#endif /* _WG_NOISE_H */
 diff -rupN a/net/wireguard/peer.c b/net/wireguard/peer.c
 --- a/net/wireguard/peer.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/peer.c	2026-04-15 14:49:41.179037191 +0200
++++ b/net/wireguard/peer.c	2026-04-15 14:53:04.022934757 +0200
 @@ -0,0 +1,243 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -54135,7 +54122,7 @@ diff -rupN a/net/wireguard/peer.c b/net/wireguard/peer.c
 +}
 diff -rupN a/net/wireguard/peer.h b/net/wireguard/peer.h
 --- a/net/wireguard/peer.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/peer.h	2026-04-15 14:49:41.179633724 +0200
++++ b/net/wireguard/peer.h	2026-04-15 14:53:04.023037449 +0200
 @@ -0,0 +1,88 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -54227,7 +54214,7 @@ diff -rupN a/net/wireguard/peer.h b/net/wireguard/peer.h
 +#endif /* _WG_PEER_H */
 diff -rupN a/net/wireguard/peerlookup.c b/net/wireguard/peerlookup.c
 --- a/net/wireguard/peerlookup.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/peerlookup.c	2026-04-15 14:49:41.180013839 +0200
++++ b/net/wireguard/peerlookup.c	2026-04-15 14:53:04.023113766 +0200
 @@ -0,0 +1,226 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -54457,7 +54444,7 @@ diff -rupN a/net/wireguard/peerlookup.c b/net/wireguard/peerlookup.c
 +}
 diff -rupN a/net/wireguard/peerlookup.h b/net/wireguard/peerlookup.h
 --- a/net/wireguard/peerlookup.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/peerlookup.h	2026-04-15 14:49:41.180637454 +0200
++++ b/net/wireguard/peerlookup.h	2026-04-15 14:53:04.023213042 +0200
 @@ -0,0 +1,64 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -54525,7 +54512,7 @@ diff -rupN a/net/wireguard/peerlookup.h b/net/wireguard/peerlookup.h
 +#endif /* _WG_PEERLOOKUP_H */
 diff -rupN a/net/wireguard/queueing.c b/net/wireguard/queueing.c
 --- a/net/wireguard/queueing.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/queueing.c	2026-04-15 14:49:41.180893015 +0200
++++ b/net/wireguard/queueing.c	2026-04-15 14:53:04.023288016 +0200
 @@ -0,0 +1,109 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -54638,7 +54625,7 @@ diff -rupN a/net/wireguard/queueing.c b/net/wireguard/queueing.c
 +#undef STUB
 diff -rupN a/net/wireguard/queueing.h b/net/wireguard/queueing.h
 --- a/net/wireguard/queueing.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/queueing.h	2026-04-15 14:49:41.181334654 +0200
++++ b/net/wireguard/queueing.h	2026-04-15 14:53:04.023365077 +0200
 @@ -0,0 +1,215 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -54857,7 +54844,7 @@ diff -rupN a/net/wireguard/queueing.h b/net/wireguard/queueing.h
 +#endif /* _WG_QUEUEING_H */
 diff -rupN a/net/wireguard/ratelimiter.c b/net/wireguard/ratelimiter.c
 --- a/net/wireguard/ratelimiter.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/ratelimiter.c	2026-04-15 14:49:41.181807935 +0200
++++ b/net/wireguard/ratelimiter.c	2026-04-15 14:53:04.023490070 +0200
 @@ -0,0 +1,235 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -55096,7 +55083,7 @@ diff -rupN a/net/wireguard/ratelimiter.c b/net/wireguard/ratelimiter.c
 +#include "selftest/ratelimiter.c"
 diff -rupN a/net/wireguard/ratelimiter.h b/net/wireguard/ratelimiter.h
 --- a/net/wireguard/ratelimiter.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/ratelimiter.h	2026-04-15 14:49:41.182302130 +0200
++++ b/net/wireguard/ratelimiter.h	2026-04-15 14:53:04.023590237 +0200
 @@ -0,0 +1,19 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -55119,7 +55106,7 @@ diff -rupN a/net/wireguard/ratelimiter.h b/net/wireguard/ratelimiter.h
 +#endif /* _WG_RATELIMITER_H */
 diff -rupN a/net/wireguard/receive.c b/net/wireguard/receive.c
 --- a/net/wireguard/receive.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/receive.c	2026-04-15 14:49:41.182652802 +0200
++++ b/net/wireguard/receive.c	2026-04-15 14:53:04.023658339 +0200
 @@ -0,0 +1,624 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -55747,7 +55734,7 @@ diff -rupN a/net/wireguard/receive.c b/net/wireguard/receive.c
 +}
 diff -rupN a/net/wireguard/selftest/allowedips.c b/net/wireguard/selftest/allowedips.c
 --- a/net/wireguard/selftest/allowedips.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/selftest/allowedips.c	2026-04-15 14:49:41.184049482 +0200
++++ b/net/wireguard/selftest/allowedips.c	2026-04-15 14:53:04.023935471 +0200
 @@ -0,0 +1,676 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -56427,7 +56414,7 @@ diff -rupN a/net/wireguard/selftest/allowedips.c b/net/wireguard/selftest/allowe
 +#endif
 diff -rupN a/net/wireguard/selftest/counter.c b/net/wireguard/selftest/counter.c
 --- a/net/wireguard/selftest/counter.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/selftest/counter.c	2026-04-15 14:49:41.184693878 +0200
++++ b/net/wireguard/selftest/counter.c	2026-04-15 14:53:04.024016021 +0200
 @@ -0,0 +1,111 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -56542,7 +56529,7 @@ diff -rupN a/net/wireguard/selftest/counter.c b/net/wireguard/selftest/counter.c
 +#endif
 diff -rupN a/net/wireguard/selftest/ratelimiter.c b/net/wireguard/selftest/ratelimiter.c
 --- a/net/wireguard/selftest/ratelimiter.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/selftest/ratelimiter.c	2026-04-15 14:49:41.184970752 +0200
++++ b/net/wireguard/selftest/ratelimiter.c	2026-04-15 14:53:04.024098849 +0200
 @@ -0,0 +1,226 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -56772,7 +56759,7 @@ diff -rupN a/net/wireguard/selftest/ratelimiter.c b/net/wireguard/selftest/ratel
 +#endif
 diff -rupN a/net/wireguard/send.c b/net/wireguard/send.c
 --- a/net/wireguard/send.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/send.c	2026-04-15 14:49:41.185334674 +0200
++++ b/net/wireguard/send.c	2026-04-15 14:53:04.024263395 +0200
 @@ -0,0 +1,482 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -57258,7 +57245,7 @@ diff -rupN a/net/wireguard/send.c b/net/wireguard/send.c
 +}
 diff -rupN a/net/wireguard/socket.c b/net/wireguard/socket.c
 --- a/net/wireguard/socket.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/socket.c	2026-04-15 14:49:41.186334679 +0200
++++ b/net/wireguard/socket.c	2026-04-15 14:53:04.024339312 +0200
 @@ -0,0 +1,444 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -57706,7 +57693,7 @@ diff -rupN a/net/wireguard/socket.c b/net/wireguard/socket.c
 +}
 diff -rupN a/net/wireguard/socket.h b/net/wireguard/socket.h
 --- a/net/wireguard/socket.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/socket.h	2026-04-15 14:49:41.186837517 +0200
++++ b/net/wireguard/socket.h	2026-04-15 14:53:04.024470436 +0200
 @@ -0,0 +1,44 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -57754,7 +57741,7 @@ diff -rupN a/net/wireguard/socket.h b/net/wireguard/socket.h
 +#endif /* _WG_SOCKET_H */
 diff -rupN a/net/wireguard/tests/debug.mk b/net/wireguard/tests/debug.mk
 --- a/net/wireguard/tests/debug.mk	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/debug.mk	2026-04-15 14:49:41.187423782 +0200
++++ b/net/wireguard/tests/debug.mk	2026-04-15 14:53:04.024592107 +0200
 @@ -0,0 +1,73 @@
 +REMOTE_HOST1 ?= root@172.16.48.128
 +REMOTE_HOST2 ?= root@172.16.48.129
@@ -57831,7 +57818,7 @@ diff -rupN a/net/wireguard/tests/debug.mk b/net/wireguard/tests/debug.mk
 +	$(MAKE) -j3 remote-run-1 remote-run-2 remote-run-3
 diff -rupN a/net/wireguard/tests/netns.sh b/net/wireguard/tests/netns.sh
 --- a/net/wireguard/tests/netns.sh	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/netns.sh	2026-04-15 14:49:41.188334689 +0200
++++ b/net/wireguard/tests/netns.sh	2026-04-15 14:53:04.024644852 +0200
 @@ -0,0 +1,682 @@
 +#!/bin/bash
 +# SPDX-License-Identifier: GPL-2.0
@@ -58517,7 +58504,7 @@ diff -rupN a/net/wireguard/tests/netns.sh b/net/wireguard/tests/netns.sh
 +pretty "" "Objects that were created were also destroyed."
 diff -rupN a/net/wireguard/tests/qemu/arch/aarch64_be.config b/net/wireguard/tests/qemu/arch/aarch64_be.config
 --- a/net/wireguard/tests/qemu/arch/aarch64_be.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/aarch64_be.config	2026-04-15 14:49:41.189038077 +0200
++++ b/net/wireguard/tests/qemu/arch/aarch64_be.config	2026-04-15 14:53:04.024914307 +0200
 @@ -0,0 +1,9 @@
 +CONFIG_CPU_BIG_ENDIAN=y
 +CONFIG_SERIAL_AMBA_PL011=y
@@ -58530,7 +58517,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/aarch64_be.config b/net/wireguard/tes
 +CONFIG_FRAME_WARN=1280
 diff -rupN a/net/wireguard/tests/qemu/arch/aarch64.config b/net/wireguard/tests/qemu/arch/aarch64.config
 --- a/net/wireguard/tests/qemu/arch/aarch64.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/aarch64.config	2026-04-15 14:49:41.189324754 +0200
++++ b/net/wireguard/tests/qemu/arch/aarch64.config	2026-04-15 14:53:04.024989633 +0200
 @@ -0,0 +1,8 @@
 +CONFIG_SERIAL_AMBA_PL011=y
 +CONFIG_SERIAL_AMBA_PL011_CONSOLE=y
@@ -58542,7 +58529,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/aarch64.config b/net/wireguard/tests/
 +CONFIG_FRAME_WARN=1280
 diff -rupN a/net/wireguard/tests/qemu/arch/arm.config b/net/wireguard/tests/qemu/arch/arm.config
 --- a/net/wireguard/tests/qemu/arch/arm.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/arm.config	2026-04-15 14:49:41.189671310 +0200
++++ b/net/wireguard/tests/qemu/arch/arm.config	2026-04-15 14:53:04.025058628 +0200
 @@ -0,0 +1,12 @@
 +CONFIG_MMU=y
 +CONFIG_ARCH_MULTI_V7=y
@@ -58558,7 +58545,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/arm.config b/net/wireguard/tests/qemu
 +CONFIG_FRAME_WARN=1024
 diff -rupN a/net/wireguard/tests/qemu/arch/armeb.config b/net/wireguard/tests/qemu/arch/armeb.config
 --- a/net/wireguard/tests/qemu/arch/armeb.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/armeb.config	2026-04-15 14:49:41.189998200 +0200
++++ b/net/wireguard/tests/qemu/arch/armeb.config	2026-04-15 14:53:04.025129679 +0200
 @@ -0,0 +1,13 @@
 +CONFIG_MMU=y
 +CONFIG_ARCH_MULTI_V7=y
@@ -58575,7 +58562,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/armeb.config b/net/wireguard/tests/qe
 +CONFIG_FRAME_WARN=1024
 diff -rupN a/net/wireguard/tests/qemu/arch/i686.config b/net/wireguard/tests/qemu/arch/i686.config
 --- a/net/wireguard/tests/qemu/arch/i686.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/i686.config	2026-04-15 14:49:41.190321250 +0200
++++ b/net/wireguard/tests/qemu/arch/i686.config	2026-04-15 14:53:04.025199071 +0200
 @@ -0,0 +1,6 @@
 +CONFIG_ACPI=y
 +CONFIG_SERIAL_8250=y
@@ -58585,7 +58572,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/i686.config b/net/wireguard/tests/qem
 +CONFIG_FRAME_WARN=1024
 diff -rupN a/net/wireguard/tests/qemu/arch/m68k.config b/net/wireguard/tests/qemu/arch/m68k.config
 --- a/net/wireguard/tests/qemu/arch/m68k.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/m68k.config	2026-04-15 14:49:41.190666503 +0200
++++ b/net/wireguard/tests/qemu/arch/m68k.config	2026-04-15 14:53:04.025277641 +0200
 @@ -0,0 +1,9 @@
 +CONFIG_MMU=y
 +CONFIG_M68KCLASSIC=y
@@ -58598,7 +58585,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/m68k.config b/net/wireguard/tests/qem
 +CONFIG_FRAME_WARN=1024
 diff -rupN a/net/wireguard/tests/qemu/arch/mips64.config b/net/wireguard/tests/qemu/arch/mips64.config
 --- a/net/wireguard/tests/qemu/arch/mips64.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/mips64.config	2026-04-15 14:49:41.191169169 +0200
++++ b/net/wireguard/tests/qemu/arch/mips64.config	2026-04-15 14:53:04.025362237 +0200
 @@ -0,0 +1,14 @@
 +CONFIG_64BIT=y
 +CONFIG_CPU_MIPS64_R2=y
@@ -58616,7 +58603,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/mips64.config b/net/wireguard/tests/q
 +CONFIG_FRAME_WARN=1280
 diff -rupN a/net/wireguard/tests/qemu/arch/mips64el.config b/net/wireguard/tests/qemu/arch/mips64el.config
 --- a/net/wireguard/tests/qemu/arch/mips64el.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/mips64el.config	2026-04-15 14:49:41.191726538 +0200
++++ b/net/wireguard/tests/qemu/arch/mips64el.config	2026-04-15 14:53:04.025444618 +0200
 @@ -0,0 +1,15 @@
 +CONFIG_64BIT=y
 +CONFIG_CPU_MIPS64_R2=y
@@ -58635,7 +58622,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/mips64el.config b/net/wireguard/tests
 +CONFIG_FRAME_WARN=1280
 diff -rupN a/net/wireguard/tests/qemu/arch/mips.config b/net/wireguard/tests/qemu/arch/mips.config
 --- a/net/wireguard/tests/qemu/arch/mips.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/mips.config	2026-04-15 14:49:41.192001789 +0200
++++ b/net/wireguard/tests/qemu/arch/mips.config	2026-04-15 14:53:04.025525225 +0200
 @@ -0,0 +1,11 @@
 +CONFIG_CPU_MIPS32_R2=y
 +CONFIG_MIPS_MALTA=y
@@ -58650,7 +58637,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/mips.config b/net/wireguard/tests/qem
 +CONFIG_FRAME_WARN=1024
 diff -rupN a/net/wireguard/tests/qemu/arch/mipsel.config b/net/wireguard/tests/qemu/arch/mipsel.config
 --- a/net/wireguard/tests/qemu/arch/mipsel.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/mipsel.config	2026-04-15 14:49:41.192341446 +0200
++++ b/net/wireguard/tests/qemu/arch/mipsel.config	2026-04-15 14:53:04.025597899 +0200
 @@ -0,0 +1,12 @@
 +CONFIG_CPU_MIPS32_R2=y
 +CONFIG_MIPS_MALTA=y
@@ -58666,7 +58653,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/mipsel.config b/net/wireguard/tests/q
 +CONFIG_FRAME_WARN=1024
 diff -rupN a/net/wireguard/tests/qemu/arch/powerpc64le.config b/net/wireguard/tests/qemu/arch/powerpc64le.config
 --- a/net/wireguard/tests/qemu/arch/powerpc64le.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/powerpc64le.config	2026-04-15 14:49:41.192690472 +0200
++++ b/net/wireguard/tests/qemu/arch/powerpc64le.config	2026-04-15 14:53:04.025669255 +0200
 @@ -0,0 +1,13 @@
 +CONFIG_PPC64=y
 +CONFIG_PPC_PSERIES=y
@@ -58683,7 +58670,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/powerpc64le.config b/net/wireguard/te
 +CONFIG_THREAD_SHIFT=14
 diff -rupN a/net/wireguard/tests/qemu/arch/powerpc.config b/net/wireguard/tests/qemu/arch/powerpc.config
 --- a/net/wireguard/tests/qemu/arch/powerpc.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/powerpc.config	2026-04-15 14:49:41.193021149 +0200
++++ b/net/wireguard/tests/qemu/arch/powerpc.config	2026-04-15 14:53:04.025741945 +0200
 @@ -0,0 +1,10 @@
 +CONFIG_PPC_QEMU_E500=y
 +CONFIG_FSL_SOC_BOOKE=y
@@ -58697,7 +58684,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/powerpc.config b/net/wireguard/tests/
 +CONFIG_FRAME_WARN=1024
 diff -rupN a/net/wireguard/tests/qemu/arch/x86_64.config b/net/wireguard/tests/qemu/arch/x86_64.config
 --- a/net/wireguard/tests/qemu/arch/x86_64.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/arch/x86_64.config	2026-04-15 14:49:41.193345733 +0200
++++ b/net/wireguard/tests/qemu/arch/x86_64.config	2026-04-15 14:53:04.025812891 +0200
 @@ -0,0 +1,6 @@
 +CONFIG_ACPI=y
 +CONFIG_SERIAL_8250=y
@@ -58707,7 +58694,7 @@ diff -rupN a/net/wireguard/tests/qemu/arch/x86_64.config b/net/wireguard/tests/q
 +CONFIG_FRAME_WARN=1280
 diff -rupN a/net/wireguard/tests/qemu/debug.config b/net/wireguard/tests/qemu/debug.config
 --- a/net/wireguard/tests/qemu/debug.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/debug.config	2026-04-15 14:49:41.193784436 +0200
++++ b/net/wireguard/tests/qemu/debug.config	2026-04-15 14:53:04.025901967 +0200
 @@ -0,0 +1,66 @@
 +CONFIG_ENABLE_WARN_DEPRECATED=y
 +CONFIG_ENABLE_MUST_CHECK=y
@@ -58777,7 +58764,7 @@ diff -rupN a/net/wireguard/tests/qemu/debug.config b/net/wireguard/tests/qemu/de
 +CONFIG_DEBUG_WW_MUTEX_SLOWPATH=y
 diff -rupN a/net/wireguard/tests/qemu/init.c b/net/wireguard/tests/qemu/init.c
 --- a/net/wireguard/tests/qemu/init.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/init.c	2026-04-15 14:49:41.194053924 +0200
++++ b/net/wireguard/tests/qemu/init.c	2026-04-15 14:53:04.025961098 +0200
 @@ -0,0 +1,272 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -59053,7 +59040,7 @@ diff -rupN a/net/wireguard/tests/qemu/init.c b/net/wireguard/tests/qemu/init.c
 +}
 diff -rupN a/net/wireguard/tests/qemu/kernel.config b/net/wireguard/tests/qemu/kernel.config
 --- a/net/wireguard/tests/qemu/kernel.config	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/kernel.config	2026-04-15 14:49:41.194644857 +0200
++++ b/net/wireguard/tests/qemu/kernel.config	2026-04-15 14:53:04.026085416 +0200
 @@ -0,0 +1,90 @@
 +CONFIG_NET=y
 +CONFIG_NETDEVICES=y
@@ -59147,7 +59134,7 @@ diff -rupN a/net/wireguard/tests/qemu/kernel.config b/net/wireguard/tests/qemu/k
 +CONFIG_WIREGUARD_DEBUG=y
 diff -rupN a/net/wireguard/tests/qemu/Makefile b/net/wireguard/tests/qemu/Makefile
 --- a/net/wireguard/tests/qemu/Makefile	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/tests/qemu/Makefile	2026-04-15 14:49:41.195334724 +0200
++++ b/net/wireguard/tests/qemu/Makefile	2026-04-15 14:53:04.026171004 +0200
 @@ -0,0 +1,431 @@
 +# SPDX-License-Identifier: GPL-2.0
 +#
@@ -59582,7 +59569,7 @@ diff -rupN a/net/wireguard/tests/qemu/Makefile b/net/wireguard/tests/qemu/Makefi
 +.DELETE_ON_ERROR:
 diff -rupN a/net/wireguard/timers.c b/net/wireguard/timers.c
 --- a/net/wireguard/timers.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/timers.c	2026-04-15 14:49:41.196062240 +0200
++++ b/net/wireguard/timers.c	2026-04-15 14:53:04.026383378 +0200
 @@ -0,0 +1,246 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
@@ -59832,7 +59819,7 @@ diff -rupN a/net/wireguard/timers.c b/net/wireguard/timers.c
 +}
 diff -rupN a/net/wireguard/timers.h b/net/wireguard/timers.h
 --- a/net/wireguard/timers.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/timers.h	2026-04-15 14:49:41.196366380 +0200
++++ b/net/wireguard/timers.h	2026-04-15 14:53:04.026460080 +0200
 @@ -0,0 +1,31 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
@@ -59867,7 +59854,7 @@ diff -rupN a/net/wireguard/timers.h b/net/wireguard/timers.h
 +#endif /* _WG_TIMERS_H */
 diff -rupN a/net/wireguard/uapi/wireguard.h b/net/wireguard/uapi/wireguard.h
 --- a/net/wireguard/uapi/wireguard.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/uapi/wireguard.h	2026-04-15 14:49:41.197069307 +0200
++++ b/net/wireguard/uapi/wireguard.h	2026-04-15 14:53:04.026606141 +0200
 @@ -0,0 +1,249 @@
 +/* SPDX-License-Identifier: (GPL-2.0 WITH Linux-syscall-note) OR MIT */
 +/*
@@ -60120,7 +60107,7 @@ diff -rupN a/net/wireguard/uapi/wireguard.h b/net/wireguard/uapi/wireguard.h
 +#endif /* _WG_UAPI_WIREGUARD_H */
 diff -rupN a/net/wireguard/version.h b/net/wireguard/version.h
 --- a/net/wireguard/version.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/net/wireguard/version.h	2026-04-15 14:49:41.197334734 +0200
++++ b/net/wireguard/version.h	2026-04-15 14:53:04.026689660 +0200
 @@ -0,0 +1,3 @@
 +#ifndef WIREGUARD_VERSION
 +#define WIREGUARD_VERSION "1.0.20251009"
