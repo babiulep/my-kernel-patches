@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-04-27
+* add 7.1/NEXT
+
 ## 2026-04-19
 * TIP+NEXT+MAINLINE: updates
 
