@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-04-28
+* 7.1/NEXT: add bbr3
+* 7.1/NEXT: fixes for mglru + kbuild
+
 ## 2026-04-27
 * add 7.1/NEXT
 
