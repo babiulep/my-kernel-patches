@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index a8b302e..202c64d 100644
+index b040900..ec4430b 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -939,6 +939,22 @@ endif
+@@ -941,6 +941,22 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
@@ -26,7 +26,7 @@ index a8b302e..202c64d 100644
  ifdef CONFIG_CC_IS_GCC
  # gcc-10 renamed --param=allow-store-data-races=0 to
 diff --git a/init/Kconfig b/init/Kconfig
-index 3e3acfc..46b5a85 100644
+index 624d935..03d0d2e 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
 @@ -316,6 +316,19 @@ config BUILD_SALT

@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-05-02
+* 7.1/NEXT: add bore-scheduler patch
+* 7.1/NEXT: mglru.patch no longer needed
+
 ## 2026-04-29
 * 7.1/NEXT: 10-uaccess.patch no longer needed
 
