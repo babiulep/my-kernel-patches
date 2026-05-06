@@ -1,0 +1,337 @@
+diff --git a/conftest.sh b/conftest.sh
+index cb4da27..63ae3f1 100755
+--- a/conftest.sh
++++ b/conftest.sh
+@@ -3082,7 +3082,7 @@ compile_test() {
+         drm_crtc_atomic_check_has_atomic_state_arg)
+             #
+             # Determine if drm_crtc_helper_funcs::atomic_check takes 'state'
+-            # argument of 'struct drm_atomic_state' type.
++            # argument of 'struct drm_atomic_commit' type.
+             #
+             # Commit 29b77ad7b9ca ("drm/atomic: Pass the full state to CRTC
+             # atomic_check") in v5.11 passed the full atomic state to
+@@ -3101,7 +3101,7 @@ compile_test() {
+             typeof(*funcs->atomic_check) conftest_drm_crtc_atomic_check_has_atomic_state_arg;
+ 
+             int conftest_drm_crtc_atomic_check_has_atomic_state_arg(
+-                    struct drm_crtc *crtc, struct drm_atomic_state *state) {
++                    struct drm_crtc *crtc, struct drm_atomic_commit *state) {
+                 return 0;
+             }" > conftest$$.c
+ 
+@@ -3258,7 +3258,7 @@ compile_test() {
+         drm_plane_atomic_check_has_atomic_state_arg)
+             #
+             # Determine if drm_plane_helper_funcs::atomic_check takes 'state'
+-            # argument of 'struct drm_atomic_state' type.
++            # argument of 'struct drm_atomic_commit' type.
+             #
+             # Commit 7c11b99a8e58 ("drm/atomic: Pass the full state to planes
+             # atomic_check") in v5.13 passes the full atomic state to
+@@ -3277,7 +3277,7 @@ compile_test() {
+             typeof(*funcs->atomic_check) conftest_drm_plane_atomic_check_has_atomic_state_arg;
+ 
+             int conftest_drm_plane_atomic_check_has_atomic_state_arg(
+-                    struct drm_plane *plane, struct drm_atomic_state *state) {
++                    struct drm_plane *plane, struct drm_atomic_commit *state) {
+                 return 0;
+             }" > conftest$$.c
+ 
+diff --git a/nvidia-drm/nvidia-drm-conftest.h b/nvidia-drm/nvidia-drm-conftest.h
+index dec3983..2545050 100644
+--- a/nvidia-drm/nvidia-drm-conftest.h
++++ b/nvidia-drm/nvidia-drm-conftest.h
+@@ -135,10 +135,10 @@
+ #define set_page_dirty_lock set_page_dirty
+ 
+ /*
+- * FreeBSD does not implement drm_atomic_state_free, simply
+- * default to drm_atomic_state_put
++ * FreeBSD does not implement drm_atomic_commit_free, simply
++ * default to drm_atomic_commit_put
+  */
+-#define drm_atomic_state_free drm_atomic_state_put
++#define drm_atomic_commit_free drm_atomic_commit_put
+ 
+ #if __FreeBSD_version < 1300000
+ /* redefine LIST_HEAD_INIT to the linux version */
+diff --git a/nvidia-drm/nvidia-drm-connector.c b/nvidia-drm/nvidia-drm-connector.c
+index 2d5483a..e637447 100644
+--- a/nvidia-drm/nvidia-drm-connector.c
++++ b/nvidia-drm/nvidia-drm-connector.c
+@@ -408,7 +408,7 @@ static const NvU32 __nv_drm_connector_supported_colorspaces =
+ #if defined(NV_DRM_CONNECTOR_ATTACH_HDR_OUTPUT_METADATA_PROPERTY_PRESENT)
+ static int
+ __nv_drm_connector_atomic_check(struct drm_connector *connector,
+-                                struct drm_atomic_state *state)
++                                struct drm_atomic_commit *state)
+ {
+     struct drm_connector_state *new_connector_state =
+         drm_atomic_get_new_connector_state(state, connector);
+diff --git a/nvidia-drm/nvidia-drm-crtc.c b/nvidia-drm/nvidia-drm-crtc.c
+index e7b5c4d..ae9ee1f 100644
+--- a/nvidia-drm/nvidia-drm-crtc.c
++++ b/nvidia-drm/nvidia-drm-crtc.c
+@@ -1626,7 +1626,7 @@ static int __nv_drm_cursor_atomic_check(struct drm_plane *plane,
+ 
+ #if defined(NV_DRM_PLANE_ATOMIC_CHECK_HAS_ATOMIC_STATE_ARG)
+ static int nv_drm_plane_atomic_check(struct drm_plane *plane,
+-                                     struct drm_atomic_state *state)
++                                     struct drm_atomic_commit *state)
+ #else
+ static int nv_drm_plane_atomic_check(struct drm_plane *plane,
+                                      struct drm_plane_state *plane_state)
+@@ -2444,7 +2444,7 @@ static int color_mgmt_config_set_luts(struct nv_drm_crtc_state *nv_crtc_state,
+  */
+ #if defined(NV_DRM_CRTC_ATOMIC_CHECK_HAS_ATOMIC_STATE_ARG)
+ static int nv_drm_crtc_atomic_check(struct drm_crtc *crtc,
+-                                    struct drm_atomic_state *state)
++                                    struct drm_atomic_commit *state)
+ #else
+ static int nv_drm_crtc_atomic_check(struct drm_crtc *crtc,
+                                     struct drm_crtc_state *crtc_state)
+diff --git a/nvidia-drm/nvidia-drm-drv.c b/nvidia-drm/nvidia-drm-drv.c
+index e4ae38a..67b1f10 100644
+--- a/nvidia-drm/nvidia-drm-drv.c
++++ b/nvidia-drm/nvidia-drm-drv.c
+@@ -182,9 +182,9 @@ static void nv_drm_output_poll_changed(struct drm_device *dev)
+ static const struct drm_mode_config_funcs nv_mode_config_funcs = {
+     .fb_create = nv_drm_framebuffer_create,
+ 
+-    .atomic_state_alloc = nv_drm_atomic_state_alloc,
+-    .atomic_state_clear = nv_drm_atomic_state_clear,
+-    .atomic_state_free  = nv_drm_atomic_state_free,
++    .atomic_state_alloc = nv_drm_atomic_commit_alloc,
++    .atomic_state_clear = nv_drm_atomic_commit_clear,
++    .atomic_state_free  = nv_drm_atomic_commit_free,
+     .atomic_check  = nv_drm_atomic_check,
+     .atomic_commit = nv_drm_atomic_commit,
+ 
+@@ -934,7 +934,7 @@ static void nv_drm_master_set(struct drm_device *dev,
+ static
+ int nv_drm_reset_input_colorspace(struct drm_device *dev)
+ {
+-    struct drm_atomic_state *state;
++    struct drm_atomic_commit *state;
+     struct drm_plane_state *plane_state;
+     struct drm_plane *plane;
+     struct nv_drm_plane_state *nv_drm_plane_state;
+@@ -943,7 +943,7 @@ int nv_drm_reset_input_colorspace(struct drm_device *dev)
+     bool do_reset = false;
+     NvU32 flags = 0;
+ 
+-    state = drm_atomic_state_alloc(dev);
++    state = drm_atomic_commit_alloc(dev);
+     if (!state)
+         return -ENOMEM;
+ 
+@@ -974,7 +974,7 @@ int nv_drm_reset_input_colorspace(struct drm_device *dev)
+     }
+ 
+ out:
+-    drm_atomic_state_put(state);
++    drm_atomic_commit_put(state);
+     drm_modeset_drop_locks(&ctx);
+     drm_modeset_acquire_fini(&ctx);
+ 
+@@ -1382,7 +1382,7 @@ static int nv_drm_grant_permission_ioctl(struct drm_device *dev, void *data,
+ }
+ 
+ static int
+-nv_drm_atomic_disable_connector(struct drm_atomic_state *state,
++nv_drm_atomic_disable_connector(struct drm_atomic_commit *state,
+                                 struct nv_drm_connector *nv_connector)
+ {
+     struct drm_crtc_state *crtc_state;
+@@ -1415,7 +1415,7 @@ static int nv_drm_revoke_modeset_permission(struct drm_device *dev,
+                                             struct drm_file *filep, NvU32 dpyId)
+ {
+     struct drm_modeset_acquire_ctx *pctx;
+-    struct drm_atomic_state *state;
++    struct drm_atomic_commit *state;
+     struct drm_connector *connector;
+     struct drm_crtc *crtc;
+     int ret = 0;
+@@ -1430,7 +1430,7 @@ static int nv_drm_revoke_modeset_permission(struct drm_device *dev,
+     pctx = dev->mode_config.acquire_ctx;
+ #endif
+ 
+-    state = drm_atomic_state_alloc(dev);
++    state = drm_atomic_commit_alloc(dev);
+     if (!state) {
+         ret = -ENOMEM;
+         goto done;
+@@ -1466,7 +1466,7 @@ static int nv_drm_revoke_modeset_permission(struct drm_device *dev,
+ 
+     ret = drm_atomic_commit(state);
+ done:
+-    drm_atomic_state_put(state);
++    drm_atomic_commit_put(state);
+ 
+ #if NV_DRM_MODESET_LOCK_ALL_END_ARGUMENT_COUNT == 3
+     DRM_MODESET_LOCK_ALL_END(dev, ctx, ret);
+diff --git a/nvidia-drm/nvidia-drm-helper.c b/nvidia-drm/nvidia-drm-helper.c
+index 8f1a788..ca11588 100644
+--- a/nvidia-drm/nvidia-drm-helper.c
++++ b/nvidia-drm/nvidia-drm-helper.c
+@@ -55,8 +55,8 @@
+  * linux/drivers/gpu/drm/drm_atomic_helper.c and modified to use
+  * nv_drm_for_each_crtc instead of drm_for_each_crtc to loop over all crtcs,
+  * use for_each_new_*_in_state instead of for_each_connector_in_state to loop
+- * over all modeset object states, and use drm_atomic_state_free() if
+- * drm_atomic_state_put() is not available.
++ * over all modeset object states, and use drm_atomic_commit_free() if
++ * drm_atomic_commit_put() is not available.
+  *
+  * drm_atomic_helper_disable_all() is copied from
+  *     linux/drivers/gpu/drm/drm_atomic_helper.c @
+@@ -91,7 +91,7 @@
+ int nv_drm_atomic_helper_disable_all(struct drm_device *dev,
+                                      struct drm_modeset_acquire_ctx *ctx)
+ {
+-    struct drm_atomic_state *state;
++    struct drm_atomic_commit *state;
+     struct drm_connector_state *conn_state;
+     struct drm_connector *conn;
+     struct drm_plane_state *plane_state;
+@@ -101,7 +101,7 @@ int nv_drm_atomic_helper_disable_all(struct drm_device *dev,
+     unsigned plane_mask = 0;
+     int ret, i;
+ 
+-    state = drm_atomic_state_alloc(dev);
++    state = drm_atomic_commit_alloc(dev);
+     if (!state)
+         return -ENOMEM;
+ 
+@@ -173,7 +173,7 @@ free:
+        }
+     }
+ 
+-    drm_atomic_state_put(state);
++    drm_atomic_commit_put(state);
+ 
+     return ret;
+ }
+diff --git a/nvidia-drm/nvidia-drm-modeset.c b/nvidia-drm/nvidia-drm-modeset.c
+index da167a0..d4de8ee 100644
+--- a/nvidia-drm/nvidia-drm-modeset.c
++++ b/nvidia-drm/nvidia-drm-modeset.c
+@@ -47,23 +47,23 @@
+ 
+ #include <linux/dma-fence.h>
+ 
+-struct nv_drm_atomic_state {
++struct nv_drm_atomic_commit {
+     struct NvKmsKapiRequestedModeSetConfig config;
+-    struct drm_atomic_state base;
++    struct drm_atomic_commit base;
+ };
+ 
+-static inline struct nv_drm_atomic_state *to_nv_atomic_state(
+-    struct drm_atomic_state *state)
++static inline struct nv_drm_atomic_commit *to_nv_atomic_state(
++    struct drm_atomic_commit *state)
+ {
+-    return container_of(state, struct nv_drm_atomic_state, base);
++    return container_of(state, struct nv_drm_atomic_commit, base);
+ }
+ 
+-struct drm_atomic_state *nv_drm_atomic_state_alloc(struct drm_device *dev)
++struct drm_atomic_commit *nv_drm_atomic_commit_alloc(struct drm_device *dev)
+ {
+-    struct nv_drm_atomic_state *nv_state =
++    struct nv_drm_atomic_commit *nv_state =
+             nv_drm_calloc(1, sizeof(*nv_state));
+ 
+-    if (nv_state == NULL || drm_atomic_state_init(dev, &nv_state->base) < 0) {
++    if (nv_state == NULL || drm_atomic_commit_init(dev, &nv_state->base) < 0) {
+         nv_drm_free(nv_state);
+         return NULL;
+     }
+@@ -71,16 +71,16 @@ struct drm_atomic_state *nv_drm_atomic_state_alloc(struct drm_device *dev)
+     return &nv_state->base;
+ }
+ 
+-void nv_drm_atomic_state_clear(struct drm_atomic_state *state)
++void nv_drm_atomic_commit_clear(struct drm_atomic_commit *state)
+ {
+-    drm_atomic_state_default_clear(state);
++    drm_atomic_commit_default_clear(state);
+ }
+ 
+-void nv_drm_atomic_state_free(struct drm_atomic_state *state)
++void nv_drm_atomic_commit_free(struct drm_atomic_commit *state)
+ {
+-    struct nv_drm_atomic_state *nv_state =
++    struct nv_drm_atomic_commit *nv_state =
+                     to_nv_atomic_state(state);
+-    drm_atomic_state_default_release(state);
++    drm_atomic_commit_default_release(state);
+     nv_drm_free(nv_state);
+ }
+ 
+@@ -177,7 +177,7 @@ __nv_drm_plane_fence_cb(
+ 
+ static int __nv_drm_convert_in_fences(
+     struct nv_drm_device *nv_dev,
+-    struct drm_atomic_state *state,
++    struct drm_atomic_commit *state,
+     struct drm_crtc *crtc,
+     struct drm_crtc_state *crtc_state)
+ {
+@@ -391,7 +391,7 @@ static int __nv_drm_get_syncpt_data(
+  */
+ static int
+ nv_drm_atomic_apply_modeset_config(struct drm_device *dev,
+-                                   struct drm_atomic_state *state,
++                                   struct drm_atomic_commit *state,
+                                    bool commit)
+ {
+     struct nv_drm_device *nv_dev = to_nv_device(dev);
+@@ -508,7 +508,7 @@ nv_drm_atomic_apply_modeset_config(struct drm_device *dev,
+ }
+ 
+ int nv_drm_atomic_check(struct drm_device *dev,
+-                        struct drm_atomic_state *state)
++                        struct drm_atomic_commit *state)
+ {
+     int ret = 0;
+ 
+@@ -617,7 +617,7 @@ static void __nv_drm_handle_flip_event(struct nv_drm_crtc *nv_crtc)
+ }
+ 
+ int nv_drm_atomic_commit(struct drm_device *dev,
+-                         struct drm_atomic_state *state,
++                         struct drm_atomic_commit *state,
+                          bool nonblock)
+ {
+     int ret = -EBUSY;
+diff --git a/nvidia-drm/nvidia-drm-modeset.h b/nvidia-drm/nvidia-drm-modeset.h
+index e95cc80..ae6f023 100644
+--- a/nvidia-drm/nvidia-drm-modeset.h
++++ b/nvidia-drm/nvidia-drm-modeset.h
+@@ -30,17 +30,17 @@
+ #include "nvkms-kapi.h"
+ 
+ struct drm_device;
+-struct drm_atomic_state;
++struct drm_atomic_commit;
+ 
+-struct drm_atomic_state *nv_drm_atomic_state_alloc(struct drm_device *dev);
+-void nv_drm_atomic_state_clear(struct drm_atomic_state *state);
+-void nv_drm_atomic_state_free(struct drm_atomic_state *state);
++struct drm_atomic_commit *nv_drm_atomic_commit_alloc(struct drm_device *dev);
++void nv_drm_atomic_commit_clear(struct drm_atomic_commit *state);
++void nv_drm_atomic_commit_free(struct drm_atomic_commit *state);
+ 
+ int nv_drm_atomic_check(struct drm_device *dev,
+-                        struct drm_atomic_state *state);
++                        struct drm_atomic_commit *state);
+ 
+ int nv_drm_atomic_commit(struct drm_device *dev,
+-                         struct drm_atomic_state *state, bool nonblock);
++                         struct drm_atomic_commit *state, bool nonblock);
+ 
+ 
+ void nv_drm_handle_flip_occurred(struct nv_drm_device *nv_dev,

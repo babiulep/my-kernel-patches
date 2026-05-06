@@ -3,6 +3,12 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-05-06
+  linux-next tag: next-20260506
+* 7.1/NEXT: fixes for in-tree amneziawg
+* 7.1/NEXT: warning fix: rt_mutex_lock patch
+* 7.1/NEXT: NVIDIA 595.71.05 fix: drm_atomic_state changed to drm_atomic_commit
+
 ## 2026-05-02
 * 7.1/NEXT: add bore-scheduler patch
 * 7.1/NEXT: mglru.patch no longer needed

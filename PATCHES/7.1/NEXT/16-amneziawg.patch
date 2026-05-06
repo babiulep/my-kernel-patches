@@ -1,5 +1,5 @@
 diff --git a/drivers/net/Makefile b/drivers/net/Makefile
-index b87a741..aba2632 100644
+index 88e4c48..b56d07a 100644
 --- a/drivers/net/Makefile
 +++ b/drivers/net/Makefile
 @@ -10,7 +10,6 @@ obj-$(CONFIG_BONDING) += bonding/
@@ -197,6 +197,10 @@ index d2175fc..f071d41 100644
  obj-$(CONFIG_INET)		+= ipv4/
  obj-$(CONFIG_TLS)		+= tls/
  obj-$(CONFIG_XFRM)		+= xfrm/
+diff --git b/net/core/.gen_stats.c.swp b/net/core/.gen_stats.c.swp
+new file mode 100644
+index 0000000..a7ef013
+Binary files /dev/null and b/net/core/.gen_stats.c.swp differ
 diff --git b/net/wireguard/Kbuild b/net/wireguard/Kbuild
 new file mode 100644
 index 0000000..619a1f2
@@ -48572,7 +48576,7 @@ index 26e09c3..7a72670 100644
  static void wg_packet_create_data(struct wg_peer *peer, struct sk_buff *first)
 diff --git b/net/wireguard/socket.c b/net/wireguard/socket.c
 new file mode 100644
-index 0000000..2d796aa
+index 0000000..8b93cc3
 --- /dev/null
 +++ b/net/wireguard/socket.c
 @@ -0,0 +1,444 @@
@@ -48921,7 +48925,7 @@ index 0000000..2d796aa
 +	if (unlikely(!sock))
 +		return;
 +	sk_clear_memalloc(sock);
-+	udp_tunnel_sock_release(sock->sk_socket);
++	udp_tunnel_sock_release(sock);
 +}
 +
 +static void set_sock_opts(struct socket *sock)
@@ -48975,14 +48979,14 @@ index 0000000..2d796aa
 +		goto out;
 +	}
 +	set_sock_opts(new4);
-+	setup_udp_tunnel_sock(net, new4, &cfg);
++	setup_udp_tunnel_sock(net, new4->sk, &cfg);
 +
 +#if IS_ENABLED(CONFIG_IPV6)
 +	if (ipv6_mod_enabled()) {
 +		port6.local_udp_port = inet_sk(new4->sk)->inet_sport;
 +		ret = udp_sock_create(net, &port6, &new6);
 +		if (ret < 0) {
-+			udp_tunnel_sock_release(new4);
++			udp_tunnel_sock_release(new4->sk);
 +			if (ret == -EADDRINUSE && !port && retries++ < 100)
 +				goto retry;
 +			pr_err("%s: Could not create IPv6 socket\n",
@@ -48990,7 +48994,7 @@ index 0000000..2d796aa
 +			goto out;
 +		}
 +		set_sock_opts(new6);
-+		setup_udp_tunnel_sock(net, new6, &cfg);
++		setup_udp_tunnel_sock(net, new6->sk, &cfg);
 +	}
 +#endif
 +
@@ -51180,3 +51184,7 @@ index 0000000..814bfd0
 +#ifndef WIREGUARD_VERSION
 +#define WIREGUARD_VERSION "1.0.20251009"
 +#endif
+diff --git b/tools/lib/python/__pycache__/jobserver.cpython-310.pyc b/tools/lib/python/__pycache__/jobserver.cpython-310.pyc
+new file mode 100644
+index 0000000..9c6519d
+Binary files /dev/null and b/tools/lib/python/__pycache__/jobserver.cpython-310.pyc differ
