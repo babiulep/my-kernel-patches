@@ -3,7 +3,7 @@
 
 - [README 2025](README2025.md) 
 
-## 2026-05-06
+## 2026-05-07
   linux-next tag: next-20260507
 * 7.1/NEXT: fixes offsets in patches
 
