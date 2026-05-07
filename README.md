@@ -4,6 +4,10 @@
 - [README 2025](README2025.md) 
 
 ## 2026-05-06
+  linux-next tag: next-20260507
+* 7.1/NEXT: fixes offsets in patches
+
+## 2026-05-06
   linux-next tag: next-20260506
 * 7.1/NEXT: fixes for in-tree amneziawg
 * 7.1/NEXT: warning fix: rt_mutex_lock patch
