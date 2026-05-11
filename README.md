@@ -4,7 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-05-11
-* 7.1/NEXT: added fix from Maoyi Xie for io_uring-io-slots [lore.kernel.org](https://lore.kernel.org/all/20260510084119.457578-1-maoyi.xie@ntu.edu.sg/)
+* 7.1/NEXT: added more fixes for Jens Axboe's io_uring-io-slots
 * 7.1/NEXT: add Jens Axboe's io_uring-io-slots
 
 ## 2026-05-07

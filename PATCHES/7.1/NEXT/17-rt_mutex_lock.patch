@@ -14,7 +14,3 @@ index 23ad997..497d962 100644
  }
  EXPORT_SYMBOL_GPL(rt_mutex_lock);
  #endif
-diff --git b/tools/lib/python/__pycache__/jobserver.cpython-310.pyc b/tools/lib/python/__pycache__/jobserver.cpython-310.pyc
-new file mode 100644
-index 0000000..2170969
-Binary files /dev/null and b/tools/lib/python/__pycache__/jobserver.cpython-310.pyc differ
