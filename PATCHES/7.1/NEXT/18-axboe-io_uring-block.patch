@@ -1,46 +1,5 @@
-From 2058a888b8414d6140ed61175c2f523f51289909 Mon Sep 17 00:00:00 2001
-From: Willy Frissen <babiulep@gmail.com>
-Date: Sun, 10 May 2026 17:23:52 +0200
-Subject: Jens Axboe's io_uring-io-slots
-
-Axboe explained of the work:
-
-"Basically extends registered buffers to also have a struct bio ready to go,
-and have the buffers be DMA mapped upfront. Then O_DIRECT is basically just
-looking up the slot and submitting the bio directly...
-Normal registered buffers take the page referencing and mapping into userspace
-out of the hot path, the above branch merely extends that to avoid bio
-allocation and DMA map+unmap in the hot path for IO."
----
- block/blk-core.c               |  30 ++
- block/blk-mq-debugfs.c         |   1 +
- block/blk-mq.c                 |   2 +
- drivers/nvme/host/core.c       |   4 +
- drivers/nvme/host/nvme.h       |   7 +-
- drivers/nvme/host/pci.c        |  68 ++++
- include/linux/bio.h            |  14 +
- include/linux/blk-mq.h         |   7 +
- include/linux/blk_types.h      |   2 +
- include/linux/blkdev.h         |   7 +
- include/linux/io_uring_types.h |  32 ++
- include/uapi/linux/io_uring.h  |  23 ++
- io_uring/Kconfig               |   5 +
- io_uring/Makefile              |   1 +
- io_uring/io_uring.c            |  18 +-
- io_uring/opdef.c               |  15 +
- io_uring/register.c            |  13 +
- io_uring/rsrc.c                |  34 +-
- io_uring/rsrc.h                |  27 ++
- io_uring/rw.c                  |  10 +-
- io_uring/slot.c                | 706 +++++++++++++++++++++++++++++++++++++++++
- io_uring/slot.h                |  57 ++++
- io_uring/uring_cmd.c           |   2 -
- 23 files changed, 1053 insertions(+), 32 deletions(-)
- create mode 100644 io_uring/slot.c
- create mode 100644 io_uring/slot.h
-
 diff --git a/block/blk-core.c b/block/blk-core.c
-index 17450058e..823e6acab 100644
+index 1745005..823e6ac 100644
 --- a/block/blk-core.c
 +++ b/block/blk-core.c
 @@ -892,6 +892,36 @@ end_io:
@@ -81,7 +40,7 @@ index 17450058e..823e6acab 100644
  {
  	/* Nobody set ioprio so far? Initialize it based on task's nice value */
 diff --git a/block/blk-mq-debugfs.c b/block/blk-mq-debugfs.c
-index 047ec8874..3fbfe57a4 100644
+index 047ec88..3fbfe57 100644
 --- a/block/blk-mq-debugfs.c
 +++ b/block/blk-mq-debugfs.c
 @@ -244,6 +244,7 @@ static const char *const rqf_name[] = {
@@ -93,7 +52,7 @@ index 047ec8874..3fbfe57a4 100644
  #undef RQF_NAME
  
 diff --git a/block/blk-mq.c b/block/blk-mq.c
-index 4c5c16cce..9e85e390e 100644
+index 4c5c16c..9e85e39 100644
 --- a/block/blk-mq.c
 +++ b/block/blk-mq.c
 @@ -2689,6 +2689,8 @@ static void blk_mq_bio_to_request(struct request *rq, struct bio *bio,
@@ -106,7 +65,7 @@ index 4c5c16cce..9e85e390e 100644
  	rq->bio = rq->biotail = bio;
  	rq->__sector = bio->bi_iter.bi_sector;
 diff --git a/drivers/nvme/host/core.c b/drivers/nvme/host/core.c
-index dc388e24c..1ea125021 100644
+index dc388e2..1ea1250 100644
 --- a/drivers/nvme/host/core.c
 +++ b/drivers/nvme/host/core.c
 @@ -4162,6 +4162,10 @@ static void nvme_alloc_ns(struct nvme_ctrl *ctrl, struct nvme_ns_info *info)
@@ -121,7 +80,7 @@ index dc388e24c..1ea125021 100644
  	ns->queue = disk->queue;
  	ns->ctrl = ctrl;
 diff --git a/drivers/nvme/host/nvme.h b/drivers/nvme/host/nvme.h
-index ccd5e05da..0c891e67f 100644
+index ccd5e05..0c891e6 100644
 --- a/drivers/nvme/host/nvme.h
 +++ b/drivers/nvme/host/nvme.h
 @@ -640,6 +640,9 @@ struct nvme_ctrl_ops {
@@ -146,7 +105,7 @@ index ccd5e05da..0c891e67f 100644
  	}
  	blk_mq_end_request_batch(iob);
 diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
-index 9fd04cd7c..379dba9b8 100644
+index 9fd04cd..379dba9 100644
 --- a/drivers/nvme/host/pci.c
 +++ b/drivers/nvme/host/pci.c
 @@ -27,6 +27,7 @@
@@ -260,7 +219,7 @@ index 9fd04cd7c..379dba9b8 100644
  
  static int nvme_dev_map(struct nvme_dev *dev)
 diff --git a/include/linux/bio.h b/include/linux/bio.h
-index 0b6744557..ba76d8cec 100644
+index 0b67445..ba76d8c 100644
 --- a/include/linux/bio.h
 +++ b/include/linux/bio.h
 @@ -51,6 +51,20 @@ static inline bool bio_flagged(const struct bio *bio, unsigned int bit)
@@ -285,7 +244,7 @@ index 0b6744557..ba76d8cec 100644
  {
  	bio->bi_flags |= (1U << bit);
 diff --git a/include/linux/blk-mq.h b/include/linux/blk-mq.h
-index 18a2388ba..d91a5a15c 100644
+index 18a2388..d91a5a1 100644
 --- a/include/linux/blk-mq.h
 +++ b/include/linux/blk-mq.h
 @@ -64,6 +64,12 @@ enum rqf_flags {
@@ -310,7 +269,7 @@ index 18a2388ba..d91a5a15c 100644
  /* flags that prevent us from merging requests: */
  #define RQF_NOMERGE_FLAGS \
 diff --git a/include/linux/blk_types.h b/include/linux/blk_types.h
-index 8808ee76e..e41f48a2e 100644
+index 8808ee7..e41f48a 100644
 --- a/include/linux/blk_types.h
 +++ b/include/linux/blk_types.h
 @@ -322,6 +322,8 @@ enum {
@@ -323,7 +282,7 @@ index 8808ee76e..e41f48a2e 100644
  };
  
 diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
-index 890128cde..7d590ac18 100644
+index 890128c..7d590ac 100644
 --- a/include/linux/blkdev.h
 +++ b/include/linux/blkdev.h
 @@ -532,6 +532,12 @@ struct request_queue {
@@ -348,7 +307,7 @@ index 890128cde..7d590ac18 100644
  struct bio *bio_submit_split_bioset(struct bio *bio, unsigned int split_sectors,
  				    struct bio_set *bs);
 diff --git a/include/linux/io_uring_types.h b/include/linux/io_uring_types.h
-index 23b8891d5..c50e6d225 100644
+index 23b8891..c50e6d2 100644
 --- a/include/linux/io_uring_types.h
 +++ b/include/linux/io_uring_types.h
 @@ -6,6 +6,7 @@
@@ -412,7 +371,7 @@ index 23b8891d5..c50e6d225 100644
  		struct io_alloc_cache	imu_cache;
  
 diff --git a/include/uapi/linux/io_uring.h b/include/uapi/linux/io_uring.h
-index 909fb7aea..904401495 100644
+index 909fb7a..9044014 100644
 --- a/include/uapi/linux/io_uring.h
 +++ b/include/uapi/linux/io_uring.h
 @@ -318,6 +318,7 @@ enum io_uring_op {
@@ -467,7 +426,7 @@ index 909fb7aea..904401495 100644
  	__u32 offset;
  	__u32 resv;
 diff --git a/io_uring/Kconfig b/io_uring/Kconfig
-index a283d9e53..1e2fb96a0 100644
+index a283d9e..1e2fb96 100644
 --- a/io_uring/Kconfig
 +++ b/io_uring/Kconfig
 @@ -19,3 +19,8 @@ config IO_URING_BPF_OPS
@@ -480,7 +439,7 @@ index a283d9e53..1e2fb96a0 100644
 +	depends on IO_URING
 +	depends on BLOCK
 diff --git a/io_uring/Makefile b/io_uring/Makefile
-index c54e328d1..cb4678268 100644
+index c54e328..cb46782 100644
 --- a/io_uring/Makefile
 +++ b/io_uring/Makefile
 @@ -16,6 +16,7 @@ obj-$(CONFIG_IO_URING)		+= io_uring.o opdef.o kbuf.o rsrc.o notif.o \
@@ -491,8 +450,23 @@ index c54e328d1..cb4678268 100644
  obj-$(CONFIG_IO_URING_ZCRX)	+= zcrx.o
  obj-$(CONFIG_IO_WQ)		+= io-wq.o
  obj-$(CONFIG_FUTEX)		+= futex.o
+diff --git a/io_uring/fdinfo.c b/io_uring/fdinfo.c
+index f0ff4bd..3ae4804 100644
+--- a/io_uring/fdinfo.c
++++ b/io_uring/fdinfo.c
+@@ -190,8 +190,9 @@ static void __io_uring_show_fdinfo(struct io_ring_ctx *ctx, struct seq_file *m)
+ 			get_task_struct(tsk);
+ 			rcu_read_unlock();
+ 			usec = io_sq_cpu_usec(tsk);
++			sq_pid = task_pid_nr_ns(tsk,
++						proc_pid_ns(file_inode(m->file)->i_sb));
+ 			put_task_struct(tsk);
+-			sq_pid = sq->task_pid;
+ 			sq_cpu = sq->sq_cpu;
+ 			sq_total_time = usec;
+ 			sq_work_time = sq->work_time;
 diff --git a/io_uring/io_uring.c b/io_uring/io_uring.c
-index fb6ed52ba..f36d04126 100644
+index fb6ed52..f36d041 100644
 --- a/io_uring/io_uring.c
 +++ b/io_uring/io_uring.c
 @@ -77,6 +77,7 @@
@@ -542,7 +516,7 @@ index fb6ed52ba..f36d04126 100644
  	io_sqe_files_unregister(ctx);
  	io_unregister_zcrx(ctx);
 diff --git a/io_uring/opdef.c b/io_uring/opdef.c
-index c3ef52b70..15e958e91 100644
+index c3ef52b..15e958e 100644
 --- a/io_uring/opdef.c
 +++ b/io_uring/opdef.c
 @@ -17,6 +17,7 @@
@@ -582,7 +556,7 @@ index c3ef52b70..15e958e91 100644
  
  const char *io_uring_get_opcode(u8 opcode)
 diff --git a/io_uring/register.c b/io_uring/register.c
-index dce5e2f9c..b169d28fd 100644
+index dce5e2f..b169d28 100644
 --- a/io_uring/register.c
 +++ b/io_uring/register.c
 @@ -23,6 +23,7 @@
@@ -613,7 +587,7 @@ index dce5e2f9c..b169d28fd 100644
  		ret = -EINVAL;
  		break;
 diff --git a/io_uring/rsrc.c b/io_uring/rsrc.c
-index 7f553d115..3f6a0787e 100644
+index 7f553d1..3f6a078 100644
 --- a/io_uring/rsrc.c
 +++ b/io_uring/rsrc.c
 @@ -161,13 +161,22 @@ static void io_release_ubuf(void *priv)
@@ -671,7 +645,7 @@ index 7f553d115..3f6a0787e 100644
  	iov_iter_bvec(iter, ddir, bvec, nr_segs, len);
  	iter->iov_offset = offset;
 diff --git a/io_uring/rsrc.h b/io_uring/rsrc.h
-index 98ae8ef51..6a157f830 100644
+index 98ae8ef..6a157f8 100644
 --- a/io_uring/rsrc.h
 +++ b/io_uring/rsrc.h
 @@ -42,6 +42,12 @@ struct io_mapped_ubuf {
@@ -716,7 +690,7 @@ index 98ae8ef51..6a157f830 100644
  						       unsigned int index)
  {
 diff --git a/io_uring/rw.c b/io_uring/rw.c
-index e729e0e76..73971102b 100644
+index e729e0e..7397110 100644
 --- a/io_uring/rw.c
 +++ b/io_uring/rw.c
 @@ -23,6 +23,7 @@
@@ -759,9 +733,9 @@ index e729e0e76..73971102b 100644
  			io_req_rw_cleanup(req, 0);
  	}
  	if (nr_events)
-diff --git a/io_uring/slot.c b/io_uring/slot.c
+diff --git b/io_uring/slot.c b/io_uring/slot.c
 new file mode 100644
-index 000000000..61f9c80ed
+index 0000000..61f9c80
 --- /dev/null
 +++ b/io_uring/slot.c
 @@ -0,0 +1,706 @@
@@ -1471,9 +1445,9 @@ index 000000000..61f9c80ed
 +	};
 +	return file->f_op->iopoll(&kiocb, iob, flags);
 +}
-diff --git a/io_uring/slot.h b/io_uring/slot.h
+diff --git b/io_uring/slot.h b/io_uring/slot.h
 new file mode 100644
-index 000000000..2e66852b7
+index 0000000..2e66852
 --- /dev/null
 +++ b/io_uring/slot.h
 @@ -0,0 +1,57 @@
@@ -1535,7 +1509,7 @@ index 000000000..2e66852b7
 +
 +#endif /* IOU_SLOT_H */
 diff --git a/io_uring/uring_cmd.c b/io_uring/uring_cmd.c
-index 7b25dcd9d..807a96688 100644
+index 7b25dcd..807a966 100644
 --- a/io_uring/uring_cmd.c
 +++ b/io_uring/uring_cmd.c
 @@ -258,9 +258,7 @@ int io_uring_cmd(struct io_kiocb *req, unsigned int issue_flags)
@@ -1548,6 +1522,3 @@ index 7b25dcd9d..807a96688 100644
  		if (ctx->flags & IORING_SETUP_HYBRID_IOPOLL) {
  			/* make sure every req only blocks once */
  			req->flags &= ~REQ_F_IOPOLL_STATE;
--- 
-cgit v1.3.1-6-g1854c
-
