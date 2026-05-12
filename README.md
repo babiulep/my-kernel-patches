@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-05-12
+* 7.1/NEXT: fix amneziawg patch
+* 7.1/NEXT: fix rt_mutex_lock patch
+
 ## 2026-05-11
 * 7.1/NEXT: added more fixes for Jens Axboe's io_uring-io-slots
 * 7.1/NEXT: add Jens Axboe's io_uring-io-slots

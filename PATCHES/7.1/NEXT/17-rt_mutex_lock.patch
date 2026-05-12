@@ -1,13 +1,9 @@
 diff --git a/kernel/locking/rtmutex_api.c b/kernel/locking/rtmutex_api.c
-index 23ad997..497d962 100644
+index 9faa670..497d962 100644
 --- a/kernel/locking/rtmutex_api.c
 +++ b/kernel/locking/rtmutex_api.c
-@@ -87,9 +87,10 @@ EXPORT_SYMBOL_GPL(_rt_mutex_lock_nest_lock);
-  *
-  * @lock: the rt_mutex to be locked
-  */
--void __sched rt_mutex_lock(struct rt_mutex *lock)
-+void __sched rt_mutex_lock(struct rt_mutex *lock) __acquires(lock)
+@@ -90,6 +90,7 @@ EXPORT_SYMBOL_GPL(_rt_mutex_lock_nest_lock);
+ void __sched rt_mutex_lock(struct rt_mutex *lock) __acquires(lock)
  {
  	__rt_mutex_lock_common(lock, TASK_UNINTERRUPTIBLE, NULL, 0);
 +	__acquire(lock);
