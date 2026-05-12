@@ -134,10 +134,10 @@ index 028aeb9..ea6edd2 100644
  retry:
  	vma = lock_mm_and_find_vma(mm, address, regs);
 diff --git a/arch/x86/mm/fault.c b/arch/x86/mm/fault.c
-index 63de8e8..6eb2075 100644
+index 250942e..18eb51c 100644
 --- a/arch/x86/mm/fault.c
 +++ b/arch/x86/mm/fault.c
-@@ -1322,6 +1322,7 @@ void do_user_addr_fault(struct pt_regs *regs,
+@@ -1327,6 +1327,7 @@ void do_user_addr_fault(struct pt_regs *regs,
  	if (!(flags & FAULT_FLAG_USER))
  		goto lock_mmap;
  
@@ -145,7 +145,7 @@ index 63de8e8..6eb2075 100644
  	vma = lock_vma_under_rcu(mm, address);
  	if (!vma)
  		goto lock_mmap;
-@@ -1351,6 +1352,9 @@ void do_user_addr_fault(struct pt_regs *regs,
+@@ -1356,6 +1357,9 @@ void do_user_addr_fault(struct pt_regs *regs,
  						 ARCH_DEFAULT_PKEY);
  		return;
  	}
