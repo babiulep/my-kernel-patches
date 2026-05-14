@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-05-14
+* 7.1/NEXT: add Marie LRU 0.1.2 patch by Masahito Suzuki
+
 ## 2026-05-12
 * 7.1/NEXT: fix amneziawg patch
 * 7.1/NEXT: fix rt_mutex_lock patch
