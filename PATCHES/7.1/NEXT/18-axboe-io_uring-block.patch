@@ -1,3 +1,18 @@
+diff --git a/arch/arm64/kvm/hyp/nvhe/mem_protect.c b/arch/arm64/kvm/hyp/nvhe/mem_protect.c
+index 25f0462..ddc4626 100644
+--- a/arch/arm64/kvm/hyp/nvhe/mem_protect.c
++++ b/arch/arm64/kvm/hyp/nvhe/mem_protect.c
+@@ -1429,6 +1429,10 @@ int __pkvm_host_donate_guest(u64 pfn, u64 gfn, struct pkvm_hyp_vcpu *vcpu)
+ 	if (ret)
+ 		goto unlock;
+ 
++	ret = __guest_check_pgtable_memcache(vcpu);
++	if (ret)
++		goto unlock;
++
+ 	meta = host_stage2_encode_gfn_meta(vm, gfn);
+ 	WARN_ON(host_stage2_set_owner_metadata_locked(phys, PAGE_SIZE,
+ 						      PKVM_ID_GUEST, meta));
 diff --git a/block/blk-core.c b/block/blk-core.c
 index 1745005..823e6ac 100644
 --- a/block/blk-core.c
@@ -370,6 +385,33 @@ index 23b8891..c50e6d2 100644
  		struct io_alloc_cache	node_cache;
  		struct io_alloc_cache	imu_cache;
  
+diff --git a/include/uapi/linux/io_uring/bpf_filter.h b/include/uapi/linux/io_uring/bpf_filter.h
+index 1b461d7..ce7d78a 100644
+--- a/include/uapi/linux/io_uring/bpf_filter.h
++++ b/include/uapi/linux/io_uring/bpf_filter.h
+@@ -27,6 +27,22 @@ struct io_uring_bpf_ctx {
+ 			__u64	mode;
+ 			__u64	resolve;
+ 		} open;
++		/*
++		 * For CONNECT: fields are populated only when addr_len covers
++		 * them; unpopulated fields are zero from the caller-side memset
++		 * in io_uring_populate_bpf_ctx(). port and v4_addr are network
++		 * byte order. Filters may only issue BPF_LD|BPF_W|BPF_ABS at
++		 * 4-byte aligned offsets; load + mask for sub-word fields.
++		 */
++		struct {
++			__u32	family;	/* sa_family_t zero-extended */
++			__be16	port;
++			__u8	pad[2];
++			union {
++				__be32	v4_addr;
++				__u8	v6_addr[16];
++			};
++		} connect;
+ 	};
+ };
+ 
 diff --git a/include/uapi/linux/io_uring.h b/include/uapi/linux/io_uring.h
 index 909fb7a..9044014 100644
 --- a/include/uapi/linux/io_uring.h
@@ -479,8 +521,22 @@ index f0ff4bd..3ae4804 100644
  			sq_cpu = sq->sq_cpu;
  			sq_total_time = usec;
  			sq_work_time = sq->work_time;
+diff --git a/io_uring/io-wq.c b/io_uring/io-wq.c
+index 7a9f94a..8cc7b47 100644
+--- a/io_uring/io-wq.c
++++ b/io_uring/io-wq.c
+@@ -1124,7 +1124,8 @@ static inline void io_wq_remove_pending(struct io_wq *wq,
+ 	if (io_wq_is_hashed(work) && work == wq->hash_tail[hash]) {
+ 		if (prev)
+ 			prev_work = container_of(prev, struct io_wq_work, list);
+-		if (prev_work && io_get_work_hash(prev_work) == hash)
++		if (prev_work && io_wq_is_hashed(prev_work) &&
++		    io_get_work_hash(prev_work) == hash)
+ 			wq->hash_tail[hash] = prev_work;
+ 		else
+ 			wq->hash_tail[hash] = NULL;
 diff --git a/io_uring/io_uring.c b/io_uring/io_uring.c
-index fb6ed52..8b5de65 100644
+index fb6ed52..8192e5c 100644
 --- a/io_uring/io_uring.c
 +++ b/io_uring/io_uring.c
 @@ -77,6 +77,7 @@
@@ -491,7 +547,56 @@ index fb6ed52..8b5de65 100644
  #include "cancel.h"
  #include "net.h"
  #include "notif.h"
-@@ -1454,8 +1455,13 @@ struct io_wq_work *io_wq_free_work(struct io_wq_work *work)
+@@ -688,13 +689,27 @@ static struct io_overflow_cqe *io_alloc_ocqe(struct io_ring_ctx *ctx,
+ 	return ocqe;
+ }
+ 
++/*
++ * Compute queued CQEs for free-space calculation, clamped to cq_entries.
++ */
++static unsigned int io_cqring_queued(struct io_ring_ctx *ctx)
++{
++	struct io_rings *rings = io_get_rings(ctx);
++	int diff;
++
++	diff = (int)(ctx->cached_cq_tail - READ_ONCE(rings->cq.head));
++	if (diff >= 0)
++		return min((unsigned int)diff, ctx->cq_entries);
++	return 0;
++}
++
+ /*
+  * Fill an empty dummy CQE, in case alignment is off for posting a 32b CQE
+  * because the ring is a single 16b entry away from wrapping.
+  */
+ static bool io_fill_nop_cqe(struct io_ring_ctx *ctx, unsigned int off)
+ {
+-	if (__io_cqring_events(ctx) < ctx->cq_entries) {
++	if (io_cqring_queued(ctx) < ctx->cq_entries) {
+ 		struct io_uring_cqe *cqe = &ctx->rings->cqes[off];
+ 
+ 		cqe->user_data = 0;
+@@ -715,7 +730,7 @@ bool io_cqe_cache_refill(struct io_ring_ctx *ctx, bool overflow, bool cqe32)
+ {
+ 	struct io_rings *rings = ctx->rings;
+ 	unsigned int off = ctx->cached_cq_tail & (ctx->cq_entries - 1);
+-	unsigned int free, queued, len;
++	unsigned int free, len;
+ 
+ 	/*
+ 	 * Posting into the CQ when there are pending overflowed CQEs may break
+@@ -735,9 +750,7 @@ bool io_cqe_cache_refill(struct io_ring_ctx *ctx, bool overflow, bool cqe32)
+ 		off = 0;
+ 	}
+ 
+-	/* userspace may cheat modifying the tail, be safe and do min */
+-	queued = min(__io_cqring_events(ctx), ctx->cq_entries);
+-	free = ctx->cq_entries - queued;
++	free = ctx->cq_entries - io_cqring_queued(ctx);
+ 	/* we need a contiguous range, limit based on the current array offset */
+ 	len = min(free, ctx->cq_entries - off);
+ 	if (len < (cqe32 + 1))
+@@ -1454,8 +1467,13 @@ struct io_wq_work *io_wq_free_work(struct io_wq_work *work)
  	struct io_kiocb *nxt = NULL;
  
  	if (req_ref_put_and_test_atomic(req)) {
@@ -506,7 +611,7 @@ index fb6ed52..8b5de65 100644
  		io_free_req(req);
  	}
  	return nxt ? &nxt->work : NULL;
-@@ -1796,17 +1802,25 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
+@@ -1796,17 +1814,25 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
  		return io_init_fail_req(req, -EINVAL);
  	if (!def->iopoll && (ctx->flags & IORING_SETUP_IOPOLL))
  		return io_init_fail_req(req, -EINVAL);
@@ -536,7 +641,7 @@ index fb6ed52..8b5de65 100644
  			state->plug_started = true;
  			state->need_plug = false;
  			blk_start_plug_nr_ios(&state->plug, state->submit_nr);
-@@ -2156,6 +2170,7 @@ static __cold void io_ring_ctx_free(struct io_ring_ctx *ctx)
+@@ -2156,6 +2182,7 @@ static __cold void io_ring_ctx_free(struct io_ring_ctx *ctx)
  	io_sq_thread_finish(ctx);
  
  	mutex_lock(&ctx->uring_lock);
@@ -544,8 +649,96 @@ index fb6ed52..8b5de65 100644
  	io_sqe_buffers_unregister(ctx);
  	io_sqe_files_unregister(ctx);
  	io_unregister_zcrx(ctx);
+diff --git a/io_uring/kbuf.c b/io_uring/kbuf.c
+index 63061aa..dd54e43 100644
+--- a/io_uring/kbuf.c
++++ b/io_uring/kbuf.c
+@@ -21,7 +21,7 @@
+ #define MAX_BIDS_PER_BGID (1 << 16)
+ 
+ /* Mapped buffer ring, return io_uring_buf from head */
+-#define io_ring_head_to_buf(br, head, mask)	&(br)->bufs[(head) & (mask)]
++#define io_ring_head_to_buf(br, head, mask)	(&(br)->bufs[(head) & (mask)])
+ 
+ struct io_provide_buf {
+ 	struct file			*file;
+diff --git a/io_uring/net.c b/io_uring/net.c
+index 30cd22c..cceb5c1 100644
+--- a/io_uring/net.c
++++ b/io_uring/net.c
+@@ -1674,6 +1674,47 @@ void io_socket_bpf_populate(struct io_uring_bpf_ctx *bctx, struct io_kiocb *req)
+ 	bctx->socket.protocol = sock->protocol;
+ }
+ 
++void io_connect_bpf_populate(struct io_uring_bpf_ctx *bctx, struct io_kiocb *req)
++{
++	struct io_connect *conn = io_kiocb_to_cmd(req, struct io_connect);
++	struct io_async_msghdr *iomsg = req->async_data;
++	struct sockaddr_storage *ss = &iomsg->addr;
++
++	/*
++	 * move_addr_to_kernel() skips the copy for addr_len == 0, so
++	 * iomsg->addr may hold stale data from a prior CONNECT. Bail
++	 * unless addr_len covers the family discriminator.
++	 */
++	if (conn->addr_len < (int)sizeof(sa_family_t))
++		return;
++
++	bctx->connect.family = ss->ss_family;
++	switch (ss->ss_family) {
++	case AF_INET: {
++		struct sockaddr_in *sin = (struct sockaddr_in *)ss;
++
++		if (conn->addr_len < (int)sizeof(*sin))
++			break;
++		bctx->connect.port = sin->sin_port;
++		bctx->connect.v4_addr = sin->sin_addr.s_addr;
++		break;
++	}
++	case AF_INET6: {
++		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)ss;
++
++		if (conn->addr_len < (int)sizeof(*sin6))
++			break;
++		bctx->connect.port = sin6->sin6_port;
++		memcpy(bctx->connect.v6_addr, &sin6->sin6_addr,
++		       sizeof(bctx->connect.v6_addr));
++		break;
++	}
++	default:
++		/* family is set; per-family fields stay zero - family-only filtering */
++		break;
++	}
++}
++
+ int io_socket_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
+ {
+ 	struct io_socket *sock = io_kiocb_to_cmd(req, struct io_socket);
+diff --git a/io_uring/net.h b/io_uring/net.h
+index d4d1ddc..51fda71 100644
+--- a/io_uring/net.h
++++ b/io_uring/net.h
+@@ -46,6 +46,7 @@ int io_accept(struct io_kiocb *req, unsigned int issue_flags);
+ int io_socket_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe);
+ int io_socket(struct io_kiocb *req, unsigned int issue_flags);
+ void io_socket_bpf_populate(struct io_uring_bpf_ctx *bctx, struct io_kiocb *req);
++void io_connect_bpf_populate(struct io_uring_bpf_ctx *bctx, struct io_kiocb *req);
+ 
+ int io_connect_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe);
+ int io_connect(struct io_kiocb *req, unsigned int issue_flags);
+@@ -69,4 +70,10 @@ static inline void io_socket_bpf_populate(struct io_uring_bpf_ctx *bctx,
+ 					  struct io_kiocb *req)
+ {
+ }
++
++static inline void io_connect_bpf_populate(struct io_uring_bpf_ctx *bctx,
++					   struct io_kiocb *req)
++{
++}
++
+ #endif
 diff --git a/io_uring/opdef.c b/io_uring/opdef.c
-index c3ef52b..15e958e 100644
+index c3ef52b..dfc4ddb 100644
 --- a/io_uring/opdef.c
 +++ b/io_uring/opdef.c
 @@ -17,6 +17,7 @@
@@ -556,7 +749,19 @@ index c3ef52b..15e958e 100644
  
  #include "xattr.h"
  #include "nop.h"
-@@ -589,6 +590,17 @@ const struct io_issue_def io_issue_defs[] = {
+@@ -203,9 +204,11 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.unbound_nonreg_file	= 1,
+ 		.pollout		= 1,
+ #if defined(CONFIG_NET)
++		.filter_pdu_size	= sizeof_field(struct io_uring_bpf_ctx, connect),
+ 		.async_size		= sizeof(struct io_async_msghdr),
+ 		.prep			= io_connect_prep,
+ 		.issue			= io_connect,
++		.filter_populate	= io_connect_bpf_populate,
+ #else
+ 		.prep			= io_eopnotsupp_prep,
+ #endif
+@@ -589,6 +592,17 @@ const struct io_issue_def io_issue_defs[] = {
  		.prep			= io_uring_cmd_prep,
  		.issue			= io_uring_cmd,
  	},
@@ -574,7 +779,7 @@ index c3ef52b..15e958e 100644
  };
  
  const struct io_cold_def io_cold_defs[] = {
-@@ -847,6 +859,9 @@ const struct io_cold_def io_cold_defs[] = {
+@@ -847,6 +861,9 @@ const struct io_cold_def io_cold_defs[] = {
  		.sqe_copy		= io_uring_cmd_sqe_copy,
  		.cleanup		= io_uring_cmd_cleanup,
  	},
@@ -719,7 +924,7 @@ index 98ae8ef..6a157f8 100644
  						       unsigned int index)
  {
 diff --git a/io_uring/rw.c b/io_uring/rw.c
-index e729e0e..7397110 100644
+index e729e0e..01fbd26 100644
 --- a/io_uring/rw.c
 +++ b/io_uring/rw.c
 @@ -23,6 +23,7 @@
@@ -730,6 +935,24 @@ index e729e0e..7397110 100644
  
  static void io_complete_rw(struct kiocb *kiocb, long res);
  static void io_complete_rw_iopoll(struct kiocb *kiocb, long res);
+@@ -230,7 +231,7 @@ static inline void io_meta_restore(struct io_async_rw *io, struct kiocb *kiocb)
+ }
+ 
+ static int io_prep_rw_pi(struct io_kiocb *req, struct io_rw *rw, int ddir,
+-			 u64 attr_ptr, u64 attr_type_mask)
++			 u64 attr_ptr)
+ {
+ 	struct io_uring_attr_pi pi_attr;
+ 	struct io_async_rw *io;
+@@ -305,7 +306,7 @@ static int __io_prep_rw(struct io_kiocb *req, const struct io_uring_sqe *sqe,
+ 			return -EINVAL;
+ 
+ 		attr_ptr = READ_ONCE(sqe->attr_ptr);
+-		return io_prep_rw_pi(req, rw, ddir, attr_ptr, attr_type_mask);
++		return io_prep_rw_pi(req, rw, ddir, attr_ptr);
+ 	}
+ 	return 0;
+ }
 @@ -876,10 +877,8 @@ static int io_rw_init_file(struct io_kiocb *req, fmode_t mode, int rw_type)
  	if (ctx->flags & IORING_SETUP_IOPOLL) {
  		if (!(kiocb->ki_flags & IOCB_DIRECT) || !file->f_op->iopoll)
