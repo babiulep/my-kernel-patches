@@ -465,7 +465,7 @@ index 0000000..53d7da6
 +
 +#endif /* _LINUX_LRU_MARIE_SIMD_H */
 diff --git a/include/linux/mm.h b/include/linux/mm.h
-index 31e27ff..a369da2 100644
+index 9cedc5e..d903109 100644
 --- a/include/linux/mm.h
 +++ b/include/linux/mm.h
 @@ -15,6 +15,7 @@
@@ -560,7 +560,7 @@ index a171070..c53af56 100644
  		return;
  
 diff --git a/include/linux/mmzone.h b/include/linux/mmzone.h
-index 9adb2ad..264e9d6 100644
+index 1331a7b..1920d31 100644
 --- a/include/linux/mmzone.h
 +++ b/include/linux/mmzone.h
 @@ -24,6 +24,7 @@
@@ -571,7 +571,7 @@ index 9adb2ad..264e9d6 100644
  #include <asm/page.h>
  
  /* Free memory management - zoned buddy allocator.  */
-@@ -1240,6 +1241,33 @@ static inline bool zone_is_empty(const struct zone *zone)
+@@ -1243,6 +1244,33 @@ static inline bool zone_is_empty(const struct zone *zone)
  #define LRU_GEN_PGOFF		(KASAN_TAG_PGOFF - LRU_GEN_WIDTH)
  #define LRU_REFS_PGOFF		(LRU_GEN_PGOFF - LRU_REFS_WIDTH)
  
@@ -605,7 +605,7 @@ index 9adb2ad..264e9d6 100644
  /*
   * Define the bit shifts to access each section.  For non-existent
   * sections we define the shift as 0; that plus a 0 mask ensures
-@@ -1529,6 +1557,14 @@ typedef struct pglist_data {
+@@ -1532,6 +1560,14 @@ typedef struct pglist_data {
  
  	atomic_t kswapd_failures;	/* Number of 'reclaimed == 0' runs */
  
@@ -681,10 +681,10 @@ index 760006b..6641eed 100644
  #define NR_UNUSED_PAGEFLAG_BITS	(BITS_PER_LONG - \
  				(NR_NON_PAGEFLAG_BITS + NR_PAGEFLAGS))
 diff --git a/include/linux/swap.h b/include/linux/swap.h
-index 1930f81..3e245a6 100644
+index 7a09df6..c29ab81 100644
 --- a/include/linux/swap.h
 +++ b/include/linux/swap.h
-@@ -422,6 +422,18 @@ extern atomic_long_t nr_swap_pages;
+@@ -421,6 +421,18 @@ extern atomic_long_t nr_swap_pages;
  extern long total_swap_pages;
  extern atomic_t nr_rotate_swap;
  
@@ -703,7 +703,7 @@ index 1930f81..3e245a6 100644
  /* Swap 50% full? Release swapcache more aggressively.. */
  static inline bool vm_swap_full(void)
  {
-@@ -635,5 +647,9 @@ static inline bool mem_cgroup_swap_full(struct folio *folio)
+@@ -632,5 +644,9 @@ static inline bool mem_cgroup_swap_full(struct folio *folio)
  			continue;				\
  		else
  
@@ -722,10 +722,10 @@ index 0000000..ca977ef
 +CONFIG_KUNIT=y
 +CONFIG_SVECLIST_KUNIT_TEST=y
 diff --git a/mm/Kconfig b/mm/Kconfig
-index bb0202c..5ccc835 100644
+index 9e0ca48..73ce282 100644
 --- a/mm/Kconfig
 +++ b/mm/Kconfig
-@@ -1393,6 +1393,43 @@ config LRU_GEN_WALKS_MMU
+@@ -1435,6 +1435,43 @@ config LRU_GEN_WALKS_MMU
  	depends on LRU_GEN && ARCH_HAS_HW_PTE_YOUNG
  # }
  
@@ -794,10 +794,10 @@ index 8ad2ab0..27cbfb2 100644
  obj-$(CONFIG_HAS_DMA)	+= dmapool.o
  obj-$(CONFIG_HUGETLBFS)	+= hugetlb.o hugetlb_sysfs.o hugetlb_sysctl.o
 diff --git a/mm/huge_memory.c b/mm/huge_memory.c
-index e9d499d..2e537cb 100644
+index c565b2a..aac473f 100644
 --- a/mm/huge_memory.c
 +++ b/mm/huge_memory.c
-@@ -3576,10 +3576,30 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
+@@ -3587,10 +3587,30 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
  	} else {
  		/* head is still on lru (and we have it frozen) */
  		VM_WARN_ON(!folio_test_lru(folio));
@@ -831,7 +831,7 @@ index e9d499d..2e537cb 100644
  	}
  }
 diff --git a/mm/internal.h b/mm/internal.h
-index 5a2ddcf..8a623b6 100644
+index 09931b1..03c22b7 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
 @@ -626,11 +626,143 @@ extern unsigned long highest_memmap_pfn;
@@ -8508,7 +8508,7 @@ index 0000000..7b8b6ae
 +		spin_lock_init(&marie_blooms[nid].lock);
 +}
 diff --git a/mm/memcontrol.c b/mm/memcontrol.c
-index d978e18..7fce469 100644
+index 0eb50e6..2f187ec 100644
 --- a/mm/memcontrol.c
 +++ b/mm/memcontrol.c
 @@ -28,6 +28,7 @@
@@ -8519,7 +8519,7 @@ index d978e18..7fce469 100644
  #include <linux/cgroup.h>
  #include <linux/cpuset.h>
  #include <linux/sched/mm.h>
-@@ -287,11 +288,32 @@ retry:
+@@ -307,11 +308,32 @@ retry:
  				cond_resched();
  				goto retry;
  			}
@@ -8555,7 +8555,7 @@ index d978e18..7fce469 100644
  		objcg = __memcg_reparent_objcgs(memcg, parent, nid);
  
  		reparent_unlocks(memcg, parent, nid);
-@@ -3967,6 +3989,7 @@ static void __mem_cgroup_free(struct mem_cgroup *memcg)
+@@ -4000,6 +4022,7 @@ static void __mem_cgroup_free(struct mem_cgroup *memcg)
  static void mem_cgroup_free(struct mem_cgroup *memcg)
  {
  	lru_gen_exit_memcg(memcg);
@@ -8564,7 +8564,7 @@ index d978e18..7fce469 100644
  	__mem_cgroup_free(memcg);
  }
 diff --git a/mm/mm_init.c b/mm/mm_init.c
-index fde49f7..8fea536 100644
+index 6de3a77..8a7075f 100644
 --- a/mm/mm_init.c
 +++ b/mm/mm_init.c
 @@ -113,7 +113,7 @@ void __init mminit_verify_pageflags_layout(void)
@@ -8595,7 +8595,7 @@ index fde49f7..8fea536 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index 3a56825..822f88f 100644
+index ef6c96e..0579fb3 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -274,6 +274,22 @@ static int watermark_boost_factor __read_mostly = 15000;
@@ -8621,7 +8621,7 @@ index 3a56825..822f88f 100644
  /* movable_zone is the "real" zone pages in ZONE_MOVABLE are taken from */
  int movable_zone;
  EXPORT_SYMBOL(movable_zone);
-@@ -4598,6 +4614,44 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
+@@ -4602,6 +4618,44 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
  	if (*no_progress_loops > MAX_RECLAIM_RETRIES)
  		goto out;
  
@@ -8666,7 +8666,7 @@ index 3a56825..822f88f 100644
  
  	/*
  	 * Keep reclaiming pages while there is a chance this will lead
-@@ -4756,6 +4810,14 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -4760,6 +4814,14 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  		WARN_ON_ONCE(current->flags & PF_MEMALLOC);
  	}
  
@@ -8681,7 +8681,7 @@ index 3a56825..822f88f 100644
  restart:
  	compaction_retries = 0;
  	no_progress_loops = 0;
-@@ -6577,6 +6639,22 @@ int __meminit init_per_zone_wmark_min(void)
+@@ -6581,6 +6643,22 @@ int __meminit init_per_zone_wmark_min(void)
  
  	khugepaged_min_free_kbytes_update();
  
@@ -8704,7 +8704,7 @@ index 3a56825..822f88f 100644
  	return 0;
  }
  postcore_initcall(init_per_zone_wmark_min)
-@@ -6754,6 +6832,14 @@ static const struct ctl_table page_alloc_sysctl_table[] = {
+@@ -6758,6 +6836,14 @@ static const struct ctl_table page_alloc_sysctl_table[] = {
  		.proc_handler	= min_free_kbytes_sysctl_handler,
  		.extra1		= SYSCTL_ZERO,
  	},
@@ -8926,7 +8926,7 @@ index 7ed7659..c77e015 100644
  {
  #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 diff --git a/mm/rmap.c b/mm/rmap.c
-index fb3c351..2fc748b 100644
+index 1c77d5d..d9a655b 100644
 --- a/mm/rmap.c
 +++ b/mm/rmap.c
 @@ -75,6 +75,7 @@
@@ -9017,7 +9017,7 @@ index a77016f..7f499ac 100644
  /* linux/mm/swap_state.c */
  extern struct address_space swap_space __read_mostly;
 diff --git a/mm/vmscan.c b/mm/vmscan.c
-index b3e5555..e61ce1a 100644
+index b3e5555..01cde8a 100644
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
 @@ -30,6 +30,7 @@

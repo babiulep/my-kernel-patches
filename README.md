@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-05-21
+* 7.1/NEXT: fix offsets
+
 ## 2026-05-15
 * 7.1/NEXT: update Jens Axboe's io_uring-io-slots
 
@@ -19,7 +22,7 @@
 
 ## 2026-05-07
   linux-next tag: next-20260507
-* 7.1/NEXT: fixes offsets in patches
+* 7.1/NEXT: fix offsets
 
 ## 2026-05-06
   linux-next tag: next-20260506
