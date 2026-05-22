@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-05-22
+* 7.1/NEXT: fix Marie LRU 0.1.2 patch
+
 ## 2026-05-21
 * 7.1/NEXT: fix offsets
 

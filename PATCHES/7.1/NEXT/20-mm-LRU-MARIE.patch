@@ -681,10 +681,10 @@ index 760006b..6641eed 100644
  #define NR_UNUSED_PAGEFLAG_BITS	(BITS_PER_LONG - \
  				(NR_NON_PAGEFLAG_BITS + NR_PAGEFLAGS))
 diff --git a/include/linux/swap.h b/include/linux/swap.h
-index 7a09df6..c29ab81 100644
+index 8c43bc3..fafecef 100644
 --- a/include/linux/swap.h
 +++ b/include/linux/swap.h
-@@ -421,6 +421,18 @@ extern atomic_long_t nr_swap_pages;
+@@ -420,6 +420,18 @@ extern atomic_long_t nr_swap_pages;
  extern long total_swap_pages;
  extern atomic_t nr_rotate_swap;
  
@@ -703,7 +703,7 @@ index 7a09df6..c29ab81 100644
  /* Swap 50% full? Release swapcache more aggressively.. */
  static inline bool vm_swap_full(void)
  {
-@@ -632,5 +644,9 @@ static inline bool mem_cgroup_swap_full(struct folio *folio)
+@@ -629,5 +641,9 @@ static inline bool mem_cgroup_swap_full(struct folio *folio)
  			continue;				\
  		else
  
@@ -770,7 +770,7 @@ index 9e0ca48..73ce282 100644
         def_bool n
  
 diff --git a/mm/Makefile b/mm/Makefile
-index 8ad2ab0..27cbfb2 100644
+index eff9f9e..0acf4df 100644
 --- a/mm/Makefile
 +++ b/mm/Makefile
 @@ -76,6 +76,19 @@ ifdef CONFIG_MMU
@@ -794,7 +794,7 @@ index 8ad2ab0..27cbfb2 100644
  obj-$(CONFIG_HAS_DMA)	+= dmapool.o
  obj-$(CONFIG_HUGETLBFS)	+= hugetlb.o hugetlb_sysfs.o hugetlb_sysctl.o
 diff --git a/mm/huge_memory.c b/mm/huge_memory.c
-index c565b2a..aac473f 100644
+index 42b86e8..24f6586 100644
 --- a/mm/huge_memory.c
 +++ b/mm/huge_memory.c
 @@ -3587,10 +3587,30 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
@@ -831,10 +831,10 @@ index c565b2a..aac473f 100644
  	}
  }
 diff --git a/mm/internal.h b/mm/internal.h
-index 09931b1..03c22b7 100644
+index 5602393..9cbbb34 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
-@@ -626,11 +626,143 @@ extern unsigned long highest_memmap_pfn;
+@@ -617,11 +617,143 @@ extern unsigned long highest_memmap_pfn;
  #define MAX_RECLAIM_RETRIES 16
  
  /*
@@ -979,7 +979,7 @@ index 09931b1..03c22b7 100644
  int user_proactive_reclaim(char *buf,
  			   struct mem_cgroup *memcg, pg_data_t *pgdat);
  
-@@ -693,6 +825,16 @@ struct alloc_context {
+@@ -684,6 +816,16 @@ struct alloc_context {
  	 */
  	enum zone_type highest_zoneidx;
  	bool spread_dirty_pages;
@@ -8508,7 +8508,7 @@ index 0000000..7b8b6ae
 +		spin_lock_init(&marie_blooms[nid].lock);
 +}
 diff --git a/mm/memcontrol.c b/mm/memcontrol.c
-index 0eb50e6..2f187ec 100644
+index cf54021..ea59160 100644
 --- a/mm/memcontrol.c
 +++ b/mm/memcontrol.c
 @@ -28,6 +28,7 @@
@@ -8555,7 +8555,7 @@ index 0eb50e6..2f187ec 100644
  		objcg = __memcg_reparent_objcgs(memcg, parent, nid);
  
  		reparent_unlocks(memcg, parent, nid);
-@@ -4000,6 +4022,7 @@ static void __mem_cgroup_free(struct mem_cgroup *memcg)
+@@ -4003,6 +4025,7 @@ static void __mem_cgroup_free(struct mem_cgroup *memcg)
  static void mem_cgroup_free(struct mem_cgroup *memcg)
  {
  	lru_gen_exit_memcg(memcg);
@@ -8720,16 +8720,17 @@ index ef6c96e..0579fb3 100644
  		.procname	= "watermark_boost_factor",
  		.data		= &watermark_boost_factor,
 diff --git a/mm/page_io.c b/mm/page_io.c
-index 7ed7659..c77e015 100644
+index f2d8fe7..d3369ca 100644
 --- a/mm/page_io.c
 +++ b/mm/page_io.c
-@@ -25,8 +25,16 @@
+@@ -25,9 +25,17 @@
  #include <linux/sched/task.h>
  #include <linux/delayacct.h>
  #include <linux/zswap.h>
 +#include <linux/cpumask.h>
 +#include <linux/kfifo.h>
  #include "swap.h"
+ #include "swap_table.h"
  
 +/*
 + * Counter consumed by the early-OOM gate in
@@ -8740,7 +8741,7 @@ index 7ed7659..c77e015 100644
  static void __end_swap_bio_write(struct bio *bio)
  {
  	struct folio *folio = bio_first_folio_all(bio);
-@@ -39,7 +47,16 @@ static void __end_swap_bio_write(struct bio *bio)
+@@ -40,7 +48,16 @@ static void __end_swap_bio_write(struct bio *bio)
  		 * very quickly.
  		 *
  		 * Also clear PG_reclaim to avoid folio_rotate_reclaimable()
@@ -8757,8 +8758,8 @@ index 7ed7659..c77e015 100644
  		folio_mark_dirty(folio);
  		pr_alert_ratelimited("Write-error on swap-device (%u:%u:%llu)\n",
  				     MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)),
-@@ -233,6 +250,112 @@ static void swap_zeromap_folio_clear(struct folio *folio)
- 	}
+@@ -244,6 +261,112 @@ static void swap_zeromap_folio_clear(struct folio *folio)
+ 	swap_cluster_unlock(ci);
  }
  
 +/*
@@ -8870,7 +8871,7 @@ index 7ed7659..c77e015 100644
  /*
   * We may have stale swap cache pages in memory: notice
   * them here and get rid of the unnecessary final write.
-@@ -272,6 +395,14 @@ int swap_writeout(struct folio *folio, struct swap_iocb **swap_plug)
+@@ -282,6 +405,14 @@ int swap_writeout(struct folio *folio, struct swap_iocb **swap_plug)
  	 */
  	swap_zeromap_folio_clear(folio);
  
@@ -8885,7 +8886,7 @@ index 7ed7659..c77e015 100644
  	if (zswap_store(folio)) {
  		count_mthp_stat(folio_order(folio), MTHP_STAT_ZSWPOUT);
  		goto out_unlock;
-@@ -292,6 +423,39 @@ out_unlock:
+@@ -302,6 +433,39 @@ out_unlock:
  	return ret;
  }
  
@@ -9002,10 +9003,10 @@ index 70c90b0..8010d9b 100644
  		folio_mark_accessed(folio);
  
 diff --git a/mm/swap.h b/mm/swap.h
-index a77016f..7f499ac 100644
+index 900a539..43cf064 100644
 --- a/mm/swap.h
 +++ b/mm/swap.h
-@@ -227,6 +227,10 @@ static inline void swap_read_unplug(struct swap_iocb *plug)
+@@ -251,6 +251,10 @@ static inline void swap_read_unplug(struct swap_iocb *plug)
  void swap_write_unplug(struct swap_iocb *sio);
  int swap_writeout(struct folio *folio, struct swap_iocb **swap_plug);
  void __swap_writepage(struct folio *folio, struct swap_iocb **swap_plug);
@@ -9017,7 +9018,7 @@ index a77016f..7f499ac 100644
  /* linux/mm/swap_state.c */
  extern struct address_space swap_space __read_mostly;
 diff --git a/mm/vmscan.c b/mm/vmscan.c
-index b3e5555..01cde8a 100644
+index ca4533e..2c2c011 100644
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
 @@ -30,6 +30,7 @@
