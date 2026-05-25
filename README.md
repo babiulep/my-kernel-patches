@@ -4,7 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-05-25
-* 7.1/NEXT: upgrade Marie LRU 0.2.1 patch
+* 7.1/NEXT: remove Marie LRU 0.2.1 patch
 
 ## 2026-05-22
 * 7.1/NEXT: fix Marie LRU 0.1.2 patch
