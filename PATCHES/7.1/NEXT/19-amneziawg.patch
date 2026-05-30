@@ -49531,7 +49531,7 @@ diff --git a/drivers/net/wireguard/send.c b/net/wireguard/send.c
 similarity index 82%
 rename from a/drivers/net/wireguard/send.c
 rename to b/net/wireguard/send.c
-index 26e09c3..7a72670 100644
+index 67d0147..dea6258 100644
 --- a/drivers/net/wireguard/send.c
 +++ b/net/wireguard/send.c
 @@ -3,6 +3,8 @@
@@ -49667,7 +49667,7 @@ index 26e09c3..7a72670 100644
  {
  	unsigned int padding_len, plaintext_len, trailer_len;
  	struct scatterlist sg[MAX_SKB_FRAGS + 8];
-@@ -190,7 +237,7 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
+@@ -180,7 +227,7 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
  	/* Expand head section to have room for our header and the network
  	 * stack's headers.
  	 */

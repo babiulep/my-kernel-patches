@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-05-30
+* 7.1/NEXT: update amneziawg, fix offsets for others
+
 ## 2026-05-27
 * 7.1/NEXT: NVIDIA 610.43.02 fix: drm_atomic_state changed to drm_atomic_commit
 

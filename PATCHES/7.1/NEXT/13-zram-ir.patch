@@ -1,5 +1,5 @@
 diff --git a/drivers/block/zram/zram_drv.c b/drivers/block/zram/zram_drv.c
-index 0711145..4be6dfb 100644
+index 7917fc7..d99cb9d 100644
 --- a/drivers/block/zram/zram_drv.c
 +++ b/drivers/block/zram/zram_drv.c
 @@ -56,6 +56,23 @@ static size_t huge_class_size;
@@ -26,7 +26,7 @@ index 0711145..4be6dfb 100644
  static void slot_free(struct zram *zram, u32 index);
  #define slot_dep_map(zram, index) (&(zram)->table[(index)].dep_map)
  
-@@ -2222,7 +2239,7 @@ static int write_same_filled_page(struct zram *zram, unsigned long fill,
+@@ -2227,7 +2244,7 @@ static int write_same_filled_page(struct zram *zram, unsigned long fill,
  }
  
  static int write_incompressible_page(struct zram *zram, struct page *page,
@@ -35,7 +35,7 @@ index 0711145..4be6dfb 100644
  {
  	unsigned long handle;
  	void *src;
-@@ -2252,6 +2269,7 @@ static int write_incompressible_page(struct zram *zram, struct page *page,
+@@ -2257,6 +2274,7 @@ static int write_incompressible_page(struct zram *zram, struct page *page,
  	set_slot_flag(zram, index, ZRAM_HUGE);
  	set_slot_handle(zram, index, handle);
  	set_slot_size(zram, index, PAGE_SIZE);
@@ -43,7 +43,7 @@ index 0711145..4be6dfb 100644
  	slot_unlock(zram, index);
  
  	atomic64_add(PAGE_SIZE, &zram->stats.compr_data_size);
-@@ -2268,9 +2286,13 @@ static int zram_write_page(struct zram *zram, struct page *page, u32 index)
+@@ -2273,9 +2291,13 @@ static int zram_write_page(struct zram *zram, struct page *page, u32 index)
  	unsigned long handle;
  	unsigned int comp_len;
  	void *mem;
@@ -58,7 +58,7 @@ index 0711145..4be6dfb 100644
  
  	mem = kmap_local_page(page);
  	same_filled = page_same_filled(mem, &element);
-@@ -2278,50 +2300,69 @@ static int zram_write_page(struct zram *zram, struct page *page, u32 index)
+@@ -2283,50 +2305,69 @@ static int zram_write_page(struct zram *zram, struct page *page, u32 index)
  	if (same_filled)
  		return write_same_filled_page(zram, element, index);
  
@@ -144,7 +144,7 @@ index 0711145..4be6dfb 100644
  	return ret;
  }
  
-@@ -3273,6 +3314,15 @@ static int __init zram_init(void)
+@@ -3278,6 +3319,15 @@ static int __init zram_init(void)
  		num_devices--;
  	}
  
@@ -160,7 +160,7 @@ index 0711145..4be6dfb 100644
  	return 0;
  
  out_error:
-@@ -3282,6 +3332,10 @@ out_error:
+@@ -3287,6 +3337,10 @@ out_error:
  
  static void __exit zram_exit(void)
  {
