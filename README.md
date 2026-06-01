@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-01
+* 7.1/NEXT add Marie LRU 0.2.9 patch (next-20260601)
+
 ## 2026-05-30
 * 7.1/NEXT: update amneziawg, fix offsets for others
 
