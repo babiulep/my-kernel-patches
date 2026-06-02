@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-02
+* 7.1/NEXT add Marie LRU 0.2.10 patch
+
 ## 2026-06-01
 * 7.1/NEXT add Marie LRU 0.2.9 patch (next-20260601)
 
