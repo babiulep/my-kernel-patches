@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index 95c7f94..cc0c10f 100644
+index 95314f5..76afc97 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -938,6 +938,22 @@ endif
@@ -26,10 +26,10 @@ index 95c7f94..cc0c10f 100644
  ifdef CONFIG_CC_IS_GCC
  # gcc-10 renamed --param=allow-store-data-races=0 to
 diff --git a/init/Kconfig b/init/Kconfig
-index f5a9dfb..14e6556 100644
+index dfd49e3..37c3ae0 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -319,6 +319,19 @@ config BUILD_SALT
+@@ -316,6 +316,19 @@ config BUILD_SALT
  	  This is mostly useful for distributions which want to ensure the
  	  build is unique between builds. It's safe to leave the default.
  

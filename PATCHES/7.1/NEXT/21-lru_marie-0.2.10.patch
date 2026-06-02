@@ -595,7 +595,7 @@ index a8430a7..d3f05d1 100644
  		return;
  
 diff --git a/include/linux/mmzone.h b/include/linux/mmzone.h
-index 1331a7b..e5cb5b4 100644
+index ca27121..14cb565 100644
 --- a/include/linux/mmzone.h
 +++ b/include/linux/mmzone.h
 @@ -24,6 +24,7 @@
@@ -606,7 +606,7 @@ index 1331a7b..e5cb5b4 100644
  #include <asm/page.h>
  
  /* Free memory management - zoned buddy allocator.  */
-@@ -786,6 +787,21 @@ struct lruvec {
+@@ -784,6 +785,21 @@ struct lruvec {
  	struct pglist_data *pgdat;
  #endif
  	struct zswap_lruvec_state zswap_lruvec_state;
@@ -628,7 +628,7 @@ index 1331a7b..e5cb5b4 100644
  };
  
  /* Isolate for asynchronous migration */
-@@ -1532,6 +1548,20 @@ typedef struct pglist_data {
+@@ -1522,6 +1538,20 @@ typedef struct pglist_data {
  
  	atomic_t kswapd_failures;	/* Number of 'reclaimed == 0' runs */
  
@@ -732,7 +732,7 @@ index eff9f9e..2e3f19e 100644
  obj-$(CONFIG_ZSWAP)	+= zswap.o
  obj-$(CONFIG_HAS_DMA)	+= dmapool.o
 diff --git a/mm/huge_memory.c b/mm/huge_memory.c
-index bf9b480..27f665f 100644
+index b81d1ec..37d84f2 100644
 --- a/mm/huge_memory.c
 +++ b/mm/huge_memory.c
 @@ -6,6 +6,7 @@
@@ -743,7 +743,7 @@ index bf9b480..27f665f 100644
  #include <linux/sched.h>
  #include <linux/sched/mm.h>
  #include <linux/sched/numa_balancing.h>
-@@ -3589,10 +3590,31 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
+@@ -3503,10 +3504,31 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
  	} else {
  		/* head is still on lru (and we have it frozen) */
  		VM_WARN_ON(!folio_test_lru(folio));
@@ -778,7 +778,7 @@ index bf9b480..27f665f 100644
  	}
  }
 diff --git a/mm/internal.h b/mm/internal.h
-index 5602393..9205f50 100644
+index 181e79f..d532352 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
 @@ -616,12 +616,55 @@ extern unsigned long highest_memmap_pfn;
@@ -9274,7 +9274,7 @@ index 7650692..0eed212 100644
  }
  
 diff --git a/mm/memcontrol.c b/mm/memcontrol.c
-index e24114a..ecca29e 100644
+index 56cd4af..0d104f6 100644
 --- a/mm/memcontrol.c
 +++ b/mm/memcontrol.c
 @@ -28,6 +28,7 @@
@@ -9323,8 +9323,8 @@ index e24114a..ecca29e 100644
  	memcg_wb_domain_exit(memcg);
  	__mem_cgroup_free(memcg);
  }
-@@ -4150,6 +4175,15 @@ static struct mem_cgroup *mem_cgroup_alloc(struct mem_cgroup *parent)
- 	memcg->deferred_split_queue.split_queue_len = 0;
+@@ -4145,6 +4170,15 @@ static struct mem_cgroup *mem_cgroup_alloc(struct mem_cgroup *parent)
+ 			__WB_COMPLETION_INIT(&memcg_cgwb_frn_waitq);
  #endif
  	lru_gen_init_memcg(memcg);
 +#ifdef CONFIG_LRU_MARIE
@@ -9339,7 +9339,7 @@ index e24114a..ecca29e 100644
  	return memcg;
  fail:
  	mem_cgroup_private_id_remove(memcg);
-@@ -4309,6 +4343,7 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
+@@ -4303,6 +4337,7 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
  	reparent_shrinker_deferred(memcg);
  	wb_memcg_offline(memcg);
  	lru_gen_offline_memcg(memcg);
@@ -9348,10 +9348,10 @@ index e24114a..ecca29e 100644
  	drain_all_stock(memcg);
  
 diff --git a/mm/mm_init.c b/mm/mm_init.c
-index 6de3a77..dbf0e44 100644
+index f191162..969a3f9 100644
 --- a/mm/mm_init.c
 +++ b/mm/mm_init.c
-@@ -1410,6 +1410,9 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
+@@ -1395,6 +1395,9 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
  	pgdat_init_kcompactd(pgdat);
  
  	init_waitqueue_head(&pgdat->kswapd_wait);
@@ -9362,7 +9362,7 @@ index 6de3a77..dbf0e44 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index e47679e..f67685f 100644
+index 81a9d4d..98765f0 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -16,6 +16,7 @@
@@ -9402,7 +9402,7 @@ index e47679e..f67685f 100644
  	if (memcg_kmem_online() && PageMemcgKmem(page))
  		__memcg_kmem_uncharge_page(page, order);
  
-@@ -4595,6 +4618,45 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
+@@ -4599,6 +4622,45 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
  	if (*no_progress_loops > MAX_RECLAIM_RETRIES)
  		goto out;
  
@@ -9448,7 +9448,7 @@ index e47679e..f67685f 100644
  
  	/*
  	 * Keep reclaiming pages while there is a chance this will lead
-@@ -4753,6 +4815,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -4757,6 +4819,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  		WARN_ON_ONCE(current->flags & PF_MEMALLOC);
  	}
  

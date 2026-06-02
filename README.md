@@ -5,6 +5,8 @@
 
 ## 2026-06-02
 * 7.1/NEXT add Marie LRU 0.2.10 patch
+* 7.1/NEXT distributed build support for Clang ThinLTO
+* 7.1/NEXT fix offsets
 
 ## 2026-06-01
 * 7.1/NEXT add Marie LRU 0.2.9 patch (next-20260601)
