@@ -1,9 +1,9 @@
 diff --git b/include/linux/lru_marie.h b/include/linux/lru_marie.h
 new file mode 100644
-index 0000000..d3e7a27
+index 0000000..e894ae7
 --- /dev/null
 +++ b/include/linux/lru_marie.h
-@@ -0,0 +1,465 @@
+@@ -0,0 +1,490 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _LINUX_LRU_MARIE_H
 +#define _LINUX_LRU_MARIE_H
@@ -294,6 +294,31 @@ index 0000000..d3e7a27
 + * the caller continues with the legacy delete path.
 + */
 +bool lru_marie_del_folio(struct lruvec *lruvec, struct folio *folio, bool reclaiming);
++
++/**
++ * lru_marie_release_folio - outer-level release for a TRACKED folio
++ *  reaching refcount 0 (called from __page_cache_release).
++ * @folio:    the folio being released
++ * @lruvecp:  caller's lruvec batch pointer (may be NULL or hold a lock)
++ * @flagsp:   caller's irqsave flags slot
++ *
++ * The dispatch contract: when Marie is enabled, upstream callers MUST
++ * gate by folio_marie_test_tracked() and call this helper for TRACKED
++ * folios INSTEAD OF the legacy folio_test_lru / lruvec_del_folio path.
++ * Reading PG_lru as the dispatch gate would let a Marie-installed
++ * folio (Marie never +1'd mz->lru_zone_size) reach legacy
++ * update_lru_size on the way out and underflow mz. TRACKED is the
++ * single source of truth.
++ *
++ * Internally: relocks @lruvecp to @folio's lruvec with IRQs disabled,
++ * re-tests TRACKED under the lock, runs Marie's del (which leaves mz
++ * untouched), and clears PG_lru. If TRACKED was cleared between the
++ * caller's outer test and our lock acquisition (race with drain or
++ * evict), falls back to the legacy del so accounting stays coherent.
++ * Leaves the lock held in *@lruvecp for the caller's batch context.
++ */
++void lru_marie_release_folio(struct folio *folio, struct lruvec **lruvecp,
++			     unsigned long *flagsp);
 +
 +/**
 + * lru_marie_split_folio - install a freshly-split tail folio under Marie.
@@ -881,6 +906,136 @@ index 0000000..c1e9c9b
 +else
 +obj-y	+= simd_generic.o
 +endif
+diff --git b/mm/lru_marie/account.h b/mm/lru_marie/account.h
+new file mode 100644
+index 0000000..34da653
+--- /dev/null
++++ b/mm/lru_marie/account.h
+@@ -0,0 +1,124 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MM_LRU_MARIE_ACCOUNT_H
++#define _MM_LRU_MARIE_ACCOUNT_H
++
++#include <linux/lockdep.h>
++#include <linux/mm.h>
++#include <linux/mm_inline.h>
++
++#include "state.h"
++
++/*
++ * Marie's four counter+vmstat updates that move together on every
++ * install/evict.  Until Step 3 of the abstraction plan these were
++ * hand-written at five sites (install, evict_locked, evict_counters_only,
++ * survivor install, survivor evict-on-free).  The drift hazard that
++ * cost us 9c6a93782 was: each site picked its own IRQ-state discipline
++ * because no helper enforced it.
++ *
++ *   marie_pc_add(&mlv->types[type].nr_pages,            +-nr)
++ *   marie_pc_add(&marie_nr_folios,                      +-1 )
++ *   marie_update_lru_size(lv, lru, zone,                +-nr)
++ *   marie_pc_add(&mlv->marie_lru_zone_size[lru][zone],  +-nr)
++ *
++ * Two contexts:
++ *
++ *   LOCKED   - caller holds lv->lru_lock with IRQs off.  Used by the
++ *              install / evict_locked / del_folio_locked /
++ *              fill / drain hot paths.  Helpers assert both held
++ *              conditions via lockdep.  mlv is non-NULL.
++ *
++ *   ISOLATE  - caller holds NOTHING (no lru_lock, IRQs on).  Used by
++ *              the reclaim isolate path and the survivor putback.
++ *              Helpers own local_irq_save/restore so the marie_pc_add
++ *              fast path and __mod_zone_page_state inside
++ *              marie_update_lru_size are safe against same-CPU
++ *              softirq reentrancy (the very property 9c6a93782
++ *              introduced).  mlv may be NULL: under reclaim a brand-
++ *              new lruvec may fail GFP_ATOMIC at marie_get_lruvec, and
++ *              teardown can race with the isolate.  In that case only
++ *              the global counters move; the per-mlv counters are
++ *              gone with the missing carrier (no leak -- mirrors the
++ *              pre-helper code in marie_evict_counters_only).
++ *
++ * The helpers do NOT touch folio flags, the per-PFN state byte, the
++ * scan bitmap, or memcg L1.  Those belong to pfn_install.h
++ * (marie_pfn_publish_inherit) and to marie_state_publish_at_gen /
++ * marie_state_drop_pfn.  Each layer keeps its own invariant.
++ */
++
++static inline void marie_account_install(struct marie_lruvec *mlv,
++					 struct folio *f,
++					 enum lru_list lru, int zone)
++{
++	int type = folio_is_file_lru(f);
++	long nr = folio_nr_pages(f);
++
++	lockdep_assert_held(&mlv->lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
++
++	marie_pc_add(&mlv->types[type].nr_pages, nr);
++	marie_pc_add(&marie_nr_folios, 1);
++	marie_update_lru_size(mlv->lruvec, lru, zone, nr);
++	marie_pc_add(&mlv->marie_lru_zone_size[lru][zone], nr);
++}
++
++static inline void marie_account_evict(struct marie_lruvec *mlv,
++				       struct folio *f,
++				       enum lru_list lru, int zone)
++{
++	int type = folio_is_file_lru(f);
++	long nr = folio_nr_pages(f);
++
++	lockdep_assert_held(&mlv->lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
++
++	marie_pc_add(&mlv->types[type].nr_pages, -nr);
++	marie_pc_add(&marie_nr_folios, -1);
++	marie_update_lru_size(mlv->lruvec, lru, zone, -nr);
++	marie_pc_add(&mlv->marie_lru_zone_size[lru][zone], -nr);
++}
++
++static inline void marie_account_install_isolate(struct lruvec *lv,
++						 struct marie_lruvec *mlv,
++						 struct folio *f,
++						 enum lru_list lru, int zone)
++{
++	int type = folio_is_file_lru(f);
++	long nr = folio_nr_pages(f);
++	unsigned long flags;
++
++	WARN_ON_ONCE(irqs_disabled());
++
++	local_irq_save(flags);
++	marie_pc_add(&marie_nr_folios, 1);
++	marie_update_lru_size(lv, lru, zone, nr);
++	if (likely(mlv)) {
++		marie_pc_add(&mlv->types[type].nr_pages, nr);
++		marie_pc_add(&mlv->marie_lru_zone_size[lru][zone], nr);
++	}
++	local_irq_restore(flags);
++}
++
++static inline void marie_account_evict_isolate(struct lruvec *lv,
++					       struct marie_lruvec *mlv,
++					       struct folio *f,
++					       enum lru_list lru, int zone)
++{
++	int type = folio_is_file_lru(f);
++	long nr = folio_nr_pages(f);
++	unsigned long flags;
++
++	WARN_ON_ONCE(irqs_disabled());
++
++	local_irq_save(flags);
++	marie_pc_add(&marie_nr_folios, -1);
++	marie_update_lru_size(lv, lru, zone, -nr);
++	if (likely(mlv)) {
++		marie_pc_add(&mlv->types[type].nr_pages, -nr);
++		marie_pc_add(&mlv->marie_lru_zone_size[lru][zone], -nr);
++	}
++	local_irq_restore(flags);
++}
++
++#endif /* _MM_LRU_MARIE_ACCOUNT_H */
 diff --git b/mm/lru_marie/bitmap.c b/mm/lru_marie/bitmap.c
 new file mode 100644
 index 0000000..da8f595
@@ -1289,10 +1444,10 @@ index 0000000..1439771
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git b/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000..79864ab
+index 0000000..6b0350c
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1809 @@
+@@ -0,0 +1,1933 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -1426,6 +1581,8 @@ index 0000000..79864ab
 +#include <linux/xarray.h>
 +
 +#include "../internal.h"	/* struct scan_control, shrink_folio_list */
++#include "drain_scope.h"
++#include "pfn_install.h"
 +#include "simd.h"
 +#include "state.h"
 +#include "version.h"
@@ -1453,9 +1610,10 @@ index 0000000..79864ab
 + *  install path -- fully synchronous, no staging or pending queues
 + * ---------------------------------------------------------------------
 + *
-+ * lru_marie_add_folio dispatches straight to marie_install_local
-+ * (small folio) or marie_install_locked (THP), both of which publish the
-+ * per-PFN state byte, set the tracking bitmaps, bump the per-mlv /
++ * lru_marie_add_folio dispatches into marie_folio_install (under the
++ * per-type lock for THP, lock-free for small folios). That helper
++ * publishes the per-PFN state byte, sets the tracking bitmaps, bumps
++ * the per-mlv /
 + * global percpu_counters, and set PG_lru -- all under the caller's
 + * lru_lock irqsave. No per-CPU staging, no session-end flush hook, no
 + * wrapper allocation, no async drain, no kworker dispatch.
@@ -1559,11 +1717,13 @@ index 0000000..79864ab
 +
 +/* Forward declaration: drain implementation lives further down with
 + * marie_fill_one_lruvec near the change_state machinery. */
-+static void marie_drain_one_lruvec(struct lruvec *lruvec);
++static void marie_drain_one_lruvec(struct lruvec *lruvec,
++				   struct list_head *to_free);
 +
 +static void marie_drop_lruvec(struct lruvec *lv)
 +{
 +	struct marie_lruvec *mlv;
++	MARIE_DRAIN_DEFER(to_free);
 +
 +	/*
 +	 * Atomic "drain + xa_erase" under @lv->lru_lock.
@@ -1581,30 +1741,28 @@ index 0000000..79864ab
 +	 * lru_marie_add_folio holds lru_lock too, so it cannot install
 +	 * new TRACKED folios during this critical section.
 +	 *
-+	 * Drain itself does not sleep — it operates entirely on the
-+	 * per-(type, gen, tier) bitmaps and counters — so it is safe
++	 * Drain itself does not sleep -- it operates entirely on the
++	 * per-(type, gen, tier) bitmaps and counters -- so it is safe
 +	 * inside spin_lock_irq. drop_lruvec is rare (toggle / memcg
 +	 * teardown); the extra drain work paid here is not on any hot
-+	 * path.
++	 * path. spin_lock_irq already disables preemption and IRQs (the
++	 * former migrate_disable() only existed to give the now-removed
++	 * synchronize_rcu() a stable CPU context).
 +	 */
-+	/*
-+	 * The drain touches only per-lv state and runs under
-+	 * spin_lock_irq(&lv->lru_lock), which already disables preemption
-+	 * and IRQs (the former migrate_disable() only existed to give the
-+	 * now-removed synchronize_rcu() a stable CPU context).
-+	 */
-+	spin_lock_irq(&lv->lru_lock);
-+	marie_drain_one_lruvec(lv);
-+	/*
-+	 * Capture and clear the authoritative lv->marie_mlv under lru_lock.
-+	 * A concurrent dispatcher (lru_marie_add_folio / lru_marie_del_folio)
-+	 * holds the same lru_lock, and marie_drain_one_lruvec above cleared
-+	 * MARIE_TRACKED on every still-tracked folio, so once this lock is
-+	 * dropped no path can route a del back into @mlv.
-+	 */
-+	mlv = READ_ONCE(lv->marie_mlv);
-+	WRITE_ONCE(lv->marie_mlv, NULL);
-+	spin_unlock_irq(&lv->lru_lock);
++	scoped_guard(spinlock_irq, &lv->lru_lock) {
++		marie_drain_one_lruvec(lv, &to_free);
++		/*
++		 * Capture and clear the authoritative lv->marie_mlv under
++		 * lru_lock. A concurrent dispatcher (lru_marie_add_folio /
++		 * lru_marie_del_folio) holds the same lru_lock, and
++		 * marie_drain_one_lruvec above cleared MARIE_TRACKED on
++		 * every still-tracked folio, so once this lock is dropped
++		 * no path can route a del back into @mlv.
++		 */
++		mlv = READ_ONCE(lv->marie_mlv);
++		WRITE_ONCE(lv->marie_mlv, NULL);
++	}
++	/* to_free is auto-flushed at function return via __cleanup. */
 +
 +	if (!mlv)
 +		return;
@@ -1669,13 +1827,13 @@ index 0000000..79864ab
 +/*
 + * lru_marie_add_folio: per-folio synchronous install.
 + *
-+ * Small folios are installed inline by marie_install_local
-+ * under the caller's lru_lock irqsave: per-PFN state byte (TRACKED +
-+ * initial tier + type + zone + head_gen), tracking bitmaps, per-mlv /
-+ * global counters (percpu_counter), and PG_lru are all published in
-+ * one synchronous call. No per-CPU staging and no session-end flush
-+ * hook -- every install is self-contained, so no carry-over state can
-+ * leak across calls or across lruvecs.
++ * All folios are installed by marie_folio_install under the caller's
++ * lru_lock irqsave: per-PFN state byte (TRACKED + initial tier + type +
++ * zone + head_gen), tracking bitmaps, per-mlv / global counters
++ * (percpu_counter), and PG_lru are all published in one synchronous
++ * call. No per-CPU staging and no session-end flush hook -- every
++ * install is self-contained, so no carry-over state can leak across
++ * calls or across lruvecs.
 + *
 + * Skipped folio classes:
 + *
@@ -1685,14 +1843,18 @@ index 0000000..79864ab
 + *     list. Marie keeps unevictable folios on the legacy path so
 + *     mlock_count stays addressable.
 + *
-+ * THP folios go through the per-type-locked variant
-+ * (marie_install_locked) instead of the inline fast path so the
-+ * per-type lock orders the install against concurrent operations on
-+ * the THP's lifetime.
++ * THP folios are routed through the per-type lock at the dispatcher
++ * level so the install is ordered against concurrent operations on
++ * the THP's lifetime. The per-type lock is purely a caller concern;
++ * marie_folio_install's body is identical for both branches.
 + */
 +bool lru_marie_add_folio(struct lruvec *lv, struct folio *folio, bool reclaiming)
 +{
 +	struct marie_lruvec *mlv;
++
++	lockdep_assert_held(&lv->lru_lock);
++	lockdep_assert_irqs_disabled();
++	WARN_ON_ONCE(in_hardirq());
 +
 +	if (!lru_marie_enabled())
 +		return false;
@@ -1706,24 +1868,22 @@ index 0000000..79864ab
 +		return false;
 +
 +	/*
-+	 * Large folios (THP) take the synchronous per-type-locked install
-+	 * (marie_install_locked) instead of the lock-free inline path.
-+	 * Rationale: the per-type lock keeps the THP install ordered
-+	 * against drain / reparent on the same type without relying on
-+	 * the lru_lock-only protection used for the small-folio fast path.
-+	 * lru_lock is already held by the caller, so the per-type lock is
-+	 * a single extra acquisition.
++	 * Large folios (THP) take the per-type lock on the way in so the
++	 * install is ordered against drain / reparent on the same type;
++	 * small folios run lock-free with only lru_lock. Both branches
++	 * route to marie_folio_install; the per-type lock is purely a
++	 * caller concern.
 +	 */
 +	if (folio_test_large(folio)) {
 +		bool ok;
 +		int type = folio_is_file_lru(folio);
 +
 +		scoped_guard(marie_type_lock, &mlv->types[type])
-+			ok = marie_install_locked(mlv, folio);
++			ok = marie_folio_install(folio, mlv);
 +		return ok;
 +	}
 +
-+	return marie_install_local(mlv, folio);
++	return marie_folio_install(folio, mlv);
 +}
 +EXPORT_SYMBOL_GPL(lru_marie_add_folio);
 +
@@ -1766,6 +1926,10 @@ index 0000000..79864ab
 +{
 +	struct marie_lruvec *mlv;
 +
++	lockdep_assert_held(&lv->lru_lock);
++	lockdep_assert_irqs_disabled();
++	WARN_ON_ONCE(in_hardirq());
++
 +	/*
 +	 * Caller already checked lru_marie_enabled() via the static branch,
 +	 * but @head may not be Marie-tracked (e.g. THP added to legacy LRU
@@ -1806,34 +1970,25 @@ index 0000000..79864ab
 +	scoped_guard(marie_type_lock, &mlv->types[folio_is_file_lru(head)]) {
 +		int type = folio_is_file_lru(head);
 +		int zone = folio_zonenum(new_folio);
-+		unsigned long pfn = folio_pfn(new_folio);
 +		u8 head_gen = (u8)atomic_read(&marie_head_gen[type]);
 +
 +		/*
-+		 * The per-PFN state byte is the single record of "Marie
-+		 * owns this folio". Publish the byte and the bitmap bits
-+		 * for the new folio inheriting head's type at the current
-+		 * head_gen + tier 0 (a freshly-split tail page has no
-+		 * independent hotness signal).
++		 * Inherit head's tier-0 install at the current head_gen
++		 * (a freshly-split tail page has no independent hotness
++		 * signal). marie_pfn_publish_inherit writes the state byte,
++		 * the (type, gen, tier) bitmap, the per-memcg L1 bitmap, and
++		 * gen_occupied++; it deliberately skips gen_installs because
++		 * the tail inherits the parent's install budget.
 +		 *
-+		 * folio->lru is initialised onto a self-loop via
-+		 * list_add_tail(&head->lru); Marie never re-attaches it
-+		 * onto a Marie-owned list.
-+		 *
-+		 * PG_lru is set by the caller (lru_add_split_folio) after
-+		 * this returns, after the per-PFN state is published, so a
++		 * folio->lru is placed onto head's list with list_add_tail;
++		 * Marie never re-attaches it onto a Marie-owned list. PG_lru
++		 * is set by the caller (lru_add_split_folio) after this
++		 * returns, after the per-PFN state is published, so a
 +		 * concurrent __page_cache_release observing PG_lru=1 also
 +		 * observes marie_state[pfn] & MARIE_PFN_TRACKED.
 +		 */
 +		list_add_tail(&new_folio->lru, &head->lru);
-+		marie_state[pfn] = MARIE_PFN_TRACKED |
-+			(head_gen << MARIE_PFN_GEN_SHIFT) |
-+			(0 << MARIE_PFN_TIER_SHIFT) |
-+			(type ? MARIE_PFN_TYPE_FILE : 0) |
-+			marie_pfn_zone_bits(zone);
-+		marie_bm_set(&marie_track_bm[type][head_gen][0], pfn);
-+		marie_memcg_bitmap_set(folio_memcg(new_folio), pfn);
-+		atomic_long_inc(&marie_gen_occupied[head_gen][type]);
++		marie_pfn_publish_inherit(new_folio, type, head_gen, 0, zone);
 +		marie_pc_add(&marie_nr_folios, 1);
 +	}
 +}
@@ -1843,6 +1998,10 @@ index 0000000..79864ab
 +{
 +	struct marie_lruvec *mlv;
 +	bool removed, was_resident;
++
++	lockdep_assert_held(&lv->lru_lock);
++	lockdep_assert_irqs_disabled();
++	WARN_ON_ONCE(in_hardirq());
 +
 +	/*
 +	 * TRACKED takes priority over the lru_marie_enabled() gate.  A
@@ -1857,9 +2016,9 @@ index 0000000..79864ab
 +	 * mz->lru_zone_size underflow WARN.
 +	 *
 +	 * Trusting TRACKED is safe regardless of the gate: TRACKED is
-+	 * only ever set under Marie's install helpers
-+	 * (marie_install_local on the inline install path,
-+	 * marie_install_locked for the per-type-locked direct install,
++	 * only ever set under Marie's install helpers (marie_folio_install
++	 * on every install path, marie_pfn_publish_inherit on split's tail,
++	 * marie_state_publish_at_gen on the reclaim survivor putback, and
 +	 * marie_fill_one_lruvec for the enable-time legacy sweep) and
 +	 * only ever cleared by Marie's evict paths or by
 +	 * marie_drain_pfn_locked.
@@ -1927,6 +2086,54 @@ index 0000000..79864ab
 +EXPORT_SYMBOL_GPL(lru_marie_del_folio);
 +
 +/*
++ * Outer-level release entry called from __page_cache_release when the
++ * caller has determined that TRACKED is set. See the contract in
++ * <linux/lru_marie.h>.
++ *
++ * Why a TRACKED outer gate (rather than the legacy folio_test_lru
++ * gate) matters: Marie-installed folios never +1'd mz->lru_zone_size
++ * (state.h::marie_update_lru_size deliberately skips it). If the legacy
++ * gate let such a folio reach mm_inline.h::lruvec_del_folio with
++ * TRACKED clear (e.g., a path we did not anticipate cleared TRACKED
++ * without re-crediting mz), the legacy update_lru_size would
++ * decrement mz->lru_zone_size from 0 -> -1 and trip the
++ * "lru_size went negative" WARN at mm/memcontrol.c. With TRACKED as
++ * the outer gate, Marie folios are never offered to the legacy del
++ * path, and only folios that legacy install +1'd are eligible to
++ * legacy del -1 -- balance is structural.
++ */
++void lru_marie_release_folio(struct folio *folio, struct lruvec **lruvecp,
++			     unsigned long *flagsp)
++{
++	folio_lruvec_relock_irqsave(folio, lruvecp, flagsp);
++
++	lockdep_assert_held(&(*lruvecp)->lru_lock);
++	lockdep_assert_irqs_disabled();
++
++	/*
++	 * lru_marie_del_folio re-tests TRACKED under the lock and handles
++	 * both the normal Marie folio case and the orphan case (mlv freed
++	 * but TRACKED still set, see its body). Returns true on Marie
++	 * ownership; false means TRACKED was cleared between our caller's
++	 * outer test and our lock acquisition (race with drain).
++	 */
++	if (lru_marie_del_folio(*lruvecp, folio, false)) {
++		__folio_clear_lru_flags(folio);
++		return;
++	}
++
++	/*
++	 * Drain raced us. The folio is now on a legacy lruvec list with mz
++	 * credited (drain's line 1012). Run the legacy del to keep PG_lru,
++	 * the list membership, and mz consistent.
++	 */
++	if (folio_test_clear_lru(folio))
++		lruvec_del_folio(*lruvecp, folio);
++	__folio_clear_lru_flags(folio);
++}
++EXPORT_SYMBOL_GPL(lru_marie_release_folio);
++
++/*
 + * ---------------------------------------------------------------------
 + *  memcg lifecycle hook
 + * ---------------------------------------------------------------------
@@ -1935,6 +2142,8 @@ index 0000000..79864ab
 +void lru_marie_exit_memcg(struct mem_cgroup *memcg)
 +{
 +	int nid;
++
++	might_sleep();
 +
 +	for_each_node(nid) {
 +		struct lruvec *lv = mem_cgroup_lruvec(memcg, NODE_DATA(nid));
@@ -1956,18 +2165,22 @@ index 0000000..79864ab
 +static void marie_offline_lruvec(struct lruvec *lv)
 +{
 +	struct marie_lruvec *mlv;
++	MARIE_DRAIN_DEFER(to_free);
 +
-+	spin_lock_irq(&lv->lru_lock);
-+	mlv = READ_ONCE(lv->marie_mlv);
-+	if (mlv)
-+		WRITE_ONCE(mlv->offline, true);
-+	marie_drain_one_lruvec(lv);
-+	spin_unlock_irq(&lv->lru_lock);
++	scoped_guard(spinlock_irq, &lv->lru_lock) {
++		mlv = READ_ONCE(lv->marie_mlv);
++		if (mlv)
++			WRITE_ONCE(mlv->offline, true);
++		marie_drain_one_lruvec(lv, &to_free);
++	}
++	/* to_free is auto-flushed at function return via __cleanup. */
 +}
 +
 +void lru_marie_offline_memcg(struct mem_cgroup *memcg)
 +{
 +	int nid;
++
++	might_sleep();
 +
 +	if (!lru_marie_enabled())
 +		return;
@@ -1991,6 +2204,10 @@ index 0000000..79864ab
 +void lru_marie_reparent_lruvec(struct lruvec *child_lv, struct lruvec *parent_lv)
 +{
 +	struct marie_lruvec *child_mlv, *parent_mlv;
++
++	lockdep_assert_held(&child_lv->lru_lock);
++	lockdep_assert_held(&parent_lv->lru_lock);
++	lockdep_assert_irqs_disabled();
 +
 +	if (!lru_marie_enabled())
 +		return;
@@ -2074,6 +2291,8 @@ index 0000000..79864ab
 +{
 +	struct mem_cgroup *memcg;
 +
++	might_sleep();
++
 +	if (!lru_marie_enabled())
 +		return;
 +
@@ -2125,7 +2344,7 @@ index 0000000..79864ab
 + *
 + * marie_fill_one_lruvec(): force-allocate @mlv for @lruvec and pull
 + * every evictable folio off @lruvec->lists[lru] into Marie via the
-+ * canonical lruvec_del_folio + marie_install_local/locked pair. After
++ * canonical lruvec_del_folio + marie_folio_install pair. After
 + * return, the lruvec's standard lru lists hold only unevictable folios;
 + * everything else is tracked via marie_state[].
 + */
@@ -2177,13 +2396,17 @@ index 0000000..79864ab
 + */
 +static void marie_drain_pfn_locked(struct marie_lruvec *mlv,
 +				   struct lruvec *lruvec,
-+				   unsigned long pfn, int type)
++				   unsigned long pfn, int type,
++				   struct list_head *to_free)
 +{
 +	struct folio *folio;
 +	long nr;
 +	enum lru_list lru;
 +	int z;
 +	u8 state_byte;
++
++	lockdep_assert_held(&lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
 +
 +	if (!pfn_valid(pfn))
 +		return;
@@ -2230,8 +2453,20 @@ index 0000000..79864ab
 +	}
 +	/* Re-check TRACKED under our exclusive claim. */
 +	if (!(READ_ONCE(marie_state[pfn]) & MARIE_PFN_TRACKED)) {
-+		folio_set_lru(folio);
-+		folio_put(folio);
++		/*
++		 * Same last-reference hazard as the tail below: under the
++		 * css_offline drain our pin can be the last one. Defer the free
++		 * to @to_free (released by the caller after lru_lock is dropped);
++		 * freeing here would re-enter __page_cache_release under the held
++		 * lru_lock. The folio is a Marie self-loop here (never
++		 * list_move'd), so no list/counter unwind is needed.
++		 */
++		if (folio_put_testzero(folio)) {
++			folio_clear_active(folio);
++			list_add(&folio->lru, to_free);
++		} else {
++			folio_set_lru(folio);
++		}
 +		return;
 +	}
 +
@@ -2281,9 +2516,35 @@ index 0000000..79864ab
 +	mem_cgroup_update_lru_size(lruvec, lru, z, nr);
 +#endif
 +
-+	/* Re-publish on the legacy LRU and drop our pin. */
-+	folio_set_lru(folio);
-+	folio_put(folio);
++	/*
++	 * Drop our transient pin and re-publish on the legacy LRU.
++	 *
++	 * folio_put_testzero, not a plain folio_put: the css_offline drain
++	 * (marie_offline_lruvec) runs while exit_mmap is concurrently freeing
++	 * the dying memcg's folios, so our pin can be the LAST reference. A
++	 * plain folio_put would then enter __page_cache_release, which -- with
++	 * the PG_lru we set below -- re-acquires lruvec->lru_lock, the very
++	 * lock the caller already holds: a recursive self-deadlock (IRQs off
++	 * -> hard lockup). The change-state drain never hit this because its
++	 * folios are still mapped (pin never reaches zero).
++	 *
++	 * When the put frees the folio: leave PG_lru clear, unwind the
++	 * list_move + mz credit applied above, and DEFER the actual free to
++	 * @to_free. The caller calls marie_drain_release() after dropping
++	 * lru_lock, so __folio_put() (mem_cgroup_uncharge, deferred-split
++	 * unqueue, buddy free) never runs under lru_lock -- matching the
++	 * release_pages() / survivor-putback discipline.
++	 */
++	if (folio_put_testzero(folio)) {
++		list_del(&folio->lru);
++#ifdef CONFIG_MEMCG
++		mem_cgroup_update_lru_size(lruvec, lru, z, -nr);
++#endif
++		folio_clear_active(folio);
++		list_add(&folio->lru, to_free);
++	} else {
++		folio_set_lru(folio);
++	}
 +}
 +
 +/*
@@ -2305,7 +2566,8 @@ index 0000000..79864ab
 + */
 +static void marie_drain_bitmap_walk_one(struct marie_lruvec *mlv,
 +					struct lruvec *lruvec,
-+					int type, int gen, int tier)
++					int type, int gen, int tier,
++					struct list_head *to_free)
 +{
 +	struct marie_bitmap *bm = &marie_track_bm[type][gen][tier];
 +	unsigned long *l1 = bm->l1;
@@ -2315,6 +2577,9 @@ index 0000000..79864ab
 +	unsigned long *memcg_l1 = NULL, *memcg_l2 = NULL;
 +	unsigned long start_pfn, end_pfn;
 +	unsigned int start_l2, end_l2, l2_word, l2_word_end;
++
++	lockdep_assert_held(&lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
 +
 +	if (!l1 || !marie_state)
 +		return;
@@ -2385,17 +2650,22 @@ index 0000000..79864ab
 +
 +					w &= w - 1;
 +					marie_drain_pfn_locked(mlv, lruvec,
-+							       pfn, type);
++							       pfn, type,
++							       to_free);
 +				}
 +			}
 +		}
 +	}
 +}
 +
-+static void marie_drain_one_lruvec(struct lruvec *lruvec)
++static void marie_drain_one_lruvec(struct lruvec *lruvec,
++				   struct list_head *to_free)
 +{
 +	struct marie_lruvec *mlv = marie_lookup_lruvec(lruvec);
 +	int t, g, tier;
++
++	lockdep_assert_held(&lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
 +
 +	if (!mlv)
 +		return;
@@ -2421,7 +2691,8 @@ index 0000000..79864ab
 +			for (g = 0; g < MARIE_PFN_NR_GENS; g++)
 +				for (tier = 0; tier < MARIE_PFN_NR_TIERS; tier++)
 +					marie_drain_bitmap_walk_one(mlv, lruvec,
-+								    t, g, tier);
++								    t, g, tier,
++								    to_free);
 +	}
 +
 +	/*
@@ -2458,6 +2729,9 @@ index 0000000..79864ab
 +	struct marie_lruvec *mlv;
 +	enum lru_list lru;
 +
++	lockdep_assert_held(&lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
++
 +	mlv = marie_force_alloc_lruvec(lruvec, GFP_ATOMIC);
 +	if (!mlv)
 +		return;
@@ -2469,7 +2743,7 @@ index 0000000..79864ab
 +	 * sequence: with Marie's gate already on at this point in
 +	 * marie_change_state, lruvec_add_folio routes each folio
 +	 * straight into lru_marie_add_folio, which sets per-PFN state
-+	 * via marie_install_local. No MGLRU internals are
++	 * via marie_folio_install. No MGLRU internals are
 +	 * touched on the Marie side; accounting drift is impossible
 +	 * because the drain uses MGLRU's own helpers throughout.
 +	 */
@@ -2489,7 +2763,7 @@ index 0000000..79864ab
 +		 * previous marie_drain_one_lruvec under
 +		 * MGLRU=n -- folios Marie itself evicted back to legacy
 +		 * lists during a prior disable transition. Import each
-+		 * via lruvec_del_folio + marie_install_local/locked.
++		 * via lruvec_del_folio + marie_folio_install.
 +		 */
 +		for (lru = 0; lru < NR_LRU_LISTS; lru++) {
 +			struct folio *f, *next_f;
@@ -2508,24 +2782,20 @@ index 0000000..79864ab
 +				 * the correct old bucket (ACTIVE or INACTIVE)
 +				 * for the mz and vmstat debits; the matching
 +				 * credit lands in INACTIVE after install
-+				 * because marie_install_local/locked clears
++				 * because marie_folio_install clears
 +				 * PG_active before computing inst_lru.
 +				 *
-+				 * marie_install_local/locked: clears
-+				 * PG_active (via set_mask_bits), sets PG_lru,
-+				 * writes the per-PFN state byte and bitmaps,
-+				 * and credits all Marie counters -- exactly
-+				 * the same path the fault-install uses.  THP
-+				 * goes through marie_install_locked because
-+				 * marie_both_mlv already holds both per-type
-+				 * locks; routing through lru_marie_add_folio
-+				 * would deadlock by trying to re-acquire them.
++				 * marie_folio_install: clears PG_active (via
++				 * set_mask_bits), sets PG_lru, writes the
++				 * per-PFN state byte and bitmaps, and credits
++				 * all Marie counters -- exactly the same path
++				 * the fault-install uses. The per-type lock
++				 * is already held by marie_both_mlv at this
++				 * scope; routing through lru_marie_add_folio
++				 * would deadlock by trying to re-acquire it.
 +				 */
 +				lruvec_del_folio(lruvec, f);
-+				if (folio_test_large(f))
-+					marie_install_locked(mlv, f);
-+				else
-+					marie_install_local(mlv, f);
++				marie_folio_install(f, mlv);
 +			}
 +		}
 +
@@ -2544,14 +2814,21 @@ index 0000000..79864ab
 + */
 +static void marie_change_state_lruvec(struct lruvec *lruvec, bool enable)
 +{
-+	migrate_disable();
-+	spin_lock_irq(&lruvec->lru_lock);
-+	if (enable)
-+		marie_fill_one_lruvec(lruvec);
-+	else
-+		marie_drain_one_lruvec(lruvec);
-+	spin_unlock_irq(&lruvec->lru_lock);
-+	migrate_enable();
++	MARIE_DRAIN_DEFER(to_free);
++
++	/*
++	 * spin_lock_irq disables preemption and IRQs; the earlier
++	 * migrate_disable() was only needed to give a now-removed
++	 * synchronize_rcu() a stable CPU context and is no longer
++	 * required (marie_drop_lruvec carries the same note).
++	 */
++	scoped_guard(spinlock_irq, &lruvec->lru_lock) {
++		if (enable)
++			marie_fill_one_lruvec(lruvec);
++		else
++			marie_drain_one_lruvec(lruvec, &to_free);
++	}
++	/* to_free is auto-flushed at function return (no-op on enable). */
 +
 +	if (!enable)
 +		marie_drop_lruvec(lruvec);
@@ -2689,6 +2966,8 @@ index 0000000..79864ab
 +
 +unsigned int lru_marie_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 +{
++	WARN_ON_ONCE(!sc);
++
 +	/*
 +	 * Per-PFN bitmap scan is the sole reclaim driver in Marie. The
 +	 * returned MARIE_DRAIN_* mask tells shrink_lruvec which orphan type(s)
@@ -3102,6 +3381,197 @@ index 0000000..79864ab
 +	return 0;
 +}
 +subsys_initcall(marie_init);
+diff --git b/mm/lru_marie/drain_scope.h b/mm/lru_marie/drain_scope.h
+new file mode 100644
+index 0000000..918d2ce
+--- /dev/null
++++ b/mm/lru_marie/drain_scope.h
+@@ -0,0 +1,87 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MM_LRU_MARIE_DRAIN_SCOPE_H
++#define _MM_LRU_MARIE_DRAIN_SCOPE_H
++
++#include <linux/cleanup.h>
++#include <linux/compiler.h>
++#include <linux/list.h>
++#include <linux/mm.h>
++
++/*
++ * Drain-path deferred-free scaffold.
++ *
++ * Background: marie_drain_pfn_locked drops the transient pin on every
++ * still-tracked folio while holding lv->lru_lock with IRQs off. If a
++ * pin is the last reference (the css_offline drain races exit_mmap),
++ * a plain folio_put inside the lock would recurse into
++ * __page_cache_release -> folio_lruvec_lock_irqsave on the same
++ * lru_lock and self-deadlock. e2eafb4c0 fixed this by collecting
++ * last-ref folios onto a deferred-free list and freeing them AFTER
++ * lru_lock is dropped.
++ *
++ * Every drain caller now needs the same three-step scaffold:
++ *
++ *   LIST_HEAD(to_free);
++ *   spin_lock_irq(&lv->lru_lock);
++ *   marie_drain_one_lruvec(lv, &to_free);
++ *   ...maybe other in-lock work...
++ *   spin_unlock_irq(&lv->lru_lock);
++ *   marie_drain_release(&to_free);
++ *
++ * Three sites repeat it (marie_drop_lruvec, marie_offline_lruvec,
++ * marie_change_state_lruvec). A fourth site that forgets the release
++ * leaks every last-ref folio it collected; a fifth that forgets the
++ * to_free list outright would deadlock again.
++ *
++ * Make the release impossible to forget: MARIE_DRAIN_DEFER declares a
++ * list_head with the GCC __cleanup attribute, which runs
++ * marie_drain_release at scope exit unconditionally. The lock half is
++ * the existing scoped_guard(spinlock_irq, ...). Caller code becomes:
++ *
++ *   MARIE_DRAIN_DEFER(to_free);
++ *   scoped_guard(spinlock_irq, &lv->lru_lock) {
++ *       marie_drain_one_lruvec(lv, &to_free);
++ *       ...
++ *   }
++ *   // lock released; to_free auto-flushed when its scope ends.
++ *
++ * Forgetting MARIE_DRAIN_DEFER is a compile error: marie_drain_one_lruvec
++ * still requires a struct list_head * argument, and there is nothing to
++ * pass.
++ */
++
++/*
++ * Release folios the drain found at refcount 0 -- the transient pin in
++ * marie_drain_pfn_locked was the last reference. Run after lru_lock has
++ * been dropped so __folio_put (mem_cgroup_uncharge,
++ * folio_unqueue_deferred_split's split_queue_lock, the buddy free)
++ * never runs under lru_lock. Mirrors release_pages()'s deferred free.
++ */
++static inline void marie_drain_release(struct list_head *to_free)
++{
++	struct folio *folio, *next;
++
++	list_for_each_entry_safe(folio, next, to_free, lru) {
++		list_del(&folio->lru);
++		__folio_put(folio);
++	}
++}
++
++static inline void __marie_drain_release_cleanup(struct list_head *l)
++{
++	marie_drain_release(l);
++}
++
++/*
++ * Declare a deferred-free list in the current scope. The list is
++ * initialised empty; at scope exit, marie_drain_release runs on it
++ * unconditionally (empty -> no-op). Threading the list into
++ * marie_drain_one_lruvec / marie_drain_bitmap_walk_one is the caller's
++ * responsibility -- those helpers' lockdep_assert_held catches the
++ * "lock not actually held" mistake.
++ */
++#define MARIE_DRAIN_DEFER(name)						\
++	struct list_head name __cleanup(__marie_drain_release_cleanup) = \
++		LIST_HEAD_INIT(name)
++
++#endif /* _MM_LRU_MARIE_DRAIN_SCOPE_H */
+diff --git b/mm/lru_marie/pfn_install.h b/mm/lru_marie/pfn_install.h
+new file mode 100644
+index 0000000..77a4b09
+--- /dev/null
++++ b/mm/lru_marie/pfn_install.h
+@@ -0,0 +1,92 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MM_LRU_MARIE_PFN_INSTALL_H
++#define _MM_LRU_MARIE_PFN_INSTALL_H
++
++#include <linux/atomic.h>
++#include <linux/memcontrol.h>
++#include <linux/mm.h>
++#include <linux/mm_inline.h>
++
++#include "bitmap.h"
++#include "state.h"
++
++/*
++ * Marie's "publish a PFN as TRACKED" primitive, factored out of the
++ * install/split paths.
++ *
++ * What it writes (the single source of truth for "Marie owns this PFN"):
++ *   - marie_state[pfn]: TRACKED | (gen) | (tier) | (type) | (zone)
++ *   - marie_track_bm[type][gen][tier]: scan bit for this PFN
++ *   - per-memcg L1 bitmap (folio_memcg(f))
++ *   - atomic_long_inc(&marie_gen_occupied[gen][type])
++ *
++ * What it deliberately does NOT touch:
++ *   - folio->flags (PG_active / PG_lru) -- the install path flips these
++ *     in one atomic mask write after publish; the split path's caller
++ *     sets PG_lru later.
++ *   - folio->lru list pointers -- INIT_LIST_HEAD vs list_add_tail differs
++ *     between install and split.
++ *   - mlv counters and vmstat lru_size -- accounted by the caller (or by
++ *     marie_folio_install for the fresh-install path).
++ *   - marie_gen_installs -- this is the install "throttle" counter that
++ *     drives gen advance; split intentionally does NOT bump it because
++ *     the split tail inherits its parent's install budget (the parent
++ *     was already counted at fault-install).
++ *
++ * Caller context: lru_lock held with IRQs off. The publish is a plain
++ * non-atomic byte write because lru_lock serialises every install on the
++ * same PFN, and the "already TRACKED" early-out in marie_folio_install
++ * catches concurrent re-install attempts.
++ */
++static inline void marie_pfn_publish_inherit(struct folio *f, int type,
++					     u8 gen, u8 tier, int zone)
++{
++	unsigned long pfn = folio_pfn(f);
++
++	marie_state[pfn] = MARIE_PFN_TRACKED |
++		(gen << MARIE_PFN_GEN_SHIFT) |
++		(tier << MARIE_PFN_TIER_SHIFT) |
++		(type ? MARIE_PFN_TYPE_FILE : 0) |
++		marie_pfn_zone_bits(zone);
++	marie_bm_set(&marie_track_bm[type][gen][tier], pfn);
++	marie_memcg_bitmap_set(folio_memcg(f), pfn);
++	atomic_long_inc(&marie_gen_occupied[gen][type]);
++}
++
++/*
++ * marie_folio_install - the unified fresh-install path.
++ *
++ * Single entry point that replaces the former marie_install_local /
++ * marie_install_locked pair. Both call sites (lru_marie_add_folio for THP
++ * via per-type lock + small folio direct, and marie_change_state_lruvec
++ * during gate-on fill) now route here. The per-type lock context that
++ * used to distinguish "locked" from "local" is the caller's concern, not
++ * this function's: the body only requires lru_lock + IRQs off and uses
++ * the same publish + flag flip + account sequence in both cases.
++ *
++ * Sequence:
++ *   1. TRACKED early-out (returns false). Defends against gate-flip race
++ *      and reclaim-survivor re-install (TRACKED is preserved across
++ *      isolate by design; marie_state_publish_at_gen handles the
++ *      survivor putback separately, never this function).
++ *   2. Capture (PG_active, PG_workingset) -> 2-bit tier signal.
++ *   3. Clear PG_active early; the final flag write is still a single
++ *      atomic set_mask_bits, but capturing was_active before the clear
++ *      keeps the tier value coherent with the byte we publish below.
++ *   4. INIT_LIST_HEAD(&f->lru) -- a recycled folio arrives with
++ *      LIST_POISON{1,2} that would later fault list_del_init.
++ *   5. Publish per-PFN state via marie_pfn_publish_inherit.
++ *   6. Bump marie_gen_installs and trigger the advance hook. Split path
++ *      skips this bump (publish_inherit only).
++ *   7. set_mask_bits(PG_active->0, PG_lru->1) -- one atomic flag write.
++ *      Ordered AFTER step 5 so a concurrent __page_cache_release
++ *      observing PG_lru=1 also observes TRACKED=1.
++ *   8. Account (mlv->types[type].nr_pages, marie_nr_folios, vmstat
++ *      lru_size, mlv->marie_lru_zone_size). Step 3 of the abstraction
++ *      plan will factor these into marie_account_install.
++ *
++ * Returns true on success, false on TRACKED early-out.
++ */
++bool marie_folio_install(struct folio *f, struct marie_lruvec *mlv);
++
++#endif /* _MM_LRU_MARIE_PFN_INSTALL_H */
 diff --git b/mm/lru_marie/prefetch.h b/mm/lru_marie/prefetch.h
 new file mode 100644
 index 0000000..7f9a2ee
@@ -4197,10 +4667,10 @@ index 0000000..4646ca1
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git b/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000..82cb733
+index 0000000..2a4cea7
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2749 @@
+@@ -0,0 +1,2568 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -4246,6 +4716,8 @@ index 0000000..82cb733
 +#endif
 +
 +#include "../internal.h"	/* struct scan_control, shrink_folio_list */
++#include "account.h"
++#include "pfn_install.h"
 +#include "prefetch.h"
 +#include "state.h"
 +
@@ -4433,6 +4905,8 @@ index 0000000..82cb733
 +{
 +	struct marie_bitmap *bm;
 +	int err;
++
++	might_sleep();
 +
 +	if (!memcg || mem_cgroup_is_root(memcg))
 +		return 0;
@@ -5901,12 +6375,9 @@ index 0000000..82cb733
 +				u8 prev, w, target_tier;
 +				struct lruvec *lv;
 +				struct marie_lruvec *mlv;
-+				int type_idx;
 +				unsigned long pfn;
-+				long nr;
 +				int zone;
 +				enum lru_list inst_lru;
-+				unsigned long flags;
 +
 +				pfn = folio_pfn(f);
 +				/*
@@ -5930,9 +6401,7 @@ index 0000000..82cb733
 +
 +				list_del_init(&f->lru);
 +				lv = folio_lruvec(f);
-+				type_idx = folio_is_file_lru(f);
 +				mlv = marie_get_lruvec(lv);
-+				nr = folio_nr_pages(f);
 +				zone = folio_zonenum(f);
 +				inst_lru = folio_lru_list(f);
 +
@@ -5970,24 +6439,15 @@ index 0000000..82cb733
 +				marie_memcg_bitmap_set(folio_memcg(f), pfn);
 +
 +				/*
-+				 * IRQs off (not just preempt off): no lru_lock
-+				 * here, and the counter/vmstat updates below must
-+				 * be safe against same-CPU IRQ reentrancy. See the
-+				 * rationale in marie_evict_counters_only.
++				 * Account the survivor's re-installation. mlv
++				 * may be NULL under reclaim (GFP_ATOMIC carrier
++				 * alloc fail or teardown race); the helper drops
++				 * only the global counters in that case --
++				 * mirrors the !mlv path in
++				 * marie_evict_counters_only / install_isolate.
 +				 */
-+				local_irq_save(flags);
-+				marie_pc_add(&marie_nr_folios, 1);
-+				marie_update_lru_size(lv, inst_lru, zone, nr);
-+				if (likely(mlv)) {
-+					marie_pc_add(
-+						&mlv->types[type_idx].nr_pages,
-+						nr);
-+					marie_pc_add(
-+						&mlv->marie_lru_zone_size
-+							[inst_lru][zone],
-+						nr);
-+				}
-+				local_irq_restore(flags);
++				marie_account_install_isolate(lv, mlv, f,
++							      inst_lru, zone);
 +
 +				if (!folio_put_testzero(f)) {
 +					/*
@@ -6024,19 +6484,9 @@ index 0000000..82cb733
 +					 * marie_state_drop_pfn_at_free.
 +					 */
 +					folio_clear_active(f);
-+					local_irq_save(flags);
-+					marie_pc_add(&marie_nr_folios, -1);
-+					marie_update_lru_size(lv, inst_lru, zone, -nr);
-+					if (likely(mlv)) {
-+						marie_pc_add(
-+							&mlv->types[type_idx].nr_pages,
-+							-nr);
-+						marie_pc_add(
-+							&mlv->marie_lru_zone_size
-+								[inst_lru][zone],
-+							-nr);
-+					}
-+					local_irq_restore(flags);
++					marie_account_evict_isolate(lv, mlv, f,
++								    inst_lru,
++								    zone);
 +					__folio_put(f);
 +				}
 +			}
@@ -6142,8 +6592,9 @@ index 0000000..82cb733
 + * bit (TRACKED in marie_state[pfn]). There are exactly two state
 + * transitions:
 + *
-+ *   marie_install_locked:  TRACKED 0 -> 1   (also writes gen, tier,
-+ *                          type, zone fields and bumps counters)
++ *   marie_folio_install:   TRACKED 0 -> 1   (writes gen, tier, type,
++ *                          zone, sets PG_lru, bumps counters; defined
++ *                          below, declared in pfn_install.h)
 + *   marie_evict_locked:    TRACKED 1 -> 0   (counter decrements +
 + *                          per-PFN state wipe via marie_state_drop_pfn)
 + *
@@ -6155,116 +6606,118 @@ index 0000000..82cb733
 +
 +
 +/*
-+ * Per-type-locked direct install: TRACKED 0 -> 1. Used by the THP
-+ * branch of lru_marie_add_folio. Publishes the per-PFN state byte
-+ * (TRACKED + workingset-derived initial tier + type + zone + head_gen),
-+ * sets the tracking bitmap, bumps the per-mlv / global counters, and
-+ * sets PG_lru.
++ * marie_folio_install - unified fresh install (TRACKED 0 -> 1).
 + *
-+ * Always returns true (the per-PFN write cannot fail; the byte is
-+ * dedicated storage indexed by PFN). The bool return is kept for
-+ * call-site symmetry with marie_install_local.
++ * Replaces the former marie_install_local / marie_install_locked pair.
++ * The two used to differ only in the order of (publish, account, flag)
++ * and in the PG_lru set method; this canonical form picks set_mask_bits
++ * (atomic PG_active clear + PG_lru set in one mask write) and the
++ * publish -> flag -> account order from install_local.
++ *
++ * Call sites:
++ *   - lru_marie_add_folio (THP under per-type lock, small folio direct)
++ *   - marie_change_state_lruvec (gate-on fill, under per-type both lock)
++ *
++ * Per-type lock is a property of the caller, not of this function: the
++ * body only requires lru_lock + IRQs off and behaves identically whether
++ * or not the caller additionally holds the per-type lock.
++ *
++ * Returns true on success, false on the "already TRACKED" early-out.
++ * See pfn_install.h for the contract documentation.
 + */
-+bool marie_install_locked(struct marie_lruvec *mlv, struct folio *folio)
++bool marie_folio_install(struct folio *folio, struct marie_lruvec *mlv)
 +{
-+	int type = folio_is_file_lru(folio);
-+	int zone = folio_zonenum(folio);
-+	long nr = folio_nr_pages(folio);
++	bool was_active, was_workingset;
++	unsigned int tier;
++	int type, zone;
++	u8 head;
++	enum lru_list inst_lru;
++	unsigned long pfn;
++
++	lockdep_assert_held(&mlv->lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
 +
 +	/*
-+	 * "Already TRACKED" early-out -- the THP analogue of the same guard
-+	 * in marie_install_local. Without it a re-install on a folio Marie
-+	 * already owns (e.g. one isolated mid-reclaim, whose TRACKED bit the
-+	 * deferred-teardown design intentionally preserves while PG_lru is
-+	 * cleared) would re-publish PG_lru and double-count the per-mlv
-+	 * counters. The re-published PG_lru then survives onto the buddy
-+	 * free path inside shrink_folio_list, tripping the
-+	 * "Bad page state |lru|" PAGE_FLAGS_CHECK_AT_FREE oops. Bail exactly
-+	 * as install_local does so the in-flight reclaim owns the folio.
++	 * "Already TRACKED" early-out. Re-install of a Marie-owned folio
++	 * (gate-flip race; a reclaim-isolated folio whose TRACKED bit the
++	 * deferred-teardown design preserves while PG_lru is cleared) would
++	 * re-set PG_lru and double-count per-mlv counters; the resurrected
++	 * PG_lru then survives onto the buddy free path and trips
++	 * "Bad page state |lru|" PAGE_FLAGS_CHECK_AT_FREE. Bail so the
++	 * in-flight reclaim retains ownership.
 +	 */
-+	{
-+		unsigned long pfn = folio_pfn(folio);
-+
-+		if (pfn < marie_state_size &&
-+		    (READ_ONCE(marie_state[pfn]) & MARIE_PFN_TRACKED))
-+			return false;
-+	}
++	pfn = folio_pfn(folio);
++	if (pfn < marie_state_size &&
++	    (READ_ONCE(marie_state[pfn]) & MARIE_PFN_TRACKED))
++		return false;
 +
 +	/*
-+	 * folio->lru MUST be re-initialised here. A recycled folio
-+	 * arrives with LIST_POISON{1,2} from the prior owner's list_del,
-+	 * and the eventual marie_evict_locked's list_del_init would walk
-+	 * the poison pointers and fault.
++	 * Workingset signal capture: (PG_active, PG_workingset) -> tier.
++	 *   (0,0) tier 0  cold
++	 *   (0,1) tier 1  workingset, distance too large
++	 *   (1,0) tier 2  recent refault, never workingset before
++	 *   (1,1) tier 3 = MARIE_PFN_TIER_MAX  established hot
++	 * Read PG_active BEFORE clearing so the captured tier matches the
++	 * byte we publish below. PG_workingset stays set:
++	 * workingset_eviction's shadow encoding needs it at next eviction.
 +	 */
-+	INIT_LIST_HEAD(&folio->lru);
-+
-+	/*
-+	 * Workingset signal capture, four-tier refault hotness from the
-+	 * two-bit (PG_active, PG_workingset) hierarchy:
-+	 *   (a=0, w=0) -> tier 0 (cold)
-+	 *   (a=0, w=1) -> tier 1 (workingset, distance too large)
-+	 *   (a=1, w=0) -> tier 2 (recent refault, not previously workingset)
-+	 *   (a=1, w=1) -> tier 3 = MARIE_PFN_TIER_MAX (established hot)
-+	 *
-+	 * PG_active read happens before the bit clear so concurrent sets
-+	 * race us, not against us. PG_workingset stays set: workingset_eviction's
-+	 * shadow encoding will need it again at the next eviction.
-+	 */
-+	bool was_active = folio_test_active(folio);
-+	bool was_workingset = folio_test_workingset(folio);
-+	unsigned int tier_val = ((unsigned int)was_active << 1) |
-+				(unsigned int)was_workingset;
++	was_active = folio_test_active(folio);
++	was_workingset = folio_test_workingset(folio);
++	tier = ((unsigned int)was_active << 1) | (unsigned int)was_workingset;
++	tier &= MARIE_PFN_TIER_MAX;
 +
 +	if (was_active)
 +		folio_clear_active(folio);
 +
 +	/*
-+	 * The per-PFN state byte below is the single source of truth;
-+	 * folio->flags carries no MARIE_TRACKED/TIER bits.
-+	 *
-+	 * Order: PG_lru is set AFTER the state byte is published, so a
-+	 * concurrent __page_cache_release that observes PG_lru=1 also
-+	 * observes marie_state[pfn] & MARIE_PFN_TRACKED -- the Marie
-+	 * del path then runs and drop_pfn cleans both halves
-+	 * atomically.
++	 * folio->lru MUST be re-initialised here. A recycled folio arrives
++	 * with LIST_POISON{1,2} from the prior owner's list_del, and the
++	 * eventual marie_evict_locked's list_del_init would walk the
++	 * poison pointers and fault.
 +	 */
-+	marie_pc_add(&mlv->types[type].nr_pages, nr);
++	INIT_LIST_HEAD(&folio->lru);
 +
-+	marie_pc_add(&marie_nr_folios, 1);
++	type = folio_is_file_lru(folio);
++	zone = folio_zonenum(folio);
++	head = (u8)atomic_read(&marie_head_gen[type]);
 +
-+	{
-+		enum lru_list inst_lru = folio_lru_list(folio);
++	/*
++	 * Publish per-PFN state byte + scan bitmap + memcg L1 +
++	 * gen_occupied++. See pfn_install.h::marie_pfn_publish_inherit.
++	 */
++	marie_pfn_publish_inherit(folio, type, head, (u8)tier, zone);
 +
-+		marie_update_lru_size(mlv->lruvec, inst_lru, zone, nr);
-+		marie_pc_add(
-+			&mlv->marie_lru_zone_size[inst_lru][zone], nr);
-+	}
++	/*
++	 * Bump the install gauge and let the advance hook fire its periodic
++	 * gen-advance decision. Split path intentionally skips this bump
++	 * because the split tail inherits its parent's install budget
++	 * (already counted at the parent's fault-install).
++	 */
++	marie_install_advance_hook(type,
++		atomic_long_inc_return(&marie_gen_installs[head][type]));
 +
-+	{
-+		u8 head = (u8)atomic_read(&marie_head_gen[type]);
-+		unsigned long pfn = folio_pfn(folio);
++	/*
++	 * Atomic PG_active->0 + PG_lru->1 in one mask write. PG_active was
++	 * cleared above when set; the mask write keeps the invariant
++	 * against the defensive case where another path set PG_active
++	 * between then and now. Ordered AFTER the state-byte publish so a
++	 * concurrent __page_cache_release observing PG_lru=1 also observes
++	 * marie_state[pfn] & MARIE_PFN_TRACKED.
++	 */
++	set_mask_bits(&folio->flags.f, BIT(PG_active), BIT(PG_lru));
++	inst_lru = folio_lru_list(folio);
 +
-+		marie_state[pfn] = MARIE_PFN_TRACKED |
-+			(head << MARIE_PFN_GEN_SHIFT) |
-+			(tier_val << MARIE_PFN_TIER_SHIFT) |
-+			(type ? MARIE_PFN_TYPE_FILE : 0) |
-+			marie_pfn_zone_bits(zone);
-+		marie_bm_set(&marie_track_bm[type][head][tier_val], pfn);
-+		marie_memcg_bitmap_set(folio_memcg(folio), pfn);
-+		atomic_long_inc(&marie_gen_occupied[head][type]);
-+		marie_install_advance_hook(type,
-+			atomic_long_inc_return(&marie_gen_installs[head][type]));
-+	}
++	marie_account_install(mlv, folio, inst_lru, zone);
 +
-+	folio_set_lru(folio);
 +	return true;
 +}
 +
 +bool marie_evict_locked(struct marie_lruvec *mlv, struct folio *folio)
 +{
-+	int type = folio_is_file_lru(folio);
 +	int zone = folio_zonenum(folio);
-+	long nr = folio_nr_pages(folio);
++
++	lockdep_assert_held(&mlv->lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
 +
 +	/*
 +	 * folio->lru is either a self-loop (install/flush leave it that
@@ -6277,11 +6730,9 @@ index 0000000..82cb733
 +	 */
 +	list_del_init(&folio->lru);
 +
-+	marie_pc_add(&mlv->types[type].nr_pages, -nr);
-+
 +	/*
 +	 * PG_active hygiene MUST happen before folio_lru_list() below.
-+	 * The install helpers clear PG_active and then compute the lru
++	 * The install helper clears PG_active and then computes the lru
 +	 * index, so install always credits INACTIVE_*. If we read
 +	 * folio_lru_list() here while PG_active is still set (e.g. via
 +	 * folio_activate() on a tracked folio between install and del),
@@ -6295,35 +6746,7 @@ index 0000000..82cb733
 +	if (folio_test_active(folio))
 +		folio_clear_active(folio);
 +
-+	{
-+		enum lru_list del_lru = folio_lru_list(folio);
-+
-+		/*
-+		 * Symmetric inverse of the install helpers' accounting
-+		 * pair: install +nr's BOTH marie_update_lru_size (vmstat
-+		 * NR_LRU_BASE+lru / NR_ZONE_LRU_BASE+lru) AND Marie's own
-+		 * per-bucket counter marie_lru_zone_size[lru][zone].  The
-+		 * earlier revision decremented only marie_update_lru_size
-+		 * here, leaving marie_lru_zone_size monotonically inflated
-+		 * by +nr per install — visible as ever-growing
-+		 * lruvec_lru_size() readings (mm/vmscan.c sums
-+		 * mz->lru_zone_size + lru_marie_zone_size), which skewed
-+		 * reclaim pressure heuristics toward over-scanning.
-+		 *
-+		 * Decrementing at the same lru index install +1'd is the
-+		 * critical invariant: install computes inst_lru AFTER
-+		 * clear_active so install always credits INACTIVE_*; del
-+		 * mirrors that order (clear_active above, then folio_lru_list)
-+		 * so del_lru matches inst_lru for the common case.  The
-+		 * PG_swapbacked / PG_unevictable asymmetry windows are
-+		 * unchanged by this fix — those bucket-mismatch leaks live
-+		 * on legacy/vmstat accounting and are orthogonal to Marie's
-+		 * own per-bucket counter.
-+		 */
-+		marie_update_lru_size(mlv->lruvec, del_lru, zone, -nr);
-+		marie_pc_add(
-+			&mlv->marie_lru_zone_size[del_lru][zone], -nr);
-+	}
++	marie_account_evict(mlv, folio, folio_lru_list(folio), zone);
 +
 +	/*
 +	 * Clear PG_lru BEFORE marie_state_drop_pfn so a concurrent
@@ -6349,7 +6772,7 @@ index 0000000..82cb733
 + * TRACKED bit.
 + *
 + * The per-PFN state byte staying TRACKED throughout shrink_folio_list is
-+ * the race defence: marie_install_local's "already TRACKED" early-out
++ * the race defence: marie_folio_install's "already TRACKED" early-out
 + * makes a concurrent install on this PFN bail, so install cannot set
 + * PG_lru on the folio while shrink_folio_list is reclaiming it. (The
 + * earlier full marie_evict_isolated cleared TRACKED inline; a concurrent
@@ -6392,10 +6815,8 @@ index 0000000..82cb733
 +{
 +	struct lruvec *lv = folio_lruvec(folio);
 +	struct marie_lruvec *mlv = marie_get_lruvec(lv);
-+	int type, zone;
-+	long nr;
++	int zone = folio_zonenum(folio);
 +	enum lru_list del_lru;
-+	unsigned long flags;
 +
 +	if (unlikely(!list_empty(&folio->lru))) {
 +		/*
@@ -6412,57 +6833,29 @@ index 0000000..82cb733
 +			list_del_init(&folio->lru);
 +	}
 +
-+	type = folio_is_file_lru(folio);
-+	zone = folio_zonenum(folio);
-+	nr = folio_nr_pages(folio);
-+
-+	/*
-+	 * IRQs off, not merely preempt off: this isolate path runs WITHOUT
-+	 * lru_lock. Both marie_pc_add (the global marie_nr_folios counter) and
-+	 * the __mod_zone_page_state inside marie_update_lru_size are only safe
-+	 * against same-CPU IRQ/softirq reentrancy with IRQs disabled. A softirq
-+	 * folio_put -> __page_cache_release -> lru_marie_del_folio touching the
-+	 * same counter/vmstat would otherwise self-deadlock on fbc->lock or
-+	 * corrupt the per-CPU vmstat diff mid-RMW. preempt_disable alone does
-+	 * not close that window.
-+	 */
-+	local_irq_save(flags);
-+
 +	if (folio_test_active(folio))
 +		folio_clear_active(folio);
 +
 +	del_lru = folio_lru_list(folio);
 +
 +	/*
-+	 * marie_update_lru_size goes through __update_lru_size whose
-+	 * lockdep_assert_held(lru_lock) is gated by !lru_marie_enabled() in
-+	 * include/linux/mm_inline.h. The vmstat side is per-lruvec, valid
-+	 * even when mlv is NULL.
++	 * marie_account_evict_isolate owns the local_irq_save/restore that
++	 * the lock-free reclaim path needs against same-CPU softirq
++	 * reentrancy on fbc->lock and the per-CPU vmstat diff (see the
++	 * helper's contract in account.h, and 9c6a93782's lockup history).
++	 * mlv may be NULL: the helper drops only the global counters in
++	 * that case (no leak -- the missing carrier took the per-mlv
++	 * counters with it).
 +	 */
-+	marie_update_lru_size(lv, del_lru, zone, -nr);
-+	marie_pc_add(&marie_nr_folios, -1);
-+
-+	if (likely(mlv)) {
-+		marie_pc_add(&mlv->types[type].nr_pages, -nr);
-+		marie_pc_add(&mlv->marie_lru_zone_size[del_lru][zone], -nr);
-+	}
-+	/*
-+	 * Rare !mlv: marie_get_lruvec returned NULL (alloc fail under
-+	 * GFP_ATOMIC on a brand-new lruvec, or teardown race with
-+	 * marie_drop_lruvec). The per-mlv counters in the missing mlv
-+	 * are gone with it (no leak). marie_state[pfn]'s TRACKED bit
-+	 * is intentionally PRESERVED so install_local's TRACKED early-
-+	 * out keeps blocking concurrent installs, and the putback /
-+	 * deferred drop paths see a consistent byte.
-+	 */
++	marie_account_evict_isolate(lv, mlv, folio, del_lru, zone);
 +
 +	/*
 +	 * Retire the scan-bitmap slot + gen_occupied at isolate (see the
 +	 * function comment). Read the still-TRACKED byte for its (gen, tier,
 +	 * type) coordinate; the byte itself is left TRACKED for the install-
-+	 * race early-out. clear_bit on the L1 bit is the match for the install
-+	 * set; the survivor putback re-sets via marie_state_publish_at_gen, and
-+	 * a reclaimed folio's free hook finds the bit already clear.
++	 * race early-out. These bit ops are atomic and need no IRQ-off
++	 * window; the helper's local_irq_save/restore is scoped to the
++	 * counters that actually need it.
 +	 */
 +	{
 +		unsigned long pfn = folio_pfn(folio);
@@ -6485,113 +6878,6 @@ index 0000000..82cb733
 +
 +	/* Clear memcg bitmap now (folio gone before post-reclaim drop runs). */
 +	marie_memcg_bitmap_clear(folio_memcg(folio), folio_pfn(folio));
-+
-+	local_irq_restore(flags);
-+}
-+
-+/*
-+ * Inline install path for small (non-THP) folios.
-+ *
-+ * Caller (lru_marie_add_folio) holds lru_lock irqsave on @mlv->lruvec,
-+ * so the byte write, bitmap update, counter bumps and PG_lru set all
-+ * run under one atomic context. The "already TRACKED" early-out is a
-+ * defensive check against re-install of a folio whose previous
-+ * tracking was not torn down (e.g. a gate-flip race between drain and
-+ * an in-flight install).
-+ *
-+ * Per-folio publish (PG_lru, counters, per-PFN state byte, bitmaps)
-+ * happens entirely under the caller's lru_lock. No per-CPU staging,
-+ * no deferred flush, no cross-call carry-over -- every install is
-+ * self-contained.
-+ */
-+bool marie_install_local(struct marie_lruvec *mlv, struct folio *folio)
-+{
-+	unsigned int initial_tier;
-+	int type, zone;
-+	long nr;
-+	enum lru_list inst_lru;
-+	bool was_active;
-+
-+	/*
-+	 * Workingset signal capture, four-tier refault hotness from the
-+	 * two-bit (PG_active, PG_workingset) hierarchy:
-+	 *   tier_val = (PG_active << 1) | PG_workingset
-+	 *   (a=0, w=0) tier 0  cold install
-+	 *   (a=0, w=1) tier 1  was workingset, weak signal
-+	 *   (a=1, w=0) tier 2  refault, never workingset before
-+	 *   (a=1, w=1) tier 3  established-hot signal
-+	 *
-+	 * Read before clearing PG_active so values stay coherent with the
-+	 * subsequent state byte publish.
-+	 */
-+	was_active = folio_test_active(folio);
-+	{
-+		bool was_workingset = folio_test_workingset(folio);
-+		unsigned int tier_val_local = ((unsigned int)was_active << 1) |
-+					      (unsigned int)was_workingset;
-+
-+		initial_tier = tier_val_local;
-+	}
-+
-+	/*
-+	 * Ownership claim is via marie_state[pfn]: since install_local
-+	 * runs under lru_lock, there is no install-vs-install race on
-+	 * the same folio, so the byte write below is sufficient. The
-+	 * "already tracked" check protects against re-install of a
-+	 * folio whose previous tracking was not torn down (e.g.,
-+	 * gate-flip race between drain and incoming install).
-+	 */
-+	{
-+		unsigned long pfn = folio_pfn(folio);
-+
-+		if (pfn < marie_state_size &&
-+		    (READ_ONCE(marie_state[pfn]) & MARIE_PFN_TRACKED))
-+			return false;
-+	}
-+
-+	if (was_active)
-+		folio_clear_active(folio);
-+
-+	INIT_LIST_HEAD(&folio->lru);
-+
-+	type = folio_is_file_lru(folio);
-+	zone = folio_zonenum(folio);
-+	nr = folio_nr_pages(folio);
-+
-+	{
-+		unsigned int tier = initial_tier & (MARIE_PFN_NR_TIERS - 1);
-+		u8 head = (u8)atomic_read(&marie_head_gen[type]);
-+		unsigned long pfn = folio_pfn(folio);
-+
-+		marie_state[pfn] = MARIE_PFN_TRACKED |
-+			(head << MARIE_PFN_GEN_SHIFT) |
-+			(tier << MARIE_PFN_TIER_SHIFT) |
-+			(type ? MARIE_PFN_TYPE_FILE : 0) |
-+			marie_pfn_zone_bits(zone);
-+		marie_bm_set(&marie_track_bm[type][head][tier], pfn);
-+		marie_memcg_bitmap_set(folio_memcg(folio), pfn);
-+		atomic_long_inc(&marie_gen_occupied[head][type]);
-+		marie_install_advance_hook(type,
-+			atomic_long_inc_return(&marie_gen_installs[head][type]));
-+	}
-+
-+	/*
-+	 * Publish PG_lru and update counters in line, synchronously under
-+	 * the caller's lru_lock. PG_active is cleared in the same atomic
-+	 * mask write (was already cleared above for was_active==true; the
-+	 * mask keeps the invariant for the defensive case where another
-+	 * path set it between then and now).
-+	 */
-+	set_mask_bits(&folio->flags.f, BIT(PG_active), BIT(PG_lru));
-+	inst_lru = folio_lru_list(folio);
-+
-+	marie_pc_add(&mlv->types[type].nr_pages, nr);
-+	marie_pc_add(&marie_nr_folios, 1);
-+	marie_update_lru_size(mlv->lruvec, inst_lru, zone, nr);
-+	marie_pc_add(&mlv->marie_lru_zone_size[inst_lru][zone],
-+				 nr);
-+
-+	return true;
 +}
 +
 +/*
@@ -6777,6 +7063,9 @@ index 0000000..82cb733
 +bool marie_del_folio_locked(struct marie_lruvec *mlv, struct folio *folio,
 +				    bool *did_inc_lru_size)
 +{
++	lockdep_assert_held(&mlv->lruvec->lru_lock);
++	lockdep_assert_irqs_disabled();
++
 +	if (!folio_marie_test_tracked(folio)) {
 +		*did_inc_lru_size = false;
 +		return true;
@@ -6952,10 +7241,10 @@ index 0000000..82cb733
 +}
 diff --git b/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000..92eb850
+index 0000000..3c85c16
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,1303 @@
+@@ -0,0 +1,1278 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -7763,31 +8052,26 @@ index 0000000..92eb850
 + * per-mlv / global percpu_counters, lru_size mirror, PG_active /
 + * PG_lru hygiene):
 + *
-+ *   marie_install_locked:           TRACKED 0 -> 1
-+ *                                   per-type-locked install; used by
-+ *                                   the THP branch of lru_marie_add_folio
-+ *   marie_install_local:  TRACKED 0 -> 1
-+ *                                   no-mlv-lock fast path; small-folio
-+ *                                   fault install under the caller's
-+ *                                   lru_lock
-+ *   marie_install_at_gen: TRACKED 0 -> 1 at non-head gen
++ *   marie_folio_install:            TRACKED 0 -> 1
++ *                                   unified fresh install for both small
++ *                                   folios and THP; declared in
++ *                                   pfn_install.h
++ *   marie_state_publish_at_gen:     TRACKED stays, (gen, tier) refreshed
 + *                                   reclaim survivor putback
 + *   marie_evict_locked:             TRACKED 1 -> 0
-+ *                                   called from
-+ *                                   marie_del_folio_locked
++ *                                   called from marie_del_folio_locked
 + *
 + * folio_marie_test_tracked() is the lock-free state inspector: it
 + * reads marie_state[pfn] & MARIE_PFN_TRACKED, returning whether
 + * Marie owns @folio. The binary state is checked directly at each
 + * callsite -- no intermediate dispatch machinery.
 + */
-+bool marie_install_locked(struct marie_lruvec *mlv, struct folio *folio);
 +bool marie_evict_locked(struct marie_lruvec *mlv, struct folio *folio);
 +
 +/*
 + * Reclaim isolate path: counters-only decrement at claim time. The per-
 + * PFN state byte's TRACKED bit intentionally stays set throughout
-+ * shrink_folio_list so install_local's TRACKED early-out blocks any
++ * shrink_folio_list so marie_folio_install's TRACKED early-out blocks any
 + * concurrent install from setting PG_lru on a folio currently in the
 + * reclaim list. The scan-bitmap slot + gen_occupied ARE retired here (an
 + * isolated folio is no longer a scan candidate); the TRACKED byte is
@@ -7809,27 +8093,7 @@ index 0000000..92eb850
 + */
 +void marie_state_drop_pfn_at_free(unsigned long pfn);
 +
-+/**
-+ * marie_install_local - inline install for a small folio.
-+ * @mlv:   target lruvec's residency set
-+ * @folio: folio to install (must be non-THP, evictable)
-+ *
-+ * Per-folio install completed entirely under the caller's lru_lock:
-+ * publishes the per-PFN state byte (TRACKED + initial tier), sets the
-+ * tracking bitmaps, bumps the per-mlv / global folio counters, and
-+ * sets PG_lru. No per-CPU staging, no deferred flush, no cross-call
-+ * carry-over -- every install is self-contained and isolated from
-+ * concurrent installs on other lruvecs.
-+ *
-+ * Caller MUST hold @mlv->lruvec->lru_lock irqsave so the per-PFN
-+ * state write and the counter updates run with the same protection
-+ * the rest of Marie's state writes expect.
-+ *
-+ * Returns true on a successful install. Returns false if the folio
-+ * was already MARIE_TRACKED (defensive against re-install races);
-+ * caller treats this as "Marie declined".
-+ */
-+bool marie_install_local(struct marie_lruvec *mlv, struct folio *folio);
++/* marie_folio_install lives in pfn_install.h. */
 +
 +/* Lazy lookup-or-allocate of the Marie state for @lv. */
 +struct marie_lruvec *marie_get_lruvec(struct lruvec *lv);
@@ -7972,7 +8236,7 @@ index 0000000..92eb850
 +	 *
 +	 * Layout intent: pack the few small fields the per-fault and
 +	 * per-shrink-batch paths touch into one cacheline at the top, so
-+	 * that a fault hitting marie_install_local or the
++	 * that a fault hitting marie_folio_install or the
 +	 * swap-bias pick path pulls @lruvec / @swap_bias / @nid in a
 +	 * single line read. The bulky @types[] subtree follows, keeping
 +	 * the small hot fields off the same cachelines as the per-type
@@ -8047,9 +8311,9 @@ index 0000000..92eb850
 +	 * consolidated total query both via lruvec_lru_size() /
 +	 * marie_lruvec_zone_size().
 +	 *
-+	 * Update sites (paired ±nr): marie_install_locked /
-+	 * marie_install_local / marie_install_at_gen
-+	 * (install), marie_evict_locked (evict),
++	 * Update sites (paired ±nr): marie_folio_install (install),
++	 * marie_state_publish_at_gen + survivor putback (reclaim
++	 * survivor at non-head gen), marie_evict_locked (evict),
 +	 * marie_reparent_locked (reparent),
 +	 * marie_fill_one_lruvec (legacy->Marie transition),
 +	 * marie_drain_one_lruvec (Marie->legacy transition).
@@ -8261,7 +8525,7 @@ index 0000000..92eb850
 +#endif /* _MM_LRU_MARIE_STATE_H */
 diff --git b/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000..c136c4a
+index 0000000..a9ad837
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -8284,15 +8548,15 @@ index 0000000..c136c4a
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.2.10"
++#define MARIE_VERSION	"0.3.0"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git b/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
 new file mode 100644
-index 0000000..94eaa63
+index 0000000..846d378
 --- /dev/null
 +++ b/mm/lru_marie/walker.c
-@@ -0,0 +1,949 @@
+@@ -0,0 +1,961 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/walker.c — Marie's SIMD-accelerated PTE walker.
@@ -9170,7 +9434,19 @@ index 0000000..94eaa63
 +	 */
 +	for (i = 0; i < ctx->n_mms; i++) {
 +		marie_walk_one_mm(ctx->mms[i], &arg);
-+		mmput(ctx->mms[i]);
++		/*
++		 * mmput_async, not mmput: if our mmget_not_zero above pinned the
++		 * last reference (the owning task exited mid-walk), a plain mmput
++		 * here drops to zero and enters __mmput -> exit_mmap, which takes
++		 * mm->mmap_lock. marie_walk_pgdat runs from kswapd's balance_pgdat
++		 * with fs_reclaim held; taking mmap_lock under fs_reclaim closes
++		 * the cycle against the execve path that takes mmap_lock then
++		 * allocates (fs_reclaim) via mas_alloc_nodes. Caught by lockdep
++		 * as a circular dependency and reproduced as a desktop hang under
++		 * memory pressure with concurrent fork/exec. MGLRU solves the
++		 * same problem the same way in iterate_mm_list (mm/vmscan.c).
++		 */
++		mmput_async(ctx->mms[i]);
 +	}
 +
 +	/*
@@ -9724,7 +10000,7 @@ index 1c77d5d..898b893 100644
  			if (clear_flush_young_ptes_notify(vma, address, pvmw.pte, nr))
  				referenced++;
 diff --git a/mm/swap.c b/mm/swap.c
-index 588f50d..1cfe261 100644
+index 588f50d..b23b981 100644
 --- a/mm/swap.c
 +++ b/mm/swap.c
 @@ -37,6 +37,7 @@
@@ -9735,7 +10011,29 @@ index 588f50d..1cfe261 100644
  
  #include "internal.h"
  
-@@ -199,6 +200,27 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
+@@ -73,6 +74,21 @@ static DEFINE_PER_CPU(struct cpu_fbatches, cpu_fbatches) = {
+ static void __page_cache_release(struct folio *folio, struct lruvec **lruvecp,
+ 		unsigned long *flagsp)
+ {
++#ifdef CONFIG_LRU_MARIE
++	/*
++	 * TRACKED is Marie's single source of truth: when set, the folio
++	 * is Marie-owned and was never +1'd to mz->lru_zone_size. Gating on
++	 * PG_lru here would let such a folio reach lruvec_del_folio's
++	 * legacy fallback (if a path we did not anticipate cleared TRACKED
++	 * without re-crediting mz), tripping the "lru_size went negative"
++	 * WARN at mm/memcontrol.c. See lru_marie_release_folio's contract
++	 * in <linux/lru_marie.h>.
++	 */
++	if (lru_marie_enabled() && lru_marie_test_tracked(folio)) {
++		lru_marie_release_folio(folio, lruvecp, flagsp);
++		return;
++	}
++#endif
+ 	if (folio_test_lru(folio)) {
+ 		folio_lruvec_relock_irqsave(folio, lruvecp, flagsp);
+ 		lruvec_del_folio(*lruvecp, folio);
+@@ -199,6 +215,27 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
  		folio_lruvec_relock_irqsave(folio, &lruvec, &flags);
  		move_fn(lruvec, folio);
  
@@ -9763,7 +10061,7 @@ index 588f50d..1cfe261 100644
  		folio_set_lru(folio);
  	}
  
-@@ -269,6 +291,14 @@ void folio_rotate_reclaimable(struct folio *folio)
+@@ -269,6 +306,14 @@ void folio_rotate_reclaimable(struct folio *folio)
  	    folio_test_unevictable(folio) || !folio_test_lru(folio))
  		return;
  
@@ -9778,7 +10076,7 @@ index 588f50d..1cfe261 100644
  	folio_batch_add_and_move(folio, lru_move_tail);
  }
  
-@@ -371,6 +401,13 @@ void folio_activate(struct folio *folio)
+@@ -371,6 +416,13 @@ void folio_activate(struct folio *folio)
  	    !folio_test_lru(folio))
  		return;
  
@@ -9792,7 +10090,7 @@ index 588f50d..1cfe261 100644
  	folio_batch_add_and_move(folio, lru_activate);
  }
  
-@@ -386,6 +423,15 @@ void folio_activate(struct folio *folio)
+@@ -386,6 +438,15 @@ void folio_activate(struct folio *folio)
  	if (!folio_test_clear_lru(folio))
  		return;
  
@@ -9808,7 +10106,7 @@ index 588f50d..1cfe261 100644
  	lruvec = folio_lruvec_lock_irq(folio);
  	lru_activate(lruvec, folio);
  	lruvec_unlock_irq(lruvec);
-@@ -501,6 +547,25 @@ void folio_mark_accessed(struct folio *folio)
+@@ -501,6 +562,25 @@ void folio_mark_accessed(struct folio *folio)
  		lru_gen_inc_refs(folio);
  		return;
  	}
@@ -9834,27 +10132,25 @@ index 588f50d..1cfe261 100644
  
  	if (!folio_test_referenced(folio)) {
  		folio_set_referenced(folio);
-@@ -544,13 +609,20 @@ void folio_add_lru(struct folio *folio)
+@@ -544,13 +624,20 @@ void folio_add_lru(struct folio *folio)
  			folio_test_unevictable(folio), folio);
  	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
  
--	/*
++#ifdef CONFIG_LRU_MARIE
+ 	/*
 -	 * For refaulted workingset folios, set PG_active so they
 -	 * can be added to active generations.
 -	 * For prefaulted file folios, folio_mark_accessed() sets
 -	 * PG_referenced so lru_gen_folio_seq() places them into
 -	 * the second oldest generation.
--	 */
-+#ifdef CONFIG_LRU_MARIE
-+        /*
-+         * Marie bypass: Marie tracks folios via per-PFN state bytes,
-+         * not on legacy/MGLRU lists, and does not use PG_active. If
-+         * we set it here, the folio enters Marie with PG_active=1;
-+         * later marie_state_shrink_lruvec -> shrink_folio_list trips
-+         * VM_BUG_ON_FOLIO(folio_test_active(folio), folio) in
-+         * mm/vmscan.c. Skip the MGLRU fault hint when Marie owns
-+         * the LRU. (See also defensive clear in lru_marie_add_folio.)
-+         */
++	 * Marie bypass: Marie tracks folios via per-PFN state bytes,
++	 * not on legacy/MGLRU lists, and does not use PG_active. If
++	 * we set it here, the folio enters Marie with PG_active=1;
++	 * later marie_state_shrink_lruvec -> shrink_folio_list trips
++	 * VM_BUG_ON_FOLIO(folio_test_active(folio), folio) in
++	 * mm/vmscan.c. Skip the MGLRU fault hint when Marie owns
++	 * the LRU. (See also defensive clear in lru_marie_add_folio.)
+ 	 */
 +	if (!lru_marie_enabled() && lru_gen_enabled() && !folio_test_unevictable(folio) &&
 +	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC))
 +		folio_set_active(folio);
@@ -9862,7 +10158,7 @@ index 588f50d..1cfe261 100644
  	if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
  	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC)) {
  		if (folio_test_workingset(folio))
-@@ -558,6 +630,7 @@ void folio_add_lru(struct folio *folio)
+@@ -558,6 +645,7 @@ void folio_add_lru(struct folio *folio)
  		else if (!folio_test_referenced(folio))
  			folio_mark_accessed(folio);
  	}
@@ -9870,7 +10166,7 @@ index 588f50d..1cfe261 100644
  
  	folio_batch_add_and_move(folio, lru_add);
  }
-@@ -743,6 +816,13 @@ void deactivate_file_folio(struct folio *folio)
+@@ -743,6 +831,13 @@ void deactivate_file_folio(struct folio *folio)
  	if (lru_gen_enabled() && lru_gen_clear_refs(folio))
  		return;
  
@@ -9884,7 +10180,7 @@ index 588f50d..1cfe261 100644
  	folio_batch_add_and_move(folio, lru_deactivate_file);
  }
  
-@@ -762,6 +842,13 @@ void folio_deactivate(struct folio *folio)
+@@ -762,6 +857,13 @@ void folio_deactivate(struct folio *folio)
  	if (lru_gen_enabled() ? lru_gen_clear_refs(folio) : !folio_test_active(folio))
  		return;
  
@@ -9898,7 +10194,7 @@ index 588f50d..1cfe261 100644
  	folio_batch_add_and_move(folio, lru_deactivate);
  }
  
-@@ -779,6 +866,14 @@ void folio_mark_lazyfree(struct folio *folio)
+@@ -779,6 +881,14 @@ void folio_mark_lazyfree(struct folio *folio)
  	    folio_test_swapcache(folio) || folio_test_unevictable(folio))
  		return;
  

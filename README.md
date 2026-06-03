@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-03
+* 7.1/NEXT add bore 6.6.3 patch
+* 7.1/NEXT add Marie LRU 0.3.0 patch
+
 ## 2026-06-02
 * 7.1/NEXT add Marie LRU 0.2.10 patch
 * 7.1/NEXT distributed build support for Clang ThinLTO
