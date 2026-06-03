@@ -46,10 +46,10 @@ index 0000000..9215c13
 +
 +#endif /* _KERNEL_SCHED_BORE_H */
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index aa0e822..d094b04 100644
+index 4fefaa1..1a80291 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -824,6 +824,37 @@ struct kmap_ctrl {
+@@ -823,6 +823,37 @@ struct kmap_ctrl {
  #endif
  };
  
@@ -87,7 +87,7 @@ index aa0e822..d094b04 100644
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -882,6 +913,9 @@ struct task_struct {
+@@ -881,6 +912,9 @@ struct task_struct {
  #ifdef CONFIG_SCHED_CLASS_EXT
  	struct sched_ext_entity		scx;
  #endif
@@ -98,7 +98,7 @@ index aa0e822..d094b04 100644
  
  #ifdef CONFIG_SCHED_CORE
 diff --git a/init/Kconfig b/init/Kconfig
-index 37c3ae0..72c1359 100644
+index 9cc7a1f..2b1ac61 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
 @@ -1490,6 +1490,23 @@ config CHECKPOINT_RESTORE
@@ -151,7 +151,7 @@ index ce1435c..9eee200 100644
 +	 an unnecessarily large base slice, resulting in high scheduling
 +	 latency and poor system responsiveness.
 diff --git a/kernel/exit.c b/kernel/exit.c
-index ae7f191..8b6d65f 100644
+index 1056422..5195551 100644
 --- a/kernel/exit.c
 +++ b/kernel/exit.c
 @@ -147,7 +147,11 @@ static void __unhash_process(struct release_task_post *post, struct task_struct
@@ -167,7 +167,7 @@ index ae7f191..8b6d65f 100644
  	}
  	list_del_rcu(&p->thread_node);
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 2aa5dbd..02235fc 100644
+index 4f5f8f2..3c51c68 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -120,6 +120,10 @@
@@ -181,7 +181,7 @@ index 2aa5dbd..02235fc 100644
  #include <trace/events/sched.h>
  
  #define CREATE_TRACE_POINTS
-@@ -2431,6 +2435,11 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2427,6 +2431,11 @@ __latent_entropy struct task_struct *copy_process(
  	p->start_time = ktime_get_ns();
  	p->start_boottime = ktime_get_boottime_ns();
  
@@ -193,7 +193,7 @@ index 2aa5dbd..02235fc 100644
  	/*
  	 * Make it visible to the rest of the system, but dont wake it up yet.
  	 * Need tasklist lock for parent etc handling!
-@@ -2516,7 +2525,11 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2512,7 +2521,11 @@ __latent_entropy struct task_struct *copy_process(
  							 p->real_parent->signal->is_child_subreaper;
  			if (clone_flags & CLONE_AUTOREAP)
  				p->signal->autoreap = 1;
@@ -206,7 +206,7 @@ index 2aa5dbd..02235fc 100644
  			attach_pid(p, PIDTYPE_TGID);
  			attach_pid(p, PIDTYPE_PGID);
 diff --git a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
-index ceed9d8..5545a96 100644
+index 8f5e5d3..8fbd493 100644
 --- a/kernel/futex/waitwake.c
 +++ b/kernel/futex/waitwake.c
 @@ -4,6 +4,9 @@
@@ -219,7 +219,7 @@ index ceed9d8..5545a96 100644
  
  #include "futex.h"
  
-@@ -355,7 +358,15 @@ void futex_do_wait(struct futex_q *q, struct hrtimer_sleeper *timeout)
+@@ -381,7 +384,15 @@ void futex_do_wait(struct futex_q *q, struct hrtimer_sleeper *timeout)
  		 * is no timeout, or if it has yet to expire.
  		 */
  		if (!timeout || timeout->task)
@@ -685,7 +685,7 @@ index 0000000..c27a22c
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 3c8bfd6..0f725d6 100644
+index ebc8147..99377ab 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -100,6 +100,10 @@
@@ -711,7 +711,7 @@ index 3c8bfd6..0f725d6 100644
  	struct load_weight lw;
  
  	if (task_has_idle_policy(p)) {
-@@ -8890,6 +8898,10 @@ void __init sched_init(void)
+@@ -8894,6 +8902,10 @@ void __init sched_init(void)
  	BUG_ON(!sched_class_above(&ext_sched_class, &idle_sched_class));
  #endif
  

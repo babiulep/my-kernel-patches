@@ -3148,7 +3148,7 @@ index e6092c3..0ce3add 100644
  		const struct tcp_congestion_ops *ca;
  
 diff --git a/net/ipv4/tcp_output.c b/net/ipv4/tcp_output.c
-index ef0c10c..0279978 100644
+index 1b0a066..971f157 100644
 --- a/net/ipv4/tcp_output.c
 +++ b/net/ipv4/tcp_output.c
 @@ -365,7 +365,8 @@ static void tcp_ecn_send(struct sock *sk, struct sk_buff *skb,
@@ -3161,7 +3161,7 @@ index ef0c10c..0279978 100644
  			/* ACK or retransmitted segment: clear ECT|CE */
  			INET_ECN_dontxmit(sk);
  		}
-@@ -1455,6 +1456,24 @@ static void tcp_update_skb_after_send(struct sock *sk, struct sk_buff *skb,
+@@ -1458,6 +1459,24 @@ static void tcp_update_skb_after_send(struct sock *sk, struct sk_buff *skb,
  	list_move_tail(&skb->tcp_tsorted_anchor, &tp->tsorted_sent_queue);
  }
  
@@ -3186,7 +3186,7 @@ index ef0c10c..0279978 100644
  /* Snapshot the current delivery information in the skb, to generate
   * a rate sample later when the skb is (s)acked in tcp_rate_skb_delivered().
   */
-@@ -1487,7 +1506,9 @@ static void tcp_rate_skb_sent(struct sock *sk, struct sk_buff *skb)
+@@ -1490,7 +1509,9 @@ static void tcp_rate_skb_sent(struct sock *sk, struct sk_buff *skb)
  	TCP_SKB_CB(skb)->tx.delivered_mstamp	= tp->delivered_mstamp;
  	TCP_SKB_CB(skb)->tx.delivered		= tp->delivered;
  	TCP_SKB_CB(skb)->tx.delivered_ce	= tp->delivered_ce;
@@ -3196,7 +3196,7 @@ index ef0c10c..0279978 100644
  }
  
  INDIRECT_CALLABLE_DECLARE(int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl));
-@@ -1835,7 +1856,7 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
+@@ -1838,7 +1859,7 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
  {
  	struct tcp_sock *tp = tcp_sk(sk);
  	struct sk_buff *buff;
@@ -3205,7 +3205,7 @@ index ef0c10c..0279978 100644
  	long limit;
  	u16 flags;
  	int nlen;
-@@ -1910,6 +1931,30 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
+@@ -1913,6 +1934,30 @@ int tcp_fragment(struct sock *sk, enum tcp_queue tcp_queue,
  
  		if (diff)
  			tcp_adjust_pcount(sk, skb, diff);
@@ -3236,7 +3236,7 @@ index ef0c10c..0279978 100644
  	}
  
  	/* Link BUFF into the send queue. */
-@@ -2264,13 +2309,12 @@ static u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now,
+@@ -2267,13 +2312,12 @@ static u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now,
  static u32 tcp_tso_segs(struct sock *sk, unsigned int mss_now)
  {
  	const struct tcp_congestion_ops *ca_ops = inet_csk(sk)->icsk_ca_ops;
@@ -3255,7 +3255,7 @@ index ef0c10c..0279978 100644
  	return min_t(u32, tso_segs, sk->sk_gso_max_segs);
  }
  
-@@ -2988,6 +3032,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
+@@ -2991,6 +3035,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
  			skb_set_delivery_time(skb, tp->tcp_wstamp_ns, SKB_CLOCK_MONOTONIC);
  			list_move_tail(&skb->tcp_tsorted_anchor, &tp->tsorted_sent_queue);
  			tcp_init_tso_segs(skb, mss_now);
@@ -3263,7 +3263,7 @@ index ef0c10c..0279978 100644
  			goto repair; /* Skip network transmission */
  		}
  
-@@ -3200,6 +3245,7 @@ void tcp_send_loss_probe(struct sock *sk)
+@@ -3203,6 +3248,7 @@ void tcp_send_loss_probe(struct sock *sk)
  	if (WARN_ON(!skb || !tcp_skb_pcount(skb)))
  		goto rearm_timer;
  

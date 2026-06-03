@@ -757,7 +757,7 @@ index eff9f9e..2e3f19e 100644
  obj-$(CONFIG_ZSWAP)	+= zswap.o
  obj-$(CONFIG_HAS_DMA)	+= dmapool.o
 diff --git a/mm/huge_memory.c b/mm/huge_memory.c
-index b81d1ec..37d84f2 100644
+index 7f8e359..24ffac7 100644
 --- a/mm/huge_memory.c
 +++ b/mm/huge_memory.c
 @@ -6,6 +6,7 @@
@@ -768,7 +768,7 @@ index b81d1ec..37d84f2 100644
  #include <linux/sched.h>
  #include <linux/sched/mm.h>
  #include <linux/sched/numa_balancing.h>
-@@ -3503,10 +3504,31 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
+@@ -3497,10 +3498,31 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
  	} else {
  		/* head is still on lru (and we have it frozen) */
  		VM_WARN_ON(!folio_test_lru(folio));
@@ -803,7 +803,7 @@ index b81d1ec..37d84f2 100644
  	}
  }
 diff --git a/mm/internal.h b/mm/internal.h
-index 181e79f..d532352 100644
+index fd414d3..3e08672 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
 @@ -616,12 +616,55 @@ extern unsigned long highest_memmap_pfn;
@@ -862,7 +862,7 @@ index 181e79f..d532352 100644
  int user_proactive_reclaim(char *buf,
  			   struct mem_cgroup *memcg, pg_data_t *pgdat);
  
-@@ -684,6 +727,18 @@ struct alloc_context {
+@@ -684,6 +727,19 @@ struct alloc_context {
  	 */
  	enum zone_type highest_zoneidx;
  	bool spread_dirty_pages;
@@ -878,9 +878,10 @@ index 181e79f..d532352 100644
 +	 */
 +	long initial_swap_write_failed;
 +#endif
++
+ 	unsigned long user_addr;
  };
  
- /*
 diff --git b/mm/lru_marie/Makefile b/mm/lru_marie/Makefile
 new file mode 100644
 index 0000000..c1e9c9b
@@ -1444,10 +1445,10 @@ index 0000000..1439771
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git b/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000..6b0350c
+index 0000000..60ada5f
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1933 @@
+@@ -0,0 +1,1935 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -1997,7 +1998,6 @@ index 0000000..6b0350c
 +bool lru_marie_del_folio(struct lruvec *lv, struct folio *folio, bool reclaiming)
 +{
 +	struct marie_lruvec *mlv;
-+	bool removed, was_resident;
 +
 +	lockdep_assert_held(&lv->lru_lock);
 +	lockdep_assert_irqs_disabled();
@@ -2077,11 +2077,14 @@ index 0000000..6b0350c
 +	 * unconditional (folio->lru is either a self-loop or on legacy
 +	 * lruvec->lists[lru], whose mutation is already covered by the
 +	 * caller's lru_lock).
++	 *
++	 * marie_del_folio_locked -> marie_evict_locked -> marie_account_evict
++	 * owns the full counter wind-down, including the single
++	 * marie_nr_folios -1. Do NOT decrement it again here (the old
++	 * caller-side -1 predated the account.h funnel and double-counted
++	 * every generic del of a tracked folio).
 +	 */
-+	removed = marie_del_folio_locked(mlv, folio, &was_resident);
-+	if (removed && was_resident)
-+		marie_pc_add(&marie_nr_folios, -1);
-+	return removed;
++	return marie_del_folio_locked(mlv, folio);
 +}
 +EXPORT_SYMBOL_GPL(lru_marie_del_folio);
 +
@@ -4667,10 +4670,10 @@ index 0000000..4646ca1
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git b/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000..2a4cea7
+index 0000000..c2ffc35
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2568 @@
+@@ -0,0 +1,2566 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -7040,9 +7043,11 @@ index 0000000..2a4cea7
 + * marie_del_folio_locked - lru_marie_del_folio body.
 + *
 + * External-removal entry: if the folio is still Marie-tracked, do the
-+ * full evict via marie_evict_locked (counter decrements + per-PFN
-+ * state wipe). Caller (lru_marie_del_folio in mm/lru_marie/core.c)
-+ * decrements marie_nr_folios when *did_inc_lru_size is true.
++ * full evict via marie_evict_locked, which routes through
++ * marie_account_evict and owns the ENTIRE counter wind-down -- including
++ * the single marie_nr_folios -1. The caller does no accounting of its
++ * own; an earlier caller-side -1 predated the account.h funnel and
++ * double-counted marie_nr_folios on every generic del of a tracked folio.
 + *
 + * Lock contract: caller holds lruvec->lru_lock. No Marie lock is taken
 + * here -- the lru_lock invariant already serialises every Marie state
@@ -7060,17 +7065,13 @@ index 0000000..2a4cea7
 + * update_lru_size on a folio Marie already accounted would double-
 + * decrement mz->lru_zone_size.
 + */
-+bool marie_del_folio_locked(struct marie_lruvec *mlv, struct folio *folio,
-+				    bool *did_inc_lru_size)
++bool marie_del_folio_locked(struct marie_lruvec *mlv, struct folio *folio)
 +{
 +	lockdep_assert_held(&mlv->lruvec->lru_lock);
 +	lockdep_assert_irqs_disabled();
 +
-+	if (!folio_marie_test_tracked(folio)) {
-+		*did_inc_lru_size = false;
++	if (!folio_marie_test_tracked(folio))
 +		return true;
-+	}
-+	*did_inc_lru_size = true;
 +	return marie_evict_locked(mlv, folio);
 +}
 +
@@ -7241,10 +7242,10 @@ index 0000000..2a4cea7
 +}
 diff --git b/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000..3c85c16
+index 0000000..ec3f086
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,1278 @@
+@@ -0,0 +1,1275 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -8112,9 +8113,6 @@ index 0000000..3c85c16
 + * marie_del_folio_locked - lru_marie_del_folio body.
 + * @mlv:               residency set
 + * @folio:            folio to remove (any Marie-tracked state)
-+ * @did_inc_lru_size: out: true iff this call decremented NR_LRU_BASE
-+ *                    counters (i.e. the folio was actually tracked
-+ *                    and the evict path ran)
 + *
 + * Universal external-removal handler called from lru_marie_del_folio when
 + * lruvec_del_folio fires from outside Marie (compaction, lru_activate
@@ -8124,12 +8122,12 @@ index 0000000..3c85c16
 + * folio is no longer TRACKED, returns true defensively (treated as
 + * "Marie already removed it").
 + *
-+ * Returns true iff @folio was tracked (the caller can fall through
-+ * to its remaining bookkeeping). Does NOT touch marie_nr_folios; the
-+ * caller percpu_counter_add_batch()s -1 when *did_inc_lru_size is true.
++ * Returns true iff @folio was tracked (the caller can fall through to
++ * its remaining bookkeeping). The full counter wind-down -- including
++ * the single marie_nr_folios -1 -- is owned by marie_evict_locked via
++ * marie_account_evict; the caller adds no decrement of its own.
 + */
-+bool marie_del_folio_locked(struct marie_lruvec *mlv, struct folio *folio,
-+				    bool *did_inc_lru_size);
++bool marie_del_folio_locked(struct marie_lruvec *mlv, struct folio *folio);
 +
 +/*
 + * Walker hot-path tier promotion result codes. Kept for ABI; the
@@ -8525,7 +8523,7 @@ index 0000000..3c85c16
 +#endif /* _MM_LRU_MARIE_STATE_H */
 diff --git b/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000..a9ad837
+index 0000000..95894c5
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -8548,7 +8546,7 @@ index 0000000..a9ad837
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.3.0"
++#define MARIE_VERSION	"0.3.1"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git b/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
@@ -9624,7 +9622,7 @@ index 56cd4af..0d104f6 100644
  	drain_all_stock(memcg);
  
 diff --git a/mm/mm_init.c b/mm/mm_init.c
-index f191162..969a3f9 100644
+index e53bd27..79073ca 100644
 --- a/mm/mm_init.c
 +++ b/mm/mm_init.c
 @@ -1395,6 +1395,9 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
@@ -9638,7 +9636,7 @@ index f191162..969a3f9 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index 81a9d4d..98765f0 100644
+index 778bf38..e36a76b 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -16,6 +16,7 @@
@@ -9649,7 +9647,7 @@ index 81a9d4d..98765f0 100644
  #include <linux/highmem.h>
  #include <linux/interrupt.h>
  #include <linux/jiffies.h>
-@@ -1326,6 +1327,28 @@ static __always_inline bool __free_pages_prepare(struct page *page,
+@@ -1347,6 +1348,28 @@ static __always_inline bool __free_pages_prepare(struct page *page,
  	trace_mm_page_free(page, order);
  	kmsan_free_page(page, order);
  
@@ -9678,7 +9676,7 @@ index 81a9d4d..98765f0 100644
  	if (memcg_kmem_online() && PageMemcgKmem(page))
  		__memcg_kmem_uncharge_page(page, order);
  
-@@ -4599,6 +4622,45 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
+@@ -4669,6 +4692,45 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
  	if (*no_progress_loops > MAX_RECLAIM_RETRIES)
  		goto out;
  
@@ -9724,7 +9722,7 @@ index 81a9d4d..98765f0 100644
  
  	/*
  	 * Keep reclaiming pages while there is a chance this will lead
-@@ -4757,6 +4819,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -4827,6 +4889,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  		WARN_ON_ONCE(current->flags & PF_MEMALLOC);
  	}
  
@@ -10000,7 +9998,7 @@ index 1c77d5d..898b893 100644
  			if (clear_flush_young_ptes_notify(vma, address, pvmw.pte, nr))
  				referenced++;
 diff --git a/mm/swap.c b/mm/swap.c
-index 588f50d..b23b981 100644
+index 7305cbf..410ce80 100644
 --- a/mm/swap.c
 +++ b/mm/swap.c
 @@ -37,6 +37,7 @@
@@ -10011,29 +10009,51 @@ index 588f50d..b23b981 100644
  
  #include "internal.h"
  
-@@ -73,6 +74,21 @@ static DEFINE_PER_CPU(struct cpu_fbatches, cpu_fbatches) = {
+@@ -73,11 +74,39 @@ static DEFINE_PER_CPU(struct cpu_fbatches, cpu_fbatches) = {
  static void __page_cache_release(struct folio *folio, struct lruvec **lruvecp,
  		unsigned long *flagsp)
  {
-+#ifdef CONFIG_LRU_MARIE
+-	if (folio_test_lru(folio)) {
+-		folio_lruvec_relock_irqsave(folio, lruvecp, flagsp);
+-		lruvec_del_folio(*lruvecp, folio);
+-		__folio_clear_lru_flags(folio);
 +	/*
-+	 * TRACKED is Marie's single source of truth: when set, the folio
-+	 * is Marie-owned and was never +1'd to mz->lru_zone_size. Gating on
-+	 * PG_lru here would let such a folio reach lruvec_del_folio's
-+	 * legacy fallback (if a path we did not anticipate cleared TRACKED
-+	 * without re-crediting mz), tripping the "lru_size went negative"
-+	 * WARN at mm/memcontrol.c. See lru_marie_release_folio's contract
-+	 * in <linux/lru_marie.h>.
++	 * PG_lru is the "on an LRU list, still holding +nr LRU accounting"
++	 * signal. A folio that Marie's reclaim isolate already claimed has
++	 * PG_lru clear and its Marie counters already wound down
++	 * (marie_account_evict_isolate); only its per-PFN TRACKED byte stays
++	 * set, until the buddy handoff (marie_state_drop_pfn_at_free). Gating
++	 * the Marie del path on PG_lru -- not TRACKED alone -- keeps such an
++	 * isolated folio from being evict-accounted a SECOND time here: that
++	 * double count (a TRACKED-only gate over-firing on the isolate path)
++	 * drove marie_nr_folios and the per-mlv scan counters negative, which
++	 * in turn fed a runaway reclaim scan. Legacy del is already
++	 * PG_lru-gated, so an off-LRU folio was always a no-op here anyway.
++	 *
++	 * For an on-LRU folio, TRACKED then selects Marie del
++	 * (mlv->marie_lru_zone_size) over legacy del (mz->lru_zone_size,
++	 * which Marie never +1'd). TRACKED is only ever cleared together with
++	 * PG_lru (marie_evict_locked) or at refcount 0 (the buddy handoff,
++	 * which never reaches here), so the "TRACKED clear, PG_lru set, mz
++	 * un-credited" state a TRACKED-only gate guarded against is
++	 * unreachable. See lru_marie_release_folio's contract in
++	 * <linux/lru_marie.h>.
 +	 */
++	if (!folio_test_lru(folio))
++		return;
++#ifdef CONFIG_LRU_MARIE
 +	if (lru_marie_enabled() && lru_marie_test_tracked(folio)) {
 +		lru_marie_release_folio(folio, lruvecp, flagsp);
 +		return;
-+	}
+ 	}
 +#endif
- 	if (folio_test_lru(folio)) {
- 		folio_lruvec_relock_irqsave(folio, lruvecp, flagsp);
- 		lruvec_del_folio(*lruvecp, folio);
-@@ -199,6 +215,27 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
++	folio_lruvec_relock_irqsave(folio, lruvecp, flagsp);
++	lruvec_del_folio(*lruvecp, folio);
++	__folio_clear_lru_flags(folio);
+ }
+ 
+ /*
+@@ -213,6 +242,27 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
  		folio_lruvec_relock_irqsave(folio, &lruvec, &flags);
  		move_fn(lruvec, folio);
  
@@ -10061,7 +10081,7 @@ index 588f50d..b23b981 100644
  		folio_set_lru(folio);
  	}
  
-@@ -269,6 +306,14 @@ void folio_rotate_reclaimable(struct folio *folio)
+@@ -283,6 +333,14 @@ void folio_rotate_reclaimable(struct folio *folio)
  	    folio_test_unevictable(folio) || !folio_test_lru(folio))
  		return;
  
@@ -10076,7 +10096,7 @@ index 588f50d..b23b981 100644
  	folio_batch_add_and_move(folio, lru_move_tail);
  }
  
-@@ -371,6 +416,13 @@ void folio_activate(struct folio *folio)
+@@ -385,6 +443,13 @@ void folio_activate(struct folio *folio)
  	    !folio_test_lru(folio))
  		return;
  
@@ -10090,7 +10110,7 @@ index 588f50d..b23b981 100644
  	folio_batch_add_and_move(folio, lru_activate);
  }
  
-@@ -386,6 +438,15 @@ void folio_activate(struct folio *folio)
+@@ -400,6 +465,15 @@ void folio_activate(struct folio *folio)
  	if (!folio_test_clear_lru(folio))
  		return;
  
@@ -10106,7 +10126,7 @@ index 588f50d..b23b981 100644
  	lruvec = folio_lruvec_lock_irq(folio);
  	lru_activate(lruvec, folio);
  	lruvec_unlock_irq(lruvec);
-@@ -501,6 +562,25 @@ void folio_mark_accessed(struct folio *folio)
+@@ -515,6 +589,25 @@ void folio_mark_accessed(struct folio *folio)
  		lru_gen_inc_refs(folio);
  		return;
  	}
@@ -10132,7 +10152,7 @@ index 588f50d..b23b981 100644
  
  	if (!folio_test_referenced(folio)) {
  		folio_set_referenced(folio);
-@@ -544,13 +624,20 @@ void folio_add_lru(struct folio *folio)
+@@ -558,13 +651,20 @@ void folio_add_lru(struct folio *folio)
  			folio_test_unevictable(folio), folio);
  	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
  
@@ -10158,7 +10178,7 @@ index 588f50d..b23b981 100644
  	if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
  	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC)) {
  		if (folio_test_workingset(folio))
-@@ -558,6 +645,7 @@ void folio_add_lru(struct folio *folio)
+@@ -572,6 +672,7 @@ void folio_add_lru(struct folio *folio)
  		else if (!folio_test_referenced(folio))
  			folio_mark_accessed(folio);
  	}
@@ -10166,7 +10186,7 @@ index 588f50d..b23b981 100644
  
  	folio_batch_add_and_move(folio, lru_add);
  }
-@@ -743,6 +831,13 @@ void deactivate_file_folio(struct folio *folio)
+@@ -757,6 +858,13 @@ void deactivate_file_folio(struct folio *folio)
  	if (lru_gen_enabled() && lru_gen_clear_refs(folio))
  		return;
  
@@ -10180,7 +10200,7 @@ index 588f50d..b23b981 100644
  	folio_batch_add_and_move(folio, lru_deactivate_file);
  }
  
-@@ -762,6 +857,13 @@ void folio_deactivate(struct folio *folio)
+@@ -776,6 +884,13 @@ void folio_deactivate(struct folio *folio)
  	if (lru_gen_enabled() ? lru_gen_clear_refs(folio) : !folio_test_active(folio))
  		return;
  
@@ -10194,7 +10214,7 @@ index 588f50d..b23b981 100644
  	folio_batch_add_and_move(folio, lru_deactivate);
  }
  
-@@ -779,6 +881,14 @@ void folio_mark_lazyfree(struct folio *folio)
+@@ -793,6 +908,14 @@ void folio_mark_lazyfree(struct folio *folio)
  	    folio_test_swapcache(folio) || folio_test_unevictable(folio))
  		return;
  
