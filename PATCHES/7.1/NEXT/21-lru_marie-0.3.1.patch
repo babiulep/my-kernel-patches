@@ -675,10 +675,10 @@ index ca27121..14cb565 100644
  	int kcompactd_max_order;
  	enum zone_type kcompactd_highest_zoneidx;
 diff --git a/include/linux/swap.h b/include/linux/swap.h
-index 8c43bc3..fdc02ee 100644
+index 8f0f68e..66eaf4f 100644
 --- a/include/linux/swap.h
 +++ b/include/linux/swap.h
-@@ -420,6 +420,24 @@ extern atomic_long_t nr_swap_pages;
+@@ -421,6 +421,24 @@ extern atomic_long_t nr_swap_pages;
  extern long total_swap_pages;
  extern atomic_t nr_rotate_swap;
  
@@ -757,7 +757,7 @@ index eff9f9e..2e3f19e 100644
  obj-$(CONFIG_ZSWAP)	+= zswap.o
  obj-$(CONFIG_HAS_DMA)	+= dmapool.o
 diff --git a/mm/huge_memory.c b/mm/huge_memory.c
-index 7f8e359..24ffac7 100644
+index 2bccb0a..18beda8 100644
 --- a/mm/huge_memory.c
 +++ b/mm/huge_memory.c
 @@ -6,6 +6,7 @@
@@ -768,7 +768,7 @@ index 7f8e359..24ffac7 100644
  #include <linux/sched.h>
  #include <linux/sched/mm.h>
  #include <linux/sched/numa_balancing.h>
-@@ -3497,10 +3498,31 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
+@@ -3504,10 +3505,31 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
  	} else {
  		/* head is still on lru (and we have it frozen) */
  		VM_WARN_ON(!folio_test_lru(folio));
@@ -803,7 +803,7 @@ index 7f8e359..24ffac7 100644
  	}
  }
 diff --git a/mm/internal.h b/mm/internal.h
-index fd414d3..3e08672 100644
+index 181e79f..a2288a1 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
 @@ -616,12 +616,55 @@ extern unsigned long highest_memmap_pfn;
@@ -879,9 +879,9 @@ index fd414d3..3e08672 100644
 +	long initial_swap_write_failed;
 +#endif
 +
- 	unsigned long user_addr;
  };
  
+ /*
 diff --git b/mm/lru_marie/Makefile b/mm/lru_marie/Makefile
 new file mode 100644
 index 0000000..c1e9c9b
@@ -9636,7 +9636,7 @@ index e53bd27..79073ca 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index 778bf38..e36a76b 100644
+index 81a9d4d..98765f0 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -16,6 +16,7 @@
@@ -9647,7 +9647,7 @@ index 778bf38..e36a76b 100644
  #include <linux/highmem.h>
  #include <linux/interrupt.h>
  #include <linux/jiffies.h>
-@@ -1347,6 +1348,28 @@ static __always_inline bool __free_pages_prepare(struct page *page,
+@@ -1326,6 +1327,28 @@ static __always_inline bool __free_pages_prepare(struct page *page,
  	trace_mm_page_free(page, order);
  	kmsan_free_page(page, order);
  
@@ -9676,7 +9676,7 @@ index 778bf38..e36a76b 100644
  	if (memcg_kmem_online() && PageMemcgKmem(page))
  		__memcg_kmem_uncharge_page(page, order);
  
-@@ -4669,6 +4692,45 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
+@@ -4599,6 +4622,45 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
  	if (*no_progress_loops > MAX_RECLAIM_RETRIES)
  		goto out;
  
@@ -9722,7 +9722,7 @@ index 778bf38..e36a76b 100644
  
  	/*
  	 * Keep reclaiming pages while there is a chance this will lead
-@@ -4827,6 +4889,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -4757,6 +4819,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  		WARN_ON_ONCE(current->flags & PF_MEMALLOC);
  	}
  
@@ -9998,7 +9998,7 @@ index 1c77d5d..898b893 100644
  			if (clear_flush_young_ptes_notify(vma, address, pvmw.pte, nr))
  				referenced++;
 diff --git a/mm/swap.c b/mm/swap.c
-index 7305cbf..410ce80 100644
+index 588f50d..708dca8 100644
 --- a/mm/swap.c
 +++ b/mm/swap.c
 @@ -37,6 +37,7 @@
@@ -10053,7 +10053,7 @@ index 7305cbf..410ce80 100644
  }
  
  /*
-@@ -213,6 +242,27 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
+@@ -199,6 +228,27 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
  		folio_lruvec_relock_irqsave(folio, &lruvec, &flags);
  		move_fn(lruvec, folio);
  
@@ -10081,7 +10081,7 @@ index 7305cbf..410ce80 100644
  		folio_set_lru(folio);
  	}
  
-@@ -283,6 +333,14 @@ void folio_rotate_reclaimable(struct folio *folio)
+@@ -269,6 +319,14 @@ void folio_rotate_reclaimable(struct folio *folio)
  	    folio_test_unevictable(folio) || !folio_test_lru(folio))
  		return;
  
@@ -10096,7 +10096,7 @@ index 7305cbf..410ce80 100644
  	folio_batch_add_and_move(folio, lru_move_tail);
  }
  
-@@ -385,6 +443,13 @@ void folio_activate(struct folio *folio)
+@@ -371,6 +429,13 @@ void folio_activate(struct folio *folio)
  	    !folio_test_lru(folio))
  		return;
  
@@ -10110,7 +10110,7 @@ index 7305cbf..410ce80 100644
  	folio_batch_add_and_move(folio, lru_activate);
  }
  
-@@ -400,6 +465,15 @@ void folio_activate(struct folio *folio)
+@@ -386,6 +451,15 @@ void folio_activate(struct folio *folio)
  	if (!folio_test_clear_lru(folio))
  		return;
  
@@ -10126,7 +10126,7 @@ index 7305cbf..410ce80 100644
  	lruvec = folio_lruvec_lock_irq(folio);
  	lru_activate(lruvec, folio);
  	lruvec_unlock_irq(lruvec);
-@@ -515,6 +589,25 @@ void folio_mark_accessed(struct folio *folio)
+@@ -501,6 +575,25 @@ void folio_mark_accessed(struct folio *folio)
  		lru_gen_inc_refs(folio);
  		return;
  	}
@@ -10152,7 +10152,7 @@ index 7305cbf..410ce80 100644
  
  	if (!folio_test_referenced(folio)) {
  		folio_set_referenced(folio);
-@@ -558,13 +651,20 @@ void folio_add_lru(struct folio *folio)
+@@ -544,13 +637,20 @@ void folio_add_lru(struct folio *folio)
  			folio_test_unevictable(folio), folio);
  	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
  
@@ -10178,7 +10178,7 @@ index 7305cbf..410ce80 100644
  	if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
  	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC)) {
  		if (folio_test_workingset(folio))
-@@ -572,6 +672,7 @@ void folio_add_lru(struct folio *folio)
+@@ -558,6 +658,7 @@ void folio_add_lru(struct folio *folio)
  		else if (!folio_test_referenced(folio))
  			folio_mark_accessed(folio);
  	}
@@ -10186,7 +10186,7 @@ index 7305cbf..410ce80 100644
  
  	folio_batch_add_and_move(folio, lru_add);
  }
-@@ -757,6 +858,13 @@ void deactivate_file_folio(struct folio *folio)
+@@ -743,6 +844,13 @@ void deactivate_file_folio(struct folio *folio)
  	if (lru_gen_enabled() && lru_gen_clear_refs(folio))
  		return;
  
@@ -10200,7 +10200,7 @@ index 7305cbf..410ce80 100644
  	folio_batch_add_and_move(folio, lru_deactivate_file);
  }
  
-@@ -776,6 +884,13 @@ void folio_deactivate(struct folio *folio)
+@@ -762,6 +870,13 @@ void folio_deactivate(struct folio *folio)
  	if (lru_gen_enabled() ? lru_gen_clear_refs(folio) : !folio_test_active(folio))
  		return;
  
@@ -10214,7 +10214,7 @@ index 7305cbf..410ce80 100644
  	folio_batch_add_and_move(folio, lru_deactivate);
  }
  
-@@ -793,6 +908,14 @@ void folio_mark_lazyfree(struct folio *folio)
+@@ -779,6 +894,14 @@ void folio_mark_lazyfree(struct folio *folio)
  	    folio_test_swapcache(folio) || folio_test_unevictable(folio))
  		return;
  
@@ -10245,7 +10245,7 @@ index 77d2d14..5fdbaea 100644
  /* linux/mm/swap_state.c */
  extern struct address_space swap_space __read_mostly;
 diff --git a/mm/vmscan.c b/mm/vmscan.c
-index e8a9091..427940a 100644
+index 8823d11..c0ae763 100644
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
 @@ -39,6 +39,7 @@
