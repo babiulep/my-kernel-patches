@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-06
+* 7.1/NEXT fix offsets
+* 7.1/NEXT: update Nap CPUIdle Governor to v0.5.0
+
 ## 2026-06-04
 * 7.1/NEXT fix offsets
 * 7.1/NEXT fix Marie LRU 0.3.1 patch

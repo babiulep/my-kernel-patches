@@ -46,7 +46,7 @@ index 0000000..9215c13
 +
 +#endif /* _KERNEL_SCHED_BORE_H */
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 4fefaa1..1a80291 100644
+index 373bcc0..df46140 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
 @@ -823,6 +823,37 @@ struct kmap_ctrl {
@@ -87,7 +87,7 @@ index 4fefaa1..1a80291 100644
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -881,6 +912,9 @@ struct task_struct {
+@@ -884,6 +915,9 @@ struct task_struct {
  #ifdef CONFIG_SCHED_CLASS_EXT
  	struct sched_ext_entity		scx;
  #endif
@@ -167,7 +167,7 @@ index 1056422..5195551 100644
  	}
  	list_del_rcu(&p->thread_node);
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 4f5f8f2..3c51c68 100644
+index 892a952..d1fa608 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -120,6 +120,10 @@
@@ -181,7 +181,7 @@ index 4f5f8f2..3c51c68 100644
  #include <trace/events/sched.h>
  
  #define CREATE_TRACE_POINTS
-@@ -2427,6 +2431,11 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2428,6 +2432,11 @@ __latent_entropy struct task_struct *copy_process(
  	p->start_time = ktime_get_ns();
  	p->start_boottime = ktime_get_boottime_ns();
  
@@ -193,7 +193,7 @@ index 4f5f8f2..3c51c68 100644
  	/*
  	 * Make it visible to the rest of the system, but dont wake it up yet.
  	 * Need tasklist lock for parent etc handling!
-@@ -2512,7 +2521,11 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2513,7 +2522,11 @@ __latent_entropy struct task_struct *copy_process(
  							 p->real_parent->signal->is_child_subreaper;
  			if (clone_flags & CLONE_AUTOREAP)
  				p->signal->autoreap = 1;
@@ -685,7 +685,7 @@ index 0000000..c27a22c
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index ebc8147..99377ab 100644
+index a2f8680..f53723d 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -100,6 +100,10 @@
@@ -699,7 +699,7 @@ index ebc8147..99377ab 100644
  EXPORT_TRACEPOINT_SYMBOL_GPL(ipi_send_cpu);
  EXPORT_TRACEPOINT_SYMBOL_GPL(ipi_send_cpumask);
  
-@@ -1517,7 +1521,11 @@ int tg_nop(struct task_group *tg, void *data)
+@@ -1523,7 +1527,11 @@ int tg_nop(struct task_group *tg, void *data)
  
  void set_load_weight(struct task_struct *p, bool update_load)
  {
@@ -711,7 +711,7 @@ index ebc8147..99377ab 100644
  	struct load_weight lw;
  
  	if (task_has_idle_policy(p)) {
-@@ -8894,6 +8902,10 @@ void __init sched_init(void)
+@@ -8924,6 +8932,10 @@ void __init sched_init(void)
  	BUG_ON(!sched_class_above(&ext_sched_class, &idle_sched_class));
  #endif
  
@@ -723,7 +723,7 @@ index ebc8147..99377ab 100644
  
  #ifdef CONFIG_FAIR_GROUP_SCHED
 diff --git a/kernel/sched/debug.c b/kernel/sched/debug.c
-index 5e09cf9..a4e59c8 100644
+index 40584b2..976c312 100644
 --- a/kernel/sched/debug.c
 +++ b/kernel/sched/debug.c
 @@ -170,6 +170,53 @@ static const struct file_operations sched_feat_fops = {
@@ -829,7 +829,7 @@ index 5e09cf9..a4e59c8 100644
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index 7816270..6644d7b 100644
+index f4ed841..d067644 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
 @@ -58,6 +58,10 @@
@@ -1015,7 +1015,7 @@ index 7816270..6644d7b 100644
  
  static void
  enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
-@@ -7757,7 +7811,7 @@ static int choose_idle_cpu(int cpu, struct task_struct *p)
+@@ -7767,7 +7821,7 @@ static int choose_idle_cpu(int cpu, struct task_struct *p)
  }
  
  static void
@@ -1024,7 +1024,7 @@ index 7816270..6644d7b 100644
  {
  	struct cfs_rq *cfs_rq = cfs_rq_of(se);
  
-@@ -7773,7 +7827,13 @@ requeue_delayed_entity(struct sched_entity *se)
+@@ -7783,7 +7837,13 @@ requeue_delayed_entity(struct sched_entity *se)
  		cfs_rq->nr_queued--;
  		if (se != cfs_rq->curr)
  			__dequeue_entity(cfs_rq, se);
@@ -1039,7 +1039,7 @@ index 7816270..6644d7b 100644
  		if (se != cfs_rq->curr)
  			__enqueue_entity(cfs_rq, se);
  		cfs_rq->nr_queued++;
-@@ -7812,7 +7872,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
+@@ -7822,7 +7882,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
  		util_est_enqueue(&rq->cfs, p);
  
  	if (flags & ENQUEUE_DELAYED) {
@@ -1048,7 +1048,7 @@ index 7816270..6644d7b 100644
  		return;
  	}
  
-@@ -7830,7 +7890,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
+@@ -7840,7 +7900,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
  	for_each_sched_entity(se) {
  		if (se->on_rq) {
  			if (se->sched_delayed)
@@ -1057,7 +1057,7 @@ index 7816270..6644d7b 100644
  			break;
  		}
  		cfs_rq = cfs_rq_of(se);
-@@ -8033,6 +8093,16 @@ static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
+@@ -8043,6 +8103,16 @@ static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
  	if (!p->se.sched_delayed)
  		util_est_dequeue(&rq->cfs, p);
  
@@ -1074,7 +1074,7 @@ index 7816270..6644d7b 100644
  	if (dequeue_entities(rq, &p->se, flags) < 0)
  		return false;
  
-@@ -10000,16 +10070,25 @@ static void yield_task_fair(struct rq *rq)
+@@ -10008,16 +10078,25 @@ static void yield_task_fair(struct rq *rq)
  	/*
  	 * Are we the only task in the tree?
  	 */
@@ -1100,7 +1100,7 @@ index 7816270..6644d7b 100644
  	/*
  	 * Tell update_rq_clock() that we've just updated,
  	 * so we don't do microscopic update in schedule()
-@@ -14992,6 +15071,9 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
+@@ -14998,6 +15077,9 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
  	WARN_ON_ONCE(p->se.sched_delayed);
  
  	attach_task_cfs_rq(p);
@@ -1111,7 +1111,7 @@ index 7816270..6644d7b 100644
  	set_task_max_allowed_capacity(p);
  
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index 332ecf8..36b7df6 100644
+index c7c2dea..e727d77 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
 @@ -2264,7 +2264,11 @@ extern int group_balance_cpu(struct sched_group *sg);
@@ -1126,7 +1126,7 @@ index 332ecf8..36b7df6 100644
  
  static inline const struct cpumask *task_user_cpus(struct task_struct *p)
  {
-@@ -3069,7 +3073,12 @@ static inline void attach_one_task(struct rq *rq, struct task_struct *p)
+@@ -3109,7 +3113,12 @@ static inline void attach_one_task(struct rq *rq, struct task_struct *p)
  extern __read_mostly unsigned int sysctl_sched_nr_migrate;
  extern __read_mostly unsigned int sysctl_sched_migration_cost;
  
