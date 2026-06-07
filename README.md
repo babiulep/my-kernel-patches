@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-07
+* 7.1/NEXT: fixes to amneziawg from mainline
+
 ## 2026-06-06
 * 7.1/NEXT fix offsets
 * 7.1/NEXT: update Nap CPUIdle Governor to v0.5.0

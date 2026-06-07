@@ -943,10 +943,10 @@ index 0000000..9ccb7dc
 +.PHONY: all module module-debug apply-patches module-install install clean cloc check style
 diff --git b/net/wireguard/allowedips.c b/net/wireguard/allowedips.c
 new file mode 100644
-index 0000000..09f7fcd
+index 0000000..5ece9ac
 --- /dev/null
 +++ b/net/wireguard/allowedips.c
-@@ -0,0 +1,429 @@
+@@ -0,0 +1,424 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -995,11 +995,6 @@ index 0000000..09f7fcd
 +			return;
 +		stack[(*len)++] = rcu_dereference_raw(p);
 +	}
-+}
-+
-+static void node_free_rcu(struct rcu_head *rcu)
-+{
-+	kmem_cache_free(node_cache, container_of(rcu, struct allowedips_node, rcu));
 +}
 +
 +static void root_free_rcu(struct rcu_head *rcu)
@@ -1220,13 +1215,13 @@ index 0000000..09f7fcd
 +	if (free_parent)
 +		child = rcu_dereference_protected(parent->bit[!(node->parent_bit_packed & 1)],
 +						  lockdep_is_held(lock));
-+	call_rcu(&node->rcu, node_free_rcu);
++	kfree_rcu(node, rcu);
 +	if (!free_parent)
 +		return;
 +	if (child)
 +		child->parent_bit_packed = parent->parent_bit_packed;
 +	*(struct allowedips_node **)(parent->parent_bit_packed & ~3UL) = child;
-+	call_rcu(&parent->rcu, node_free_rcu);
++	kfree_rcu(parent, rcu);
 +}
 +
 +static int remove(struct allowedips_node __rcu **trie, u8 bits, const u8 *key,
@@ -45667,10 +45662,10 @@ index 0000000..9aa1e8d
 +#endif
 diff --git b/net/wireguard/device.c b/net/wireguard/device.c
 new file mode 100644
-index 0000000..61ba459
+index 0000000..ea131ac
 --- /dev/null
 +++ b/net/wireguard/device.c
-@@ -0,0 +1,625 @@
+@@ -0,0 +1,623 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -46063,7 +46058,7 @@ index 0000000..61ba459
 +#endif
 +
 +	wg->handshake_receive_wq = alloc_workqueue("wg-kex-%s",
-+			WQ_CPU_INTENSIVE | WQ_FREEZABLE, 0, dev->name);
++			WQ_CPU_INTENSIVE | WQ_FREEZABLE | WQ_PERCPU, 0, dev->name);
 +	if (!wg->handshake_receive_wq)
 +		goto err_free_tstats;
 +
@@ -46073,7 +46068,7 @@ index 0000000..61ba459
 +		goto err_destroy_handshake_receive;
 +
 +	wg->packet_crypt_wq = alloc_workqueue("wg-crypt-%s",
-+			WQ_CPU_INTENSIVE | WQ_MEM_RECLAIM, 0, dev->name);
++			WQ_CPU_INTENSIVE | WQ_MEM_RECLAIM | WQ_PERCPU, 0, dev->name);
 +	if (!wg->packet_crypt_wq)
 +		goto err_destroy_handshake_send;
 +
@@ -46163,12 +46158,11 @@ index 0000000..61ba459
 +#endif
 +};
 +
-+static void wg_netns_pre_exit(struct net *net)
++static void __net_exit wg_netns_exit_rtnl(struct net *net, struct list_head *dev_kill_list)
 +{
 +	struct wg_device *wg;
 +	struct wg_peer *peer;
 +
-+	rtnl_lock();
 +	list_for_each_entry(wg, &device_list, device_list) {
 +		if (rcu_access_pointer(wg->creating_net) == net) {
 +			pr_debug("%s: Creating namespace exiting\n", wg->dev->name);
@@ -46181,11 +46175,10 @@ index 0000000..61ba459
 +			mutex_unlock(&wg->device_update_lock);
 +		}
 +	}
-+	rtnl_unlock();
 +}
 +
-+static struct pernet_operations pernet_ops = {
-+	.pre_exit = wg_netns_pre_exit
++static struct pernet_operations pernet_ops __read_mostly = {
++	.exit_rtnl = wg_netns_exit_rtnl
 +};
 +
 +int __init wg_device_init(void)
@@ -49531,7 +49524,7 @@ diff --git a/drivers/net/wireguard/send.c b/net/wireguard/send.c
 similarity index 82%
 rename from a/drivers/net/wireguard/send.c
 rename to b/net/wireguard/send.c
-index 67d0147..dea6258 100644
+index 67d0147..6b05e2f 100644
 --- a/drivers/net/wireguard/send.c
 +++ b/net/wireguard/send.c
 @@ -3,6 +3,8 @@
@@ -49667,7 +49660,7 @@ index 67d0147..dea6258 100644
  {
  	unsigned int padding_len, plaintext_len, trailer_len;
  	struct scatterlist sg[MAX_SKB_FRAGS + 8];
-@@ -180,7 +227,7 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
+@@ -180,14 +227,13 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
  	/* Expand head section to have room for our header and the network
  	 * stack's headers.
  	 */
@@ -49676,7 +49669,14 @@ index 67d0147..dea6258 100644
  		return false;
  
  	/* Finalize checksum calculation for the inner packet, if required. */
-@@ -203,19 +250,22 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
+ 	if (unlikely(skb->ip_summed == CHECKSUM_PARTIAL &&
+ 		     skb_checksum_help(skb)))
+ 		return false;
+-
+ 	/* Expand data section to have room for padding and auth tag. */
+ 	num_frags = skb_cow_data(skb, trailer_len, &trailer);
+ 	if (unlikely(num_frags < 0 || num_frags > ARRAY_SIZE(sg)))
+@@ -203,19 +249,22 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
  	 */
  	skb_set_inner_network_header(skb, 0);
  	header = (struct message_data *)skb_push(skb, sizeof(*header));
@@ -49702,7 +49702,7 @@ index 67d0147..dea6258 100644
  }
  
  void wg_packet_send_keepalive(struct wg_peer *peer)
-@@ -289,13 +339,24 @@ void wg_packet_encrypt_worker(struct work_struct *work)
+@@ -289,13 +338,24 @@ void wg_packet_encrypt_worker(struct work_struct *work)
  	struct crypt_queue *queue = container_of(work, struct multicore_worker,
  						 work)->ptr;
  	struct sk_buff *first, *skb, *next;
@@ -49729,7 +49729,7 @@ index 67d0147..dea6258 100644
  				wg_reset_packet(skb, true);
  			} else {
  				state = PACKET_STATE_DEAD;
-@@ -303,9 +364,16 @@ void wg_packet_encrypt_worker(struct work_struct *work)
+@@ -303,9 +363,16 @@ void wg_packet_encrypt_worker(struct work_struct *work)
  			}
  		}
  		wg_queue_enqueue_per_peer_tx(first, state);
