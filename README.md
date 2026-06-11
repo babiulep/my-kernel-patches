@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-11
+* 7.1/NEXT: update Marie LRU patch to 0.3.5 
+
 ## 2026-06-07
 * 7.1/NEXT: fixes to amneziawg from mainline
 
