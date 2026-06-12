@@ -98,7 +98,7 @@ index 373bcc0..df46140 100644
  
  #ifdef CONFIG_SCHED_CORE
 diff --git a/init/Kconfig b/init/Kconfig
-index 9cc7a1f..2b1ac61 100644
+index 53f75c5..8555413 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
 @@ -1490,6 +1490,23 @@ config CHECKPOINT_RESTORE
@@ -206,7 +206,7 @@ index 892a952..d1fa608 100644
  			attach_pid(p, PIDTYPE_TGID);
  			attach_pid(p, PIDTYPE_PGID);
 diff --git a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
-index 8f5e5d3..8fbd493 100644
+index d4483d1..7fa31c8 100644
 --- a/kernel/futex/waitwake.c
 +++ b/kernel/futex/waitwake.c
 @@ -4,6 +4,9 @@
@@ -219,7 +219,7 @@ index 8f5e5d3..8fbd493 100644
  
  #include "futex.h"
  
-@@ -381,7 +384,15 @@ void futex_do_wait(struct futex_q *q, struct hrtimer_sleeper *timeout)
+@@ -384,7 +387,15 @@ void futex_do_wait(struct futex_q *q, struct hrtimer_sleeper *timeout)
  		 * is no timeout, or if it has yet to expire.
  		 */
  		if (!timeout || timeout->task)
@@ -685,7 +685,7 @@ index 0000000..c27a22c
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index a2f8680..f53723d 100644
+index 8b791e9..26610b0 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -100,6 +100,10 @@
@@ -711,7 +711,7 @@ index a2f8680..f53723d 100644
  	struct load_weight lw;
  
  	if (task_has_idle_policy(p)) {
-@@ -8924,6 +8932,10 @@ void __init sched_init(void)
+@@ -8923,6 +8931,10 @@ void __init sched_init(void)
  	BUG_ON(!sched_class_above(&ext_sched_class, &idle_sched_class));
  #endif
  
@@ -829,7 +829,7 @@ index 40584b2..976c312 100644
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index f4ed841..d067644 100644
+index d78467e..da1f1b8 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
 @@ -58,6 +58,10 @@
@@ -1074,7 +1074,7 @@ index f4ed841..d067644 100644
  	if (dequeue_entities(rq, &p->se, flags) < 0)
  		return false;
  
-@@ -10008,16 +10078,25 @@ static void yield_task_fair(struct rq *rq)
+@@ -10018,16 +10088,25 @@ static void yield_task_fair(struct rq *rq)
  	/*
  	 * Are we the only task in the tree?
  	 */
@@ -1100,7 +1100,7 @@ index f4ed841..d067644 100644
  	/*
  	 * Tell update_rq_clock() that we've just updated,
  	 * so we don't do microscopic update in schedule()
-@@ -14998,6 +15077,9 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
+@@ -15008,6 +15087,9 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
  	WARN_ON_ONCE(p->se.sched_delayed);
  
  	attach_task_cfs_rq(p);

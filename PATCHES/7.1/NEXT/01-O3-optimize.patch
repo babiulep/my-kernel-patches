@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index a59a7c9..ec5d05f 100644
+index 665df55..c2449b9 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -923,10 +923,14 @@ endif # need-config
+@@ -924,10 +924,14 @@ endif # need-config
  KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
  
  ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE

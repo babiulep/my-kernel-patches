@@ -3,82 +3,87 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-12
+*  linux-next tag: next-20260612
+* fix offsets
+* remove Marie LRU patch 
+
 ## 2026-06-11
-* 7.1/NEXT: update Marie LRU patch to 0.3.5 
+* update Marie LRU patch to 0.3.5 
 
 ## 2026-06-07
-* 7.1/NEXT: fixes to amneziawg from mainline
+* fixes to amneziawg from mainline
 
 ## 2026-06-06
-* 7.1/NEXT fix offsets
-* 7.1/NEXT: update Nap CPUIdle Governor to v0.5.0
+* fix offsets
+* update Nap CPUIdle Governor to v0.5.0
 
 ## 2026-06-04
-* 7.1/NEXT fix offsets
-* 7.1/NEXT fix Marie LRU 0.3.1 patch
+* fix offsets
+* fix Marie LRU 0.3.1 patch
 
 ## 2026-06-03
-* 7.1/NEXT fix offsets
-* 7.1/NEXT add bore 6.6.3 patch
-* 7.1/NEXT add Marie LRU 0.3.1 patch
+* fix offsets
+* add bore 6.6.3 patch
+* add Marie LRU 0.3.1 patch
 
 ## 2026-06-02
-* 7.1/NEXT add Marie LRU 0.2.10 patch
-* 7.1/NEXT distributed build support for Clang ThinLTO
-* 7.1/NEXT fix offsets
+* add Marie LRU 0.2.10 patch
+* distributed build support for Clang ThinLTO
+* fix offsets
 
 ## 2026-06-01
-* 7.1/NEXT add Marie LRU 0.2.9 patch (next-20260601)
+* add Marie LRU 0.2.9 patch (next-20260601)
 
 ## 2026-05-30
-* 7.1/NEXT: update amneziawg, fix offsets for others
+* update amneziawg, fix offsets for others
 
 ## 2026-05-27
-* 7.1/NEXT: NVIDIA 610.43.02 fix: drm_atomic_state changed to drm_atomic_commit
+* NVIDIA 610.43.02 fix: drm_atomic_state changed to drm_atomic_commit
 
 ## 2026-05-25
-* 7.1/NEXT: remove Marie LRU 0.2.1 patch
+* remove Marie LRU 0.2.1 patch
 
 ## 2026-05-22
-* 7.1/NEXT: fix Marie LRU 0.1.2 patch
+* fix Marie LRU 0.1.2 patch
 
 ## 2026-05-21
-* 7.1/NEXT: fix offsets
+* fix offsets
 
 ## 2026-05-15
-* 7.1/NEXT: update Jens Axboe's io_uring-io-slots
+* update Jens Axboe's io_uring-io-slots
 
 ## 2026-05-14
-* 7.1/NEXT: add Marie LRU 0.1.2 patch by Masahito Suzuki
+* add Marie LRU 0.1.2 patch by Masahito Suzuki
 
 ## 2026-05-12
-* 7.1/NEXT: fix amneziawg patch
-* 7.1/NEXT: fix rt_mutex_lock patch
+* fix amneziawg patch
+* fix rt_mutex_lock patch
 
 ## 2026-05-11
-* 7.1/NEXT: added more fixes for Jens Axboe's io_uring-io-slots
-* 7.1/NEXT: add Jens Axboe's io_uring-io-slots
+* added more fixes for Jens Axboe's io_uring-io-slots
+* add Jens Axboe's io_uring-io-slots
 
 ## 2026-05-07
   linux-next tag: next-20260507
-* 7.1/NEXT: fix offsets
+* fix offsets
 
 ## 2026-05-06
   linux-next tag: next-20260506
-* 7.1/NEXT: fixes for in-tree amneziawg
-* 7.1/NEXT: warning fix: rt_mutex_lock patch
-* 7.1/NEXT: NVIDIA 595.71.05 fix: drm_atomic_state changed to drm_atomic_commit
+* fixes for in-tree amneziawg
+* warning fix: rt_mutex_lock patch
+* NVIDIA 595.71.05 fix: drm_atomic_state changed to drm_atomic_commit
 
 ## 2026-05-02
-* 7.1/NEXT: add bore-scheduler patch
-* 7.1/NEXT: mglru.patch no longer needed
+* add bore-scheduler patch
+* mglru.patch no longer needed
 
 ## 2026-04-29
-* 7.1/NEXT: 10-uaccess.patch no longer needed
+* 10-uaccess.patch no longer needed
 
 ## 2026-04-28
-* 7.1/NEXT: add bbr3
-* 7.1/NEXT: fixes for mglru + kbuild
+* add bbr3
+* fixes for mglru + kbuild
 
 ## 2026-04-27
 * add 7.1/NEXT
