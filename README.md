@@ -3,8 +3,12 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-19
+* linux-next tag: next-20260619
+* fix offsets
+
 ## 2026-06-12
-*  linux-next tag: next-20260612
+* linux-next tag: next-20260612
 * fix offsets
 * remove Marie LRU patch 
 

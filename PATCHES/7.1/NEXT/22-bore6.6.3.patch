@@ -167,7 +167,7 @@ index 1056422..5195551 100644
  	}
  	list_del_rcu(&p->thread_node);
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 892a952..d1fa608 100644
+index 13e38e8..2c6606e 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -120,6 +120,10 @@
@@ -181,7 +181,7 @@ index 892a952..d1fa608 100644
  #include <trace/events/sched.h>
  
  #define CREATE_TRACE_POINTS
-@@ -2428,6 +2432,11 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2429,6 +2433,11 @@ __latent_entropy struct task_struct *copy_process(
  	p->start_time = ktime_get_ns();
  	p->start_boottime = ktime_get_boottime_ns();
  
@@ -193,7 +193,7 @@ index 892a952..d1fa608 100644
  	/*
  	 * Make it visible to the rest of the system, but dont wake it up yet.
  	 * Need tasklist lock for parent etc handling!
-@@ -2513,7 +2522,11 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2514,7 +2523,11 @@ __latent_entropy struct task_struct *copy_process(
  							 p->real_parent->signal->is_child_subreaper;
  			if (clone_flags & CLONE_AUTOREAP)
  				p->signal->autoreap = 1;
@@ -685,7 +685,7 @@ index 0000000..c27a22c
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 8b791e9..26610b0 100644
+index e97e98c..d58ca00 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -100,6 +100,10 @@
@@ -711,7 +711,7 @@ index 8b791e9..26610b0 100644
  	struct load_weight lw;
  
  	if (task_has_idle_policy(p)) {
-@@ -8923,6 +8931,10 @@ void __init sched_init(void)
+@@ -8927,6 +8935,10 @@ void __init sched_init(void)
  	BUG_ON(!sched_class_above(&ext_sched_class, &idle_sched_class));
  #endif
  

@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index c2449b9..f42af63 100644
+index 88965e6..7c83259 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -940,6 +940,22 @@ endif
+@@ -943,6 +943,22 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
