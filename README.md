@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-20
+* AMNEZIAWG/NVIDIA testing(!): fixes for deprecated strncpy
+
 ## 2026-06-19
 * linux-next tag: next-20260619
 * fix offsets

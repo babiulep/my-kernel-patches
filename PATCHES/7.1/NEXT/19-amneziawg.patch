@@ -787,7 +787,7 @@ index a1a269a..0000000
 @@ -1 +0,0 @@
 -#define WIREGUARD_VERSION "1.0.0"
 diff --git a/net/Kconfig b/net/Kconfig
-index bdea8ae..be90720 100644
+index e384773..7bd8fec 100644
 --- a/net/Kconfig
 +++ b/net/Kconfig
 @@ -134,6 +134,7 @@ config INET
@@ -799,7 +799,7 @@ index bdea8ae..be90720 100644
  source "net/ipv6/Kconfig"
  source "net/netlabel/Kconfig"
 diff --git a/net/Makefile b/net/Makefile
-index d2175fc..f071d41 100644
+index 5b2dd7f..096485e 100644
 --- a/net/Makefile
 +++ b/net/Makefile
 @@ -14,6 +14,7 @@ obj-$(CONFIG_COMPAT)		+= compat.o
@@ -46925,7 +46925,7 @@ index 208da72..8e0bb38 100644
  #endif /* _WG_MESSAGES_H */
 diff --git b/net/wireguard/netlink.c b/net/wireguard/netlink.c
 new file mode 100644
-index 0000000..5311fd8
+index 0000000..4c03d29
 --- /dev/null
 +++ b/net/wireguard/netlink.c
 @@ -0,0 +1,1253 @@
@@ -47119,7 +47119,7 @@ index 0000000..5311fd8
 +	if (slash - prefix_str >= INET_ADDRSTRLEN)
 +		return -EINVAL;
 +
-+	strncpy(addr_str, prefix_str, slash - prefix_str);
++	memcpy(addr_str, prefix_str, slash - prefix_str);
 +	addr_str[slash - prefix_str] = '\0';
 +
 +	ret = kstrtoint(slash + 1, 10, &prefix->prefix_len);
@@ -47178,7 +47178,7 @@ index 0000000..5311fd8
 +	if (slash - prefix_str >= INET6_ADDRSTRLEN)
 +		return -EINVAL;
 +
-+	strncpy(addr_str, prefix_str, slash - prefix_str);
++	memcpy(addr_str, prefix_str, slash - prefix_str);
 +	addr_str[slash - prefix_str] = '\0';
 +
 +	ret = kstrtoint(slash + 1, 10, &prefix->prefix_len);
@@ -48182,7 +48182,6 @@ index 0000000..5311fd8
 +	nlmsg_free(skb);
 +	return ret;
 +}
-\ No newline at end of file
 diff --git b/net/wireguard/netlink.h b/net/wireguard/netlink.h
 new file mode 100644
 index 0000000..e7fdab7
@@ -52349,10 +52348,10 @@ index 0000000..04d6214
 +#endif /* _WG_UAPI_WIREGUARD_H */
 diff --git b/net/wireguard/version.h b/net/wireguard/version.h
 new file mode 100644
-index 0000000..814bfd0
+index 0000000..eeeb6e6
 --- /dev/null
 +++ b/net/wireguard/version.h
 @@ -0,0 +1,3 @@
 +#ifndef WIREGUARD_VERSION
-+#define WIREGUARD_VERSION "1.0.20251009"
++#define WIREGUARD_VERSION "1.0.20260611"
 +#endif
