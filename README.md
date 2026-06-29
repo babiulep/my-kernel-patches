@@ -5,7 +5,7 @@
 
 ## 2026-06-29
 * move to 7.2/NEXT
-* add infinity scheduler (use instead of BORE)
+* add [infinity scheduler](https://github.com/galpt/infinity-scheduler.git) (use instead of BORE)
   (from dmesg: Infinity scheduler active: carriage=2000000 ns, smt_divisor=2)
 * update bbr3 (separate entry in config)
 
