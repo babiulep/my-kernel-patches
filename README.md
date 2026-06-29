@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-29
+* move to 7.2/NEXT
+* update bbr3 (separate entry in config)
+
 ## 2026-06-22
 * mm-filemap-retry: fix offset
 
