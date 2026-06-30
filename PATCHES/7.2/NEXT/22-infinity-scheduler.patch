@@ -1,8 +1,8 @@
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 373bcc0..44fea15 100644
+index 968b18a..7fe1b93 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -823,6 +823,13 @@ struct kmap_ctrl {
+@@ -821,6 +821,13 @@ struct kmap_ctrl {
  #endif
  };
  
@@ -16,7 +16,7 @@ index 373bcc0..44fea15 100644
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -880,6 +887,7 @@ struct task_struct {
+@@ -878,6 +885,7 @@ struct task_struct {
  	struct sched_entity		se;
  	struct sched_rt_entity		rt;
  	struct sched_dl_entity		dl;
@@ -89,10 +89,10 @@ index b1f1a36..9bea385 100644
  obj-y += build_utility.o
 +obj-y += infinity_sched.o
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index d78467e..6421b4b 100644
+index fc6cd55..73d4e31 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -57,6 +57,7 @@
+@@ -58,6 +58,7 @@
  #include "sched.h"
  #include "stats.h"
  #include "autogroup.h"
@@ -100,7 +100,7 @@ index d78467e..6421b4b 100644
  
  /*
   * The initial- and re-scaling of tunables is configurable
-@@ -1160,8 +1161,19 @@ static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq, bool protect)
+@@ -1199,8 +1200,19 @@ static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq, bool protect)
  	if (curr && (!curr->on_rq || !entity_eligible(cfs_rq, curr)))
  		curr = NULL;
  
@@ -122,7 +122,7 @@ index d78467e..6421b4b 100644
  
  	/* Pick the leftmost entity if it's eligible */
  	if (se && entity_eligible(cfs_rq, se)) {
-@@ -1244,9 +1256,31 @@ static bool update_deadline(struct cfs_rq *cfs_rq, struct sched_entity *se)
+@@ -1283,9 +1295,31 @@ static bool update_deadline(struct cfs_rq *cfs_rq, struct sched_entity *se)
  	 * For EEVDF the virtual time slope is determined by w_i (iow.
  	 * nice) while the request time r_i is determined by
  	 * sysctl_sched_base_slice.
@@ -156,9 +156,9 @@ index d78467e..6421b4b 100644
  
  	/*
  	 * EEVDF: vd_i = ve_i + r_i / w_i
-@@ -2002,6 +2036,10 @@ static void update_curr(struct cfs_rq *cfs_rq)
- 	if (unlikely(delta_exec <= 0))
- 		return;
+@@ -2046,6 +2080,10 @@ static void update_curr(struct cfs_rq *cfs_rq)
+ 
+ 	cfs_rq = &rq->cfs;
  
 +	/* Infinity: EMA budget consumption */
 +	if (entity_is_task(curr)) { struct task_struct *p__ = task_of(curr);
@@ -167,7 +167,7 @@ index d78467e..6421b4b 100644
  	curr->vruntime += calc_delta_fair(delta_exec, curr);
  	resched = update_deadline(cfs_rq, curr);
  
-@@ -6094,6 +6132,14 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+@@ -6301,6 +6339,14 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
  	if (sched_feat(PLACE_DEADLINE_INITIAL) && (flags & ENQUEUE_INITIAL))
  		vslice /= 2;
  
@@ -182,7 +182,7 @@ index d78467e..6421b4b 100644
  	/*
  	 * EEVDF: vd_i = ve_i + r_i/w_i
  	 */
-@@ -6378,6 +6424,11 @@ pick_next_entity(struct rq *rq, struct cfs_rq *cfs_rq, bool protect)
+@@ -6506,6 +6552,11 @@ pick_next_entity(struct rq *rq, bool protect)
  	struct sched_entity *se;
  
  	se = pick_eevdf(cfs_rq, protect);
@@ -192,11 +192,11 @@ index d78467e..6421b4b 100644
 +			return NULL;
 +	}
  	if (se->sched_delayed) {
- 		dequeue_entities(rq, se, DEQUEUE_SLEEP | DEQUEUE_DELAYED);
+ 		__dequeue_task(rq, task_of(se), DEQUEUE_SLEEP | DEQUEUE_DELAYED);
  		/*
-@@ -7803,6 +7854,14 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
- {
- 	struct cfs_rq *cfs_rq;
+@@ -7922,6 +7973,14 @@ static unsigned long enqueue_hierarchy(struct task_struct *p, int flags)
+ 	unsigned long weight = NICE_0_LOAD;
+ 	int task_new = !(flags & ENQUEUE_WAKEUP);
  	struct sched_entity *se = &p->se;
 +
 +	/* Infinity: EMA decay on wakeup and futex clear */
@@ -208,8 +208,8 @@ index d78467e..6421b4b 100644
 +	}
  	int h_nr_idle = task_has_idle_policy(p);
  	int h_nr_runnable = 1;
- 	int task_new = !(flags & ENQUEUE_WAKEUP);
-@@ -8035,6 +8094,8 @@ static int dequeue_entities(struct rq *rq, struct sched_entity *se, int flags)
+ 
+@@ -8166,6 +8225,8 @@ static bool __dequeue_task(struct rq *rq, struct task_struct *p, int flags)
   */
  static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
  {
@@ -218,7 +218,7 @@ index d78467e..6421b4b 100644
  	if (task_is_throttled(p)) {
  		dequeue_throttled_task(p, flags);
  		return true;
-@@ -14879,6 +14940,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
+@@ -14974,6 +15035,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
   */
  static void task_fork_fair(struct task_struct *p)
  {
@@ -232,10 +232,10 @@ index d78467e..6421b4b 100644
  
 diff --git b/kernel/sched/infinity_sched.c b/kernel/sched/infinity_sched.c
 new file mode 100644
-index 0000000..9dd21f2
+index 0000000..4b671e0
 --- /dev/null
 +++ b/kernel/sched/infinity_sched.c
-@@ -0,0 +1,315 @@
+@@ -0,0 +1,321 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * Copyright (c) 2026 Galih Tama <galpt@v.recipes>
@@ -244,9 +244,15 @@ index 0000000..9dd21f2
 + *
 + * Exponential Moving Average based fair scheduling:
 + *
-+ *   While running:  ema = ema + (BUDGET_MAX - ema) * α / 256
-+ *   While sleeping: ema = ema - ema * α / 256  (via catch-up on wakeup)
++ *   While running:  ema += (BUDGET_MAX - ema) * delta_ns * α / (BUDGET_MAX * 256)
++ *   While sleeping:  dec = min(sleep_ns * α * 256 / 20ms, 256);  ema -= ema * dec / 256
 + *   slice = fair_share * (100 - ema_pct * 3/4) / 100  (active throttle)
++ *
++ * The consume step is proportional to actual runtime δ (not a fixed per-tick
++ * step), so the convergence rate tracks wall-clock execution rather than
++ * scheduler invocation frequency.  The decay uses FP_ONE-scaled division so
++ * that sub-62.5µs micro-sleeps register proportional decay instead of
++ * truncating to zero.
 + *
 + * v3 adds EMA-modulated wakeup vslice for shorter interactive-task
 + * deadlines, EMA-modulated RT queue placement via
@@ -687,7 +693,7 @@ index 0000000..fa78431
 +
 +#endif /* __INFINITY_SCHED_H */
 diff --git a/kernel/sched/rt.c b/kernel/sched/rt.c
-index e474c31..1f8a2dd 100644
+index e6e5f8a..9a29e86 100644
 --- a/kernel/sched/rt.c
 +++ b/kernel/sched/rt.c
 @@ -5,6 +5,7 @@

@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-06-30
+* add Marie LRU 0.6.3
+* update Infinity scheduler
+
 ## 2026-06-29
 * move to 7.2/NEXT
 * add [infinity scheduler](https://github.com/galpt/infinity-scheduler.git) (use instead of BORE)
