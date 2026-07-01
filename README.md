@@ -5,6 +5,7 @@
 
 ## 2026-07-01
 * update Marie LRU to 0.6.4
+* remove bore patch 
 
 ## 2026-06-30
 * add Marie LRU 0.6.3
