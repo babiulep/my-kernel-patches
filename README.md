@@ -88,7 +88,7 @@
 * add Jens Axboe's io_uring-io-slots
 
 ## 2026-05-07
-  linux-next tag: next-20260507
+* linux-next tag: next-20260507
 * fix offsets
 
 ## 2026-05-06
