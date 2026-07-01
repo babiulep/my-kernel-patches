@@ -5,7 +5,7 @@
 
 ## 2026-07-01
 * linux-next tag: next-20260701
-* update Marie LRU to 0.6.4
+* update Marie LRU to 0.6.5
 * remove bore patch 
 
 ## 2026-06-30
