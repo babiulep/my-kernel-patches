@@ -704,7 +704,7 @@ index a8430a7..da6659f 100644
  		return;
  
 diff --git a/include/linux/mmzone.h b/include/linux/mmzone.h
-index 35d1a76..e9585b0 100644
+index 242ec3c..fa455d2 100644
 --- a/include/linux/mmzone.h
 +++ b/include/linux/mmzone.h
 @@ -24,6 +24,7 @@
@@ -737,10 +737,10 @@ index 35d1a76..e9585b0 100644
  	int kcompactd_max_order;
  	enum zone_type kcompactd_highest_zoneidx;
 diff --git a/include/linux/swap.h b/include/linux/swap.h
-index 8f0f68e..66eaf4f 100644
+index 3f31b6a..b5d0481 100644
 --- a/include/linux/swap.h
 +++ b/include/linux/swap.h
-@@ -421,6 +421,24 @@ extern atomic_long_t nr_swap_pages;
+@@ -415,6 +415,24 @@ extern atomic_long_t nr_swap_pages;
  extern long total_swap_pages;
  extern atomic_t nr_rotate_swap;
  
@@ -882,7 +882,7 @@ index 2bccb0a..31ffbe3 100644
  	}
  }
 diff --git a/mm/internal.h b/mm/internal.h
-index dc10291..07d1400 100644
+index 430aa72..18c8b2b 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
 @@ -623,12 +623,55 @@ extern unsigned long highest_memmap_pfn;
@@ -8987,10 +8987,10 @@ index d20ffc8..b4cc3ce 100644
  	}
  
 diff --git a/mm/mm_init.c b/mm/mm_init.c
-index 7e859f0..9f0c26e 100644
+index 6b89e2e..3d72382 100644
 --- a/mm/mm_init.c
 +++ b/mm/mm_init.c
-@@ -1384,6 +1384,9 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
+@@ -1383,6 +1383,9 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
  	pgdat_init_kcompactd(pgdat);
  
  	init_waitqueue_head(&pgdat->kswapd_wait);
@@ -9001,7 +9001,7 @@ index 7e859f0..9f0c26e 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index d60053a..8ed6d14 100644
+index 62f71ec..7bcf76e 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -16,6 +16,7 @@
@@ -9793,7 +9793,7 @@ index 44ab8e1..8cab923 100644
  /* linux/mm/swap_state.c */
  extern struct address_space swap_space __read_mostly;
 diff --git a/mm/vmscan.c b/mm/vmscan.c
-index 35c3bb1..71e9e55 100644
+index 754c5f5..7d1536c 100644
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
 @@ -39,6 +39,7 @@
