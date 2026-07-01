@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-07-01
+* update Marie LRU to 0.6.4
+
 ## 2026-06-30
 * add Marie LRU 0.6.3
 * update Infinity scheduler
@@ -89,7 +92,7 @@
 * fix offsets
 
 ## 2026-05-06
-  linux-next tag: next-20260506
+* linux-next tag: next-20260506
 * fixes for in-tree amneziawg
 * warning fix: rt_mutex_lock patch
 * NVIDIA 595.71.05 fix: drm_atomic_state changed to drm_atomic_commit
