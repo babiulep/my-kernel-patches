@@ -5,6 +5,7 @@
 
 ## 2026-07-03
 * linux-next tag: next-20260703
+* add Marie LRU 0.6.6 + fix for the removal of FOLIOREF_RECLAIM_CLEAN
 * NVIDIA 610.43.02 + AMNEZIAWG fix strncpy removal
 * NVIDIA remove older versions
 * fix offsets
