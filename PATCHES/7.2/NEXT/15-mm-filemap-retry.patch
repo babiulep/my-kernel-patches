@@ -156,10 +156,10 @@ index 45b99c3..062fa2b 100644
  
  retry:
 diff --git a/include/linux/mm_types.h b/include/linux/mm_types.h
-index b18c2b2..52dbbf7 100644
+index ae9bca4..bd62511 100644
 --- a/include/linux/mm_types.h
 +++ b/include/linux/mm_types.h
-@@ -1688,10 +1688,11 @@ enum vm_fault_reason {
+@@ -1689,10 +1689,11 @@ enum vm_fault_reason {
  	VM_FAULT_NOPAGE         = (__force vm_fault_t)0x000100,
  	VM_FAULT_LOCKED         = (__force vm_fault_t)0x000200,
  	VM_FAULT_RETRY          = (__force vm_fault_t)0x000400,
@@ -176,7 +176,7 @@ index b18c2b2..52dbbf7 100644
  };
  
 diff --git a/mm/filemap.c b/mm/filemap.c
-index bd6a1c2..3e14e3c 100644
+index 6e40f36..c115628 100644
 --- a/mm/filemap.c
 +++ b/mm/filemap.c
 @@ -3552,6 +3552,7 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)

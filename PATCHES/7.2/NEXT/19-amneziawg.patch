@@ -46925,7 +46925,7 @@ index 208da72..8e0bb38 100644
  #endif /* _WG_MESSAGES_H */
 diff --git b/net/wireguard/netlink.c b/net/wireguard/netlink.c
 new file mode 100644
-index 0000000..4c03d29
+index 0000000..1bf99bc
 --- /dev/null
 +++ b/net/wireguard/netlink.c
 @@ -0,0 +1,1253 @@
@@ -47119,7 +47119,7 @@ index 0000000..4c03d29
 +	if (slash - prefix_str >= INET_ADDRSTRLEN)
 +		return -EINVAL;
 +
-+	memcpy(addr_str, prefix_str, slash - prefix_str);
++	strscpy(addr_str, prefix_str, slash - prefix_str);
 +	addr_str[slash - prefix_str] = '\0';
 +
 +	ret = kstrtoint(slash + 1, 10, &prefix->prefix_len);
@@ -47178,7 +47178,7 @@ index 0000000..4c03d29
 +	if (slash - prefix_str >= INET6_ADDRSTRLEN)
 +		return -EINVAL;
 +
-+	memcpy(addr_str, prefix_str, slash - prefix_str);
++	strscpy(addr_str, prefix_str, slash - prefix_str);
 +	addr_str[slash - prefix_str] = '\0';
 +
 +	ret = kstrtoint(slash + 1, 10, &prefix->prefix_len);

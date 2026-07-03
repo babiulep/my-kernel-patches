@@ -1,5 +1,5 @@
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 968b18a..7fe1b93 100644
+index bcd101d..01a0a8b 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
 @@ -821,6 +821,13 @@ struct kmap_ctrl {
@@ -47,7 +47,7 @@ index 33a4624..1aad61d 100644
  /* Only for sched_getattr() own flag param, if task is SCHED_DEADLINE */
  #define SCHED_GETATTR_FLAG_DL_DYNAMIC	0x01
 diff --git a/init/init_task.c b/init/init_task.c
-index b67ef60..18bb90b 100644
+index ba5c252..4f2ad53 100644
 --- a/init/init_task.c
 +++ b/init/init_task.c
 @@ -158,6 +158,11 @@ struct task_struct init_task __aligned(L1_CACHE_BYTES) = {
@@ -89,7 +89,7 @@ index b1f1a36..9bea385 100644
  obj-y += build_utility.o
 +obj-y += infinity_sched.o
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index fc6cd55..e6f8897 100644
+index df8c9c2..d7aa3c2 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
 @@ -58,6 +58,7 @@
@@ -224,7 +224,7 @@ index fc6cd55..e6f8897 100644
  	if (task_is_throttled(p)) {
  		dequeue_throttled_task(p, flags);
  		return true;
-@@ -14974,6 +15039,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
+@@ -14979,6 +15044,11 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
   */
  static void task_fork_fair(struct task_struct *p)
  {
