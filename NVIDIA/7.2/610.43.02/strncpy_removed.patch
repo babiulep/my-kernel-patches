@@ -1,5 +1,5 @@
 diff --git a/nvidia/linux_nvswitch.c b/nvidia/linux_nvswitch.c
-index bee0bbc..f7e3306 100644
+index bee0bbc..8fdb86f 100644
 --- a/nvidia/linux_nvswitch.c
 +++ b/nvidia/linux_nvswitch.c
 @@ -2038,7 +2038,7 @@ nvswitch_os_read_registry_dword
@@ -7,16 +7,17 @@ index bee0bbc..f7e3306 100644
      }
  
 -    strncpy(regkey_val, regkey_val_start, regkey_val_len);
-+    memcpy(regkey_val, regkey_val_start, regkey_val_len);
++    strscpy(regkey_val, regkey_val_start, regkey_val_len);
      regkey_val[regkey_val_len] = '\0';
  
      if (nvswitch_os_strtouint(regkey_val, data) != 0)
-@@ -2393,7 +2393,7 @@ nvswitch_os_strncpy
+@@ -2393,7 +2393,8 @@ nvswitch_os_strncpy
      NvLength length
  )
  {
 -    return strncpy(dest, src, length);
-+    return memcpy(dest, src, length);
++    strscpy(dest, src, length);
++    return dest;
  }
  
  int
@@ -34,15 +35,16 @@ index 62279a2..6b674a2 100644
      task_unlock(current);
  }
 diff --git a/nvidia-modeset/nvidia-modeset-linux.c b/nvidia-modeset/nvidia-modeset-linux.c
-index 33e9167..fc2162a 100644
+index 33e9167..e9d39a1 100644
 --- a/nvidia-modeset/nvidia-modeset-linux.c
 +++ b/nvidia-modeset/nvidia-modeset-linux.c
-@@ -666,7 +666,7 @@ int nvkms_strcmp(const char *s1, const char *s2)
+@@ -666,7 +666,8 @@ int nvkms_strcmp(const char *s1, const char *s2)
  
  char* nvkms_strncpy(char *dest, const char *src, size_t n)
  {
 -    return strncpy(dest, src, n);
-+    return memcpy(dest, src, n);
++    strscpy(dest, src, n);
++    return dest;
  }
  
  void nvkms_usleep(NvU64 usec)

@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-07-03
+* NVIDIA 610.43.02 fix strncpy removal
+* NVIDIA remove older versions
+
 ## 2026-07-01
 * linux-next tag: next-20260701
 * update Marie LRU to 0.6.5
