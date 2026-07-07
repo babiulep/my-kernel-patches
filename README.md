@@ -3,6 +3,11 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-07-07
+* linux-next tag: next-20260707
+* removed Marie LRU: to much changed in NEXT
+* fix offsets
+
 ## 2026-07-03
 * linux-next tag: next-20260703
 * add Marie LRU 0.6.6 + fix for the removal of FOLIOREF_RECLAIM_CLEAN
