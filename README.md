@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-07-21
+* added TIP patches
+* TIP: includes Marie LRU 0.8.1
+
 ## 2026-07-07
 * linux-next tag: next-20260707
 * removed Marie LRU: to much changed in NEXT

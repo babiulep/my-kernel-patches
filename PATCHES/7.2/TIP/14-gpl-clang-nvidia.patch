@@ -1,0 +1,13 @@
+diff --git a/arch/x86/lib/clear_page_64.S b/arch/x86/lib/clear_page_64.S
+index f7f356e..7ddfe7e 100644
+--- a/arch/x86/lib/clear_page_64.S
++++ b/arch/x86/lib/clear_page_64.S
+@@ -29,7 +29,7 @@ SYM_TYPED_FUNC_START(__clear_pages_unrolled)
+ 	nop
+ 	RET
+ SYM_FUNC_END(__clear_pages_unrolled)
+-EXPORT_SYMBOL_GPL(__clear_pages_unrolled)
++EXPORT_SYMBOL(__clear_pages_unrolled)
+ 
+ /*
+  * Default clear user-space.

@@ -1,0 +1,20 @@
+diff --git a/Makefile b/Makefile
+index 7a9385d..88965e6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -927,10 +927,14 @@ endif # need-config
+ KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
+ 
+ ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
+-KBUILD_CFLAGS += -O2
++KBUILD_CFLAGS += -O3
+ KBUILD_RUSTFLAGS += -Copt-level=2
+ else ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
++ifneq ($(findstring clang,$(CC_VERSION_TEXT)),)
+ KBUILD_CFLAGS += -Os
++else
++KBUILD_CFLAGS += -Oz
++endif
+ KBUILD_RUSTFLAGS += -Copt-level=s
+ endif
+ 
