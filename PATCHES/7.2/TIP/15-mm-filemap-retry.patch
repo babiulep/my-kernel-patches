@@ -22,10 +22,10 @@ index e62cc4b..5971e02 100644
  
  retry:
 diff --git a/arch/arm64/mm/fault.c b/arch/arm64/mm/fault.c
-index 85e2338..54be9ff 100644
+index 0b52557..4f3c870 100644
 --- a/arch/arm64/mm/fault.c
 +++ b/arch/arm64/mm/fault.c
-@@ -677,6 +677,7 @@ static int __kprobes do_page_fault(unsigned long far, unsigned long esr,
+@@ -678,6 +678,7 @@ static int __kprobes do_page_fault(unsigned long far, unsigned long esr,
  	if (!(mm_flags & FAULT_FLAG_USER))
  		goto lock_mmap;
  
@@ -33,7 +33,7 @@ index 85e2338..54be9ff 100644
  	vma = lock_vma_under_rcu(mm, addr);
  	if (!vma)
  		goto lock_mmap;
-@@ -723,6 +724,10 @@ static int __kprobes do_page_fault(unsigned long far, unsigned long esr,
+@@ -724,6 +725,10 @@ static int __kprobes do_page_fault(unsigned long far, unsigned long esr,
  			goto no_context;
  		return 0;
  	}

@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-07-26
+* TIP: amneziawg ipv6_stub fix
+* TIP: offset fixes
+
 ## 2026-07-23
 * TIP: remove 23-smp-Disable-preemption-explicitly-in-__csd_lock_wait.patch
 * TIP: update Marie LRU to 0.9.0

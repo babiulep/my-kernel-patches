@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index bbce242..058830d 100644
+index b55ce6b..eef27db 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -943,6 +943,22 @@ endif
+@@ -948,6 +948,22 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
@@ -26,10 +26,10 @@ index bbce242..058830d 100644
  ifdef CONFIG_CC_IS_GCC
  # gcc-10 renamed --param=allow-store-data-races=0 to
 diff --git a/init/Kconfig b/init/Kconfig
-index 53178ea..c1b5b22 100644
+index ebe9db7..a4da548 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -316,6 +316,19 @@ config BUILD_SALT
+@@ -319,6 +319,19 @@ config BUILD_SALT
  	  This is mostly useful for distributions which want to ensure the
  	  build is unique between builds. It's safe to leave the default.
  

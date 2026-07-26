@@ -1826,10 +1826,10 @@ index 0000000..345087b
 +#endif /* _WG_COMPATASM_H */
 diff --git b/net/wireguard/compat/compat.h b/net/wireguard/compat/compat.h
 new file mode 100644
-index 0000000..a384b41
+index 0000000..e3178c8
 --- /dev/null
 +++ b/net/wireguard/compat/compat.h
-@@ -0,0 +1,1418 @@
+@@ -0,0 +1,1426 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -3245,6 +3245,14 @@ index 0000000..a384b41
 +#define blake2s_ctx blake2s_state
 +#define blake2s(key, keylen, in, inlen, out, outlen) \
 +	blake2s(out, in, key, outlen, inlen, keylen)
++#endif
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 1, 0) && !IS_ENABLED(CONFIG_IPV6)
++#include <net/ipv6_stubs.h>
++static inline struct dst_entry *ip6_dst_lookup_flow(struct net *net, const struct sock *sk, struct flowi6 *fl6,
++				      const struct in6_addr *final_dst) {
++	return ipv6_stub->ipv6_dst_lookup_flow(net, sk, fl6, final_dst);
++}
 +#endif
 +
 +#endif /* _WG_COMPAT_H */

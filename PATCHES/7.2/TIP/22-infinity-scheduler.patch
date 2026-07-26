@@ -1,10 +1,10 @@
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 968b18a..7fe1b93 100644
+index 33b5a78..474d92b 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -821,6 +821,13 @@ struct kmap_ctrl {
+@@ -832,6 +832,13 @@ struct task_ipi_mask {
+ struct task_ipi_mask { };
  #endif
- };
  
 +struct infinity_ctx {
 +	u64		ema;
@@ -16,7 +16,7 @@ index 968b18a..7fe1b93 100644
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -878,6 +885,7 @@ struct task_struct {
+@@ -889,6 +896,7 @@ struct task_struct {
  	struct sched_entity		se;
  	struct sched_rt_entity		rt;
  	struct sched_dl_entity		dl;
