@@ -5,7 +5,7 @@
 
 ## 2026-07-31
 * TIP: big upgrade amneziawg in-tree to 3.0.20260731-03
-  (upgrade your awg/awg-quick as well)
+  (upgrade your awg/awg-quick as well: amneziawg-tools v3.0.20260730 - https://amnezia.org)
 
 ## 2026-07-26
 * TIP: amneziawg ipv6_stub fix
