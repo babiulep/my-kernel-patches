@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-07-31
+* TIP: big upgrade amneziawg in-tree to 3.0.20260731-03
+  (upgrade your awg/awg-quick as well)
+
 ## 2026-07-26
 * TIP: amneziawg ipv6_stub fix
 * TIP: offset fixes
