@@ -3,6 +3,11 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-08-06
+* TIP: amneziawg 3.0 fixes:
+  - make netlink compatible with kernels less then 6.7
+  - fix: keepalives are ignored with S4 and ContentPaddingAddition
+
 ## 2026-07-31
 * TIP: big upgrade amneziawg in-tree to 3.0.20260731-03
   (upgrade your awg/awg-quick as well: amneziawg-tools v3.0.20260730 - https://amnezia.org)

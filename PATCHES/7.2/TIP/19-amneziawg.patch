@@ -45699,10 +45699,10 @@ index 0000000..9aa1e8d
 +#endif
 diff --git b/net/wireguard/device.c b/net/wireguard/device.c
 new file mode 100644
-index 0000000..309251b
+index 0000000..ce0c735
 --- /dev/null
 +++ b/net/wireguard/device.c
-@@ -0,0 +1,542 @@
+@@ -0,0 +1,543 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -45913,6 +45913,7 @@ index 0000000..309251b
 +		skb_dst_drop(skb);
 +
 +		PACKET_CB(skb)->mtu = mtu;
++		PACKET_CB(skb)->is_keepalive = false;
 +
 +		__skb_queue_tail(&packets, skb);
 +	}
@@ -46883,7 +46884,7 @@ index 208da72..f2672cd 100644
  #endif /* _WG_MESSAGES_H */
 diff --git b/net/wireguard/netlink.c b/net/wireguard/netlink.c
 new file mode 100644
-index 0000000..cab2cc0
+index 0000000..76bb48b
 --- /dev/null
 +++ b/net/wireguard/netlink.c
 @@ -0,0 +1,1184 @@
@@ -47334,10 +47335,10 @@ index 0000000..cab2cc0
 +		    nla_put_u16(skb, WGDEVICE_A_S2,wg->resp_padding) ||
 +			nla_put_u16(skb, WGDEVICE_A_S3, wg->cookie_padding) ||
 +			nla_put_u16(skb, WGDEVICE_A_S4, wg->transport_padding) ||
-+		    nla_put_uint(skb, WGDEVICE_A_H1, wg->init_header) ||
-+			nla_put_uint(skb, WGDEVICE_A_H2, wg->resp_header) ||
-+			nla_put_uint(skb, WGDEVICE_A_H3, wg->cookie_header) ||
-+			nla_put_uint(skb, WGDEVICE_A_H4, wg->transport_header) ||
+++		    nla_put(skb, WGDEVICE_A_H1, sizeof(u64), &wg->init_header) ||
+++			nla_put(skb, WGDEVICE_A_H2, sizeof(u64), &wg->resp_header) ||
+++			nla_put(skb, WGDEVICE_A_H3, sizeof(u64), &wg->cookie_header) ||
+++			nla_put(skb, WGDEVICE_A_H4, sizeof(u64), &wg->transport_header) ||
 +			nla_put_u32(skb, WGDEVICE_A_CONTENT_PADDING_ADDITION, wg->content_padding_addition) ||
 +			nla_put_u32(skb, WGDEVICE_A_REKEY_AFTER_TIME, wg->rekey_after_time) ||
 +			nla_put_u32(skb, WGDEVICE_A_REKEY_TIMEOUT, wg->rekey_timeout) ||
@@ -48406,18 +48407,20 @@ diff --git a/drivers/net/wireguard/queueing.h b/net/wireguard/queueing.h
 similarity index 91%
 rename from a/drivers/net/wireguard/queueing.h
 rename to b/net/wireguard/queueing.h
-index 79b6d70..b35d39a 100644
+index 79b6d70..b2f5f03 100644
 --- a/drivers/net/wireguard/queueing.h
 +++ b/net/wireguard/queueing.h
-@@ -61,6 +61,7 @@ struct packet_cb {
+@@ -61,7 +61,9 @@ struct packet_cb {
  	struct noise_keypair *keypair;
  	atomic_t state;
  	u32 mtu;
 +	u32 type;
  	u8 ds;
++	ool is_keepalive;
  };
  
-@@ -79,7 +80,13 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
+ #define PACKET_CB(skb) ((struct packet_cb *)((skb)->cb))
+@@ -79,7 +81,13 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
  	u8 sw_hash = skb->sw_hash;
  	u32 hash = skb->hash;
  	skb_scrub_packet(skb, true);
@@ -48431,7 +48434,7 @@ index 79b6d70..b35d39a 100644
  	if (encapsulating) {
  		skb->l4_hash = l4_hash;
  		skb->sw_hash = sw_hash;
-@@ -104,11 +111,16 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
+@@ -104,11 +112,16 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
  
  static inline int wg_cpumask_choose_online(int *stored_cpu, unsigned int id)
  {
@@ -48498,10 +48501,10 @@ similarity index 100%
 rename from a/drivers/net/wireguard/ratelimiter.h
 rename to b/net/wireguard/ratelimiter.h
 diff --git a/drivers/net/wireguard/receive.c b/net/wireguard/receive.c
-similarity index 79%
+similarity index 78%
 rename from a/drivers/net/wireguard/receive.c
 rename to b/net/wireguard/receive.c
-index eb88511..0a5f514 100644
+index eb88511..b646a4a 100644
 --- a/drivers/net/wireguard/receive.c
 +++ b/net/wireguard/receive.c
 @@ -3,6 +3,7 @@
@@ -48739,7 +48742,30 @@ index eb88511..0a5f514 100644
  		return false;
  
  	/* Another ugly situation of pushing and pulling the header so as to
-@@ -380,7 +462,9 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
+@@ -339,6 +421,7 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
+ 	struct net_device *dev = peer->device->dev;
+ 	unsigned int len, len_before_trim;
+ 	struct wg_peer *routed_peer;
++	u8 buf, *p = skb_header_pointer(skb, 0, 1, &buf);
+ 
+ 	wg_socket_set_peer_endpoint(peer, endpoint);
+ 
+@@ -353,9 +436,11 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
+ 	wg_timers_any_authenticated_packet_received(peer);
+ 	wg_timers_any_authenticated_packet_traversal(peer);
+ 
+-	/* A packet with length 0 is a keepalive packet */
+-	if (unlikely(!skb->len)) {
+-		update_rx_stats(peer, message_data_len(0));
++	/* A packet with length 0, or with all zeroes (content padding)
++	 * is a keepalive packet
++	 */
++	if (unlikely(!p || *p == 0)) {
++		update_rx_stats(peer, message_data_len(0) + skb->len);
+ 		net_dbg_ratelimited("%s: Receiving keepalive packet from peer %llu (%pISpfsc)\n",
+ 				    dev->name, peer->internal_id,
+ 				    &peer->endpoint.addr);
+@@ -380,7 +465,9 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
  	 * again in software.
  	 */
  	skb->ip_summed = CHECKSUM_UNNECESSARY;
@@ -48749,7 +48775,7 @@ index eb88511..0a5f514 100644
  	skb->protocol = ip_tunnel_parse_protocol(skb);
  	if (skb->protocol == htons(ETH_P_IP)) {
  		len = ntohs(ip_hdr(skb)->tot_len);
-@@ -495,15 +579,26 @@ void wg_packet_decrypt_worker(struct work_struct *work)
+@@ -495,15 +582,26 @@ void wg_packet_decrypt_worker(struct work_struct *work)
  	struct crypt_queue *queue = container_of(work, struct multicore_worker,
  						 work)->ptr;
  	struct sk_buff *skb;
@@ -48778,7 +48804,7 @@ index eb88511..0a5f514 100644
  }
  
  static void wg_packet_consume_data(struct wg_device *wg, struct sk_buff *skb)
-@@ -543,10 +638,10 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
+@@ -543,10 +641,10 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
  {
  	if (unlikely(prepare_skb_header(skb, wg) < 0))
  		goto err;
@@ -48793,7 +48819,7 @@ index eb88511..0a5f514 100644
  		int cpu, ret = -EBUSY;
  
  		if (unlikely(!rng_is_initialized()))
-@@ -571,7 +666,7 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
+@@ -571,7 +669,7 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
  			      &per_cpu_ptr(wg->handshake_queue.worker, cpu)->work);
  		break;
  	}
@@ -49536,7 +49562,7 @@ diff --git a/drivers/net/wireguard/send.c b/net/wireguard/send.c
 similarity index 74%
 rename from a/drivers/net/wireguard/send.c
 rename to b/net/wireguard/send.c
-index 67d0147..7d27315 100644
+index 67d0147..15bc9f5 100644
 --- a/drivers/net/wireguard/send.c
 +++ b/net/wireguard/send.c
 @@ -3,6 +3,8 @@
@@ -49828,6 +49854,31 @@ index 67d0147..7d27315 100644
  }
  
  void wg_packet_send_keepalive(struct wg_peer *peer)
+@@ -230,6 +326,7 @@ void wg_packet_send_keepalive(struct wg_peer *peer)
+ 		skb_reserve(skb, DATA_PACKET_HEAD_ROOM);
+ 		skb->dev = peer->device->dev;
+ 		PACKET_CB(skb)->mtu = skb->dev->mtu;
++		PACKET_CB(skb)->is_keepalive = true;
+ 		skb_queue_tail(&peer->staged_packet_queue, skb);
+ 		net_dbg_ratelimited("%s: Sending keepalive packet to peer %llu (%pISpfsc)\n",
+ 				    peer->device->dev->name, peer->internal_id,
+@@ -242,14 +339,13 @@ void wg_packet_send_keepalive(struct wg_peer *peer)
+ static void wg_packet_create_data_done(struct wg_peer *peer, struct sk_buff *first)
+ {
+ 	struct sk_buff *skb, *next;
+-	bool is_keepalive, data_sent = false;
++	bool data_sent = false;
+ 
+ 	wg_timers_any_authenticated_packet_traversal(peer);
+ 	wg_timers_any_authenticated_packet_sent(peer);
+ 	skb_list_walk_safe(first, skb, next) {
+-		is_keepalive = skb->len == message_data_len(0);
+ 		if (likely(!wg_socket_send_skb_to_peer(peer, skb,
+-				PACKET_CB(skb)->ds) && !is_keepalive))
++				PACKET_CB(skb)->ds) && !PACKET_CB(skb)->is_keepalive))
+ 			data_sent = true;
+ 	}
+ 
 @@ -289,13 +385,23 @@ void wg_packet_encrypt_worker(struct work_struct *work)
  	struct crypt_queue *queue = container_of(work, struct multicore_worker,
  						 work)->ptr;
@@ -52702,10 +52753,10 @@ index 0000000..979fbb5
 +#endif /* _WG_UAPI_WIREGUARD_H */
 diff --git b/net/wireguard/version.h b/net/wireguard/version.h
 new file mode 100644
-index 0000000..1efd089
+index 0000000..83ab415
 --- /dev/null
 +++ b/net/wireguard/version.h
 @@ -0,0 +1,3 @@
 +#ifndef WIREGUARD_VERSION
-+#define WIREGUARD_VERSION "3.0.20260731-03"
++#define WIREGUARD_VERSION "3.0.20260805"
 +#endif
