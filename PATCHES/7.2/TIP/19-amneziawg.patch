@@ -48416,7 +48416,7 @@ index 79b6d70..b2f5f03 100644
  	u32 mtu;
 +	u32 type;
  	u8 ds;
-+	ool is_keepalive;
++	bool is_keepalive;
  };
  
  #define PACKET_CB(skb) ((struct packet_cb *)((skb)->cb))
