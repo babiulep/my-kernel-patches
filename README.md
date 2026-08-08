@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-08-08
+* TIP: update Marie LRU to 0.9.3
+
 ## 2026-08-06
 * TIP: amneziawg 3.0 fixes:
   - make netlink compatible with kernels less then 6.7
