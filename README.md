@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-08-13
+* TIP: upgrade amneziawg in-tree to 3.1.20260812
+  (upgrade your awg/awg-quick as well: amneziawg-tools v3.1.20260812 - https://amnezia.org)
+
 ## 2026-08-08
 * TIP: update Marie LRU to 0.9.3
 

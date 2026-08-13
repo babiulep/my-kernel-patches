@@ -46247,10 +46247,10 @@ index 0000000..ce0c735
 +	rcu_barrier();
 +}
 diff --git a/drivers/net/wireguard/device.h b/net/wireguard/device.h
-similarity index 77%
+similarity index 76%
 rename from a/drivers/net/wireguard/device.h
 rename to b/net/wireguard/device.h
-index 43c7ceb..4f3c6bc 100644
+index 43c7ceb..92408fc 100644
 --- a/drivers/net/wireguard/device.h
 +++ b/net/wireguard/device.h
 @@ -6,10 +6,13 @@
@@ -46267,7 +46267,7 @@ index 43c7ceb..4f3c6bc 100644
  
  #include <linux/types.h>
  #include <linux/netdevice.h>
-@@ -50,10 +53,18 @@ struct wg_device {
+@@ -50,10 +53,19 @@ struct wg_device {
  	struct allowedips peer_allowedips;
  	struct mutex device_update_lock, socket_update_lock;
  	struct list_head device_list, peer_list;
@@ -46283,28 +46283,20 @@ index 43c7ceb..4f3c6bc 100644
  	u16 incoming_port;
 +
 +	u16 jc, jmin, jmax;
++	bool random_trailers, disable_cookies;
  };
  
  int wg_device_init(void);
 diff --git b/net/wireguard/header_protection.c b/net/wireguard/header_protection.c
 new file mode 100644
-index 0000000..8efa4c2
+index 0000000..dca8815
 --- /dev/null
 +++ b/net/wireguard/header_protection.c
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,50 @@
 +#include "header_protection.h"
 +#include "device.h"
 +
 +#include <crypto/chacha.h>
-+
-+inline bool awg_has_header_protection(struct wg_device *wg) {
-+	struct header_protection* p = &wg->header_protection;
-+	bool res;
-+	down_read(&p->lock);
-+	res = p->has_protection;
-+	up_read(&p->lock);
-+	return res;
-+}
 +
 +bool awg_header_protection_init(struct chacha_state *state, struct wg_device *wg, u8 *nonce) {
 +	struct header_protection* p = &wg->header_protection;
@@ -46353,10 +46345,10 @@ index 0000000..8efa4c2
 +}
 diff --git b/net/wireguard/header_protection.h b/net/wireguard/header_protection.h
 new file mode 100644
-index 0000000..d57622e
+index 0000000..9a36234
 --- /dev/null
 +++ b/net/wireguard/header_protection.h
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,26 @@
 +#ifndef _AWG_HEADER_PROTECTION
 +#define _AWG_HEADER_PROTECTION
 +
@@ -46378,7 +46370,6 @@ index 0000000..d57622e
 +    bool has_protection;
 +};
 +
-+inline bool awg_has_header_protection(struct wg_device *wg);
 +bool awg_header_protection_init(struct chacha_state *state, struct wg_device *dev, u8 *nonce);
 +void awg_header_protection_set_key(struct header_protection *p, u8 key[HEADER_PROTECTION_KEY_SIZE]);
 +void awg_header_protection_get_key(struct header_protection *p, u8 key[HEADER_PROTECTION_KEY_SIZE]);
@@ -46857,13 +46848,23 @@ index a00671b..3692785 100644
  MODULE_ALIAS_GENL_FAMILY(WG_GENL_NAME);
 +MODULE_INFO(intree, "Y");
 diff --git a/drivers/net/wireguard/messages.h b/net/wireguard/messages.h
-similarity index 95%
+similarity index 92%
 rename from a/drivers/net/wireguard/messages.h
 rename to b/net/wireguard/messages.h
-index 208da72..f2672cd 100644
+index 208da72..eedaff9 100644
 --- a/drivers/net/wireguard/messages.h
 +++ b/net/wireguard/messages.h
-@@ -117,12 +117,17 @@ enum message_alignments {
+@@ -50,7 +50,8 @@ enum limits {
+ 	MAX_TIMER_HANDSHAKES = 90 / REKEY_TIMEOUT,
+ 	MAX_QUEUED_INCOMING_HANDSHAKES = 4096, /* TODO: replace this with DQL */
+ 	MAX_STAGED_PACKETS = 128,
+-	MAX_QUEUED_PACKETS = 1024 /* TODO: replace this with DQL */
++	MAX_QUEUED_PACKETS = 1024, /* TODO: replace this with DQL */
++	DEFAULT_UDP_WINDOW = 500
+ };
+ 
+ enum message_type {
+@@ -117,12 +118,17 @@ enum message_alignments {
  	MESSAGE_MINIMUM_LENGTH = message_data_len(0)
  };
  
@@ -46884,10 +46885,10 @@ index 208da72..f2672cd 100644
  #endif /* _WG_MESSAGES_H */
 diff --git b/net/wireguard/netlink.c b/net/wireguard/netlink.c
 new file mode 100644
-index 0000000..76bb48b
+index 0000000..c990b9b
 --- /dev/null
 +++ b/net/wireguard/netlink.c
-@@ -0,0 +1,1184 @@
+@@ -0,0 +1,1196 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -46957,6 +46958,8 @@ index 0000000..76bb48b
 +	[WGDEVICE_A_REJECT_AFTER_TIME] = { .type = NLA_U32 },
 +	[WGDEVICE_A_KEEPALIVE_TIMEOUT] = { .type = NLA_U32 },
 +	[WGDEVICE_A_MAX_HANDSHAKE_ATTEMPTS] = { .type = NLA_U32 },
++	[WGDEVICE_A_RANDOM_TRAILERS] = { .type = NLA_U8 },
++	[WGDEVICE_A_DISABLE_COOKIES] = { .type = NLA_U8 },
 +};
 +
 +static const struct nla_policy peer_policy[WGPEER_A_MAX + 1] = {
@@ -47344,7 +47347,9 @@ index 0000000..76bb48b
 +			nla_put_u32(skb, WGDEVICE_A_REKEY_TIMEOUT, wg->rekey_timeout) ||
 +			nla_put_u32(skb, WGDEVICE_A_REJECT_AFTER_TIME, wg->reject_after_time) ||
 +			nla_put_u32(skb, WGDEVICE_A_KEEPALIVE_TIMEOUT, wg->keepalive_timeout) ||
-+			nla_put_u32(skb, WGDEVICE_A_MAX_HANDSHAKE_ATTEMPTS, wg->max_handshake_attempts))
++			nla_put_u32(skb, WGDEVICE_A_MAX_HANDSHAKE_ATTEMPTS, wg->max_handshake_attempts) ||
++			nla_put_u8(skb, WGDEVICE_A_RANDOM_TRAILERS, wg->random_trailers) ||
++			nla_put_u8(skb, WGDEVICE_A_DISABLE_COOKIES, wg->disable_cookies))
 +			goto out;
 +
 +		if ((wg->ispecs[0].desc &&
@@ -47639,8 +47644,7 @@ index 0000000..76bb48b
 +	u32 flags = 0;
 +	int ret;
 +	u16 val16;
-+	bool has_protection = awg_has_header_protection(wg) ||
-+		info->attrs[WGDEVICE_A_HEADER_PROTECTION_KEY];
++	bool has_protection;
 +
 +	if (IS_ERR(wg)) {
 +		ret = PTR_ERR(wg);
@@ -47649,6 +47653,9 @@ index 0000000..76bb48b
 +
 +	rtnl_lock();
 +	mutex_lock(&wg->device_update_lock);
++
++	has_protection = wg->header_protection.has_protection ||
++		info->attrs[WGDEVICE_A_HEADER_PROTECTION_KEY];
 +
 +	if (info->attrs[WGDEVICE_A_FLAGS])
 +		flags = nla_get_u32(info->attrs[WGDEVICE_A_FLAGS]);
@@ -47882,6 +47889,12 @@ index 0000000..76bb48b
 +
 +	if (info->attrs[WGDEVICE_A_MAX_HANDSHAKE_ATTEMPTS])
 +		wg->max_handshake_attempts = nla_get_u32(info->attrs[WGDEVICE_A_MAX_HANDSHAKE_ATTEMPTS]);
++
++	if (info->attrs[WGDEVICE_A_RANDOM_TRAILERS])
++		wg->random_trailers = nla_get_u8(info->attrs[WGDEVICE_A_RANDOM_TRAILERS]);
++
++	if (info->attrs[WGDEVICE_A_DISABLE_COOKIES])
++		wg->disable_cookies = nla_get_u8(info->attrs[WGDEVICE_A_DISABLE_COOKIES]);
 +
 +	if (flags & WGDEVICE_F_REPLACE_PEERS)
 +		wg_peer_remove_all(wg);
@@ -48293,10 +48306,18 @@ diff --git a/drivers/net/wireguard/peer.c b/net/wireguard/peer.c
 similarity index 97%
 rename from a/drivers/net/wireguard/peer.c
 rename to b/net/wireguard/peer.c
-index 1cb502a..093a2a9 100644
+index 1cb502a..03ca2e2 100644
 --- a/drivers/net/wireguard/peer.c
 +++ b/net/wireguard/peer.c
-@@ -52,9 +52,13 @@ struct wg_peer *wg_peer_create(struct wg_device *wg,
+@@ -35,6 +35,7 @@ struct wg_peer *wg_peer_create(struct wg_device *wg,
+ 		return ERR_PTR(ret);
+ 	if (unlikely(dst_cache_init(&peer->endpoint_cache, GFP_KERNEL)))
+ 		goto err;
++	WRITE_ONCE(peer->udp_window, DEFAULT_UDP_WINDOW);
+ 
+ 	peer->device = wg;
+ 	wg_noise_handshake_init(&peer->handshake, &wg->static_identity,
+@@ -52,9 +53,13 @@ struct wg_peer *wg_peer_create(struct wg_device *wg,
  	rwlock_init(&peer->endpoint_lock);
  	kref_init(&peer->refcount);
  	skb_queue_head_init(&peer->staged_packet_queue);
@@ -48312,10 +48333,10 @@ index 1cb502a..093a2a9 100644
  	list_add_tail(&peer->peer_list, &wg->peer_list);
  	INIT_LIST_HEAD(&peer->allowedips_list);
 diff --git a/drivers/net/wireguard/peer.h b/net/wireguard/peer.h
-similarity index 82%
+similarity index 73%
 rename from a/drivers/net/wireguard/peer.h
 rename to b/net/wireguard/peer.h
-index 718fb42..9a453d4 100644
+index 718fb42..04f151d 100644
 --- a/drivers/net/wireguard/peer.h
 +++ b/net/wireguard/peer.h
 @@ -7,8 +7,10 @@
@@ -48350,15 +48371,16 @@ index 718fb42..9a453d4 100644
  	struct timespec64 walltime_last_handshake;
  	struct kref refcount;
  	struct rcu_head rcu;
-@@ -64,6 +67,7 @@ struct wg_peer {
+@@ -64,6 +67,8 @@ struct wg_peer {
  	struct list_head allowedips_list;
  	struct napi_struct napi;
  	u64 internal_id;
 +	atomic_t jp_packet_counter;
++	unsigned int udp_window;
  };
  
  struct wg_peer *wg_peer_create(struct wg_device *wg,
-@@ -83,4 +87,11 @@ void wg_peer_remove_all(struct wg_device *wg);
+@@ -83,4 +88,23 @@ void wg_peer_remove_all(struct wg_device *wg);
  int wg_peer_init(void);
  void wg_peer_uninit(void);
  
@@ -48367,6 +48389,18 @@ index 718fb42..9a453d4 100644
 +	u16 timeout = !u16_range_is_zero(peer->device->rekey_timeout) ? u16_range_lo(peer->device->rekey_timeout) : REKEY_TIMEOUT;
 +	atomic64_set(&peer->last_sent_handshake, ktime_get_coarse_boottime_ns() -
 +				       (u64)(timeout + 1) * NSEC_PER_SEC);
++}
++
++static inline unsigned int wg_peer_skb_random_trailer(struct wg_peer *peer,
++									struct wg_device *wg, unsigned int size)
++{
++	unsigned int udp_window = peer
++		? READ_ONCE(peer->udp_window)
++		: DEFAULT_UDP_WINDOW;
++
++	return wg->random_trailers && udp_window > size
++		? get_random_u32_below(udp_window - size)
++		: 0;
 +}
 +
  #endif /* _WG_PEER_H */
@@ -48407,20 +48441,21 @@ diff --git a/drivers/net/wireguard/queueing.h b/net/wireguard/queueing.h
 similarity index 91%
 rename from a/drivers/net/wireguard/queueing.h
 rename to b/net/wireguard/queueing.h
-index 79b6d70..b2f5f03 100644
+index 79b6d70..f868b42 100644
 --- a/drivers/net/wireguard/queueing.h
 +++ b/net/wireguard/queueing.h
-@@ -61,7 +61,9 @@ struct packet_cb {
+@@ -61,7 +61,10 @@ struct packet_cb {
  	struct noise_keypair *keypair;
  	atomic_t state;
  	u32 mtu;
 +	u32 type;
++	u32 padding;
  	u8 ds;
 +	bool is_keepalive;
  };
  
  #define PACKET_CB(skb) ((struct packet_cb *)((skb)->cb))
-@@ -79,7 +81,13 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
+@@ -79,7 +82,13 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
  	u8 sw_hash = skb->sw_hash;
  	u32 hash = skb->hash;
  	skb_scrub_packet(skb, true);
@@ -48434,7 +48469,7 @@ index 79b6d70..b2f5f03 100644
  	if (encapsulating) {
  		skb->l4_hash = l4_hash;
  		skb->sw_hash = sw_hash;
-@@ -104,11 +112,16 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
+@@ -104,11 +113,16 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
  
  static inline int wg_cpumask_choose_online(int *stored_cpu, unsigned int id)
  {
@@ -48501,10 +48536,10 @@ similarity index 100%
 rename from a/drivers/net/wireguard/ratelimiter.h
 rename to b/net/wireguard/ratelimiter.h
 diff --git a/drivers/net/wireguard/receive.c b/net/wireguard/receive.c
-similarity index 78%
+similarity index 76%
 rename from a/drivers/net/wireguard/receive.c
 rename to b/net/wireguard/receive.c
-index eb88511..b646a4a 100644
+index eb88511..96cf044 100644
 --- a/drivers/net/wireguard/receive.c
 +++ b/net/wireguard/receive.c
 @@ -3,6 +3,7 @@
@@ -48527,7 +48562,7 @@ index eb88511..b646a4a 100644
  #include <linux/ip.h>
  #include <linux/ipv6.h>
  #include <linux/udp.h>
-@@ -23,31 +28,78 @@ static void update_rx_stats(struct wg_peer *peer, size_t len)
+@@ -23,31 +28,84 @@ static void update_rx_stats(struct wg_peer *peer, size_t len)
  	peer->rx_bytes += len;
  }
  
@@ -48553,14 +48588,17 @@ index eb88511..b646a4a 100644
 -	if (SKB_TYPE_LE32(skb) == cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION) &&
 -	    skb->len == sizeof(struct message_handshake_initiation))
 +	void *ptr;
++	unsigned int expected_len;
 +	u8 buf[4];
 +	u16 padding;
++	bool random_trailers = wg->random_trailers;
 +
 +	padding = wg->init_padding;
-+	if (skb->len == padding + sizeof(struct message_handshake_initiation) &&
++	expected_len = padding + sizeof(struct message_handshake_initiation);
++	if ((random_trailers ? skb->len >= expected_len : skb->len == expected_len) &&
 +		(ptr = skb_header_pointer(skb, padding, sizeof(buf), buf)) != NULL &&
 +		u32_range_contains(wg->init_header,
-+			awg_decoded_type(ptr, hash))) {
++			le32_to_cpu(awg_decoded_type(ptr, hash)))) {
 +		*res_padding = padding;
 +		*res_type = MESSAGE_HANDSHAKE_INITIATION;
  		return sizeof(struct message_handshake_initiation);
@@ -48569,10 +48607,11 @@ index eb88511..b646a4a 100644
 +	}
 +
 +	padding = wg->resp_padding;
-+	if (skb->len == padding + sizeof(struct message_handshake_response) &&
++	expected_len = padding + sizeof(struct message_handshake_response);
++	if ((random_trailers ? skb->len >= expected_len : skb->len == expected_len) &&
 +		(ptr = skb_header_pointer(skb, padding, sizeof(buf), buf)) != NULL &&
 +		u32_range_contains(wg->resp_header,
-+			awg_decoded_type(ptr, hash))) {
++			le32_to_cpu(awg_decoded_type(ptr, hash)))) {
 +		*res_padding = padding;
 +		*res_type = MESSAGE_HANDSHAKE_RESPONSE;
  		return sizeof(struct message_handshake_response);
@@ -48581,20 +48620,22 @@ index eb88511..b646a4a 100644
 +	}
 +
 +	padding = wg->cookie_padding;
-+	if (skb->len == padding + sizeof(struct message_handshake_cookie) &&
++	expected_len = padding + sizeof(struct message_handshake_cookie);
++	if ((random_trailers ? skb->len >= expected_len : skb->len == expected_len) &&
 +		(ptr = skb_header_pointer(skb, padding, sizeof(buf), buf)) != NULL &&
 +		u32_range_contains(wg->cookie_header, 
-+			awg_decoded_type(ptr, hash))) {
++			le32_to_cpu(awg_decoded_type(ptr, hash)))) {
 +		*res_padding = padding;
 +		*res_type = MESSAGE_HANDSHAKE_COOKIE;
  		return sizeof(struct message_handshake_cookie);
 +	}
 +
 +	padding = wg->transport_padding;
-+	if (skb->len >= padding + MESSAGE_MINIMUM_LENGTH &&
++	expected_len = padding + MESSAGE_MINIMUM_LENGTH;
++	if (skb->len >= expected_len &&
 +		(ptr = skb_header_pointer(skb, padding, sizeof(buf), buf)) != NULL &&
 +		u32_range_contains(wg->transport_header,
-+			awg_decoded_type(ptr, hash))) {
++			le32_to_cpu(awg_decoded_type(ptr, hash)))) {
 +		*res_padding = padding;
 +		*res_type = MESSAGE_DATA;
 +		return sizeof(struct message_data);
@@ -48615,18 +48656,17 @@ index eb88511..b646a4a 100644
 +	u8 buf[HEADER_PROTECTION_NONCE_SIZE], *ptr, hash[4] = {0};
 +	u32 type;
 +	u16 padding;
-+	bool protected;
++	bool protected = false;
  
  	if (unlikely(!wg_check_packet_protocol(skb) ||
  		     skb_transport_header(skb) < skb->head ||
-@@ -79,13 +131,34 @@ static int prepare_skb_header(struct sk_buff *skb, struct wg_device *wg)
+@@ -79,13 +137,37 @@ static int prepare_skb_header(struct sk_buff *skb, struct wg_device *wg)
  	if (unlikely(skb->len != data_len))
  		/* Final len does not agree with calculated len */
  		return -EINVAL;
 -	header_len = validate_header_len(skb);
 +
-+	protected = awg_has_header_protection(wg);
-+	if (protected) {
++	if (wg->header_protection.has_protection) {
 +		ptr = skb_header_pointer(skb, 0, sizeof(buf), buf);
 +		if (!ptr)
 +			return -EINVAL;
@@ -48641,14 +48681,19 @@ index eb88511..b646a4a 100644
 +	header_len = awg_determine_type_and_padding(skb, wg, hash, &padding, &type);
  	if (unlikely(!header_len))
  		return -EINVAL;
-+
-+	PACKET_CB(skb)->type = type;
-+
- 	__skb_push(skb, data_offset);
+-	__skb_push(skb, data_offset);
 -	if (unlikely(!pskb_may_pull(skb, data_offset + header_len)))
-+	if (unlikely(!pskb_may_pull(skb, data_offset + padding + header_len)))
++
++	if (type != MESSAGE_DATA && unlikely(pskb_trim(skb, padding + header_len)))
  		return -EINVAL;
 -	__skb_pull(skb, data_offset);
++
++	PACKET_CB(skb)->type = type;
++	PACKET_CB(skb)->padding = padding;
++
++	__skb_push(skb, data_offset);
++	if (unlikely(!pskb_may_pull(skb, data_offset + padding + header_len)))
++		return -EINVAL;
 +	__skb_pull(skb, data_offset + padding);
 +
 +	if (protected)
@@ -48657,7 +48702,7 @@ index eb88511..b646a4a 100644
  	return 0;
  }
  
-@@ -100,8 +173,8 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
+@@ -100,8 +182,8 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
  	static u64 last_under_load;
  	bool packet_needs_cookie;
  	bool under_load;
@@ -48668,7 +48713,7 @@ index eb88511..b646a4a 100644
  		net_dbg_skb_ratelimited("%s: Receiving cookie response from %pISpfsc\n",
  					wg->dev->name, skb);
  		wg_cookie_message_consume(
-@@ -131,8 +204,8 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
+@@ -131,8 +213,8 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
  		return;
  	}
  
@@ -48679,7 +48724,7 @@ index eb88511..b646a4a 100644
  		struct message_handshake_initiation *message =
  			(struct message_handshake_initiation *)skb->data;
  
-@@ -141,7 +214,7 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
+@@ -141,7 +223,7 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
  							message->sender_index);
  			return;
  		}
@@ -48688,7 +48733,7 @@ index eb88511..b646a4a 100644
  		if (unlikely(!peer)) {
  			net_dbg_skb_ratelimited("%s: Invalid handshake initiation from %pISpfsc\n",
  						wg->dev->name, skb);
-@@ -154,7 +227,7 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
+@@ -154,7 +236,7 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
  		wg_packet_send_handshake_response(peer);
  		break;
  	}
@@ -48697,7 +48742,7 @@ index eb88511..b646a4a 100644
  		struct message_handshake_response *message =
  			(struct message_handshake_response *)skb->data;
  
-@@ -217,6 +290,14 @@ void wg_packet_handshake_receive_worker(struct work_struct *work)
+@@ -217,6 +299,14 @@ void wg_packet_handshake_receive_worker(struct work_struct *work)
  	}
  }
  
@@ -48712,7 +48757,7 @@ index eb88511..b646a4a 100644
  static void keep_key_fresh(struct wg_peer *peer)
  {
  	struct noise_keypair *keypair;
-@@ -229,8 +310,7 @@ static void keep_key_fresh(struct wg_peer *peer)
+@@ -229,8 +319,7 @@ static void keep_key_fresh(struct wg_peer *peer)
  	keypair = rcu_dereference_bh(peer->keypairs.current_keypair);
  	send = keypair && READ_ONCE(keypair->sending.is_valid) &&
  	       keypair->i_am_the_initiator &&
@@ -48722,7 +48767,7 @@ index eb88511..b646a4a 100644
  	rcu_read_unlock_bh();
  
  	if (unlikely(send)) {
-@@ -239,7 +319,8 @@ static void keep_key_fresh(struct wg_peer *peer)
+@@ -239,7 +328,8 @@ static void keep_key_fresh(struct wg_peer *peer)
  	}
  }
  
@@ -48732,7 +48777,7 @@ index eb88511..b646a4a 100644
  {
  	struct scatterlist sg[MAX_SKB_FRAGS + 8];
  	struct sk_buff *trailer;
-@@ -277,7 +358,8 @@ static bool decrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
+@@ -277,7 +367,8 @@ static bool decrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
  
  	if (!chacha20poly1305_decrypt_sg_inplace(sg, skb->len, NULL, 0,
  					         PACKET_CB(skb)->nonce,
@@ -48742,7 +48787,7 @@ index eb88511..b646a4a 100644
  		return false;
  
  	/* Another ugly situation of pushing and pulling the header so as to
-@@ -339,6 +421,7 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
+@@ -339,6 +430,7 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
  	struct net_device *dev = peer->device->dev;
  	unsigned int len, len_before_trim;
  	struct wg_peer *routed_peer;
@@ -48750,7 +48795,7 @@ index eb88511..b646a4a 100644
  
  	wg_socket_set_peer_endpoint(peer, endpoint);
  
-@@ -353,9 +436,11 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
+@@ -353,9 +445,11 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
  	wg_timers_any_authenticated_packet_received(peer);
  	wg_timers_any_authenticated_packet_traversal(peer);
  
@@ -48765,7 +48810,7 @@ index eb88511..b646a4a 100644
  		net_dbg_ratelimited("%s: Receiving keepalive packet from peer %llu (%pISpfsc)\n",
  				    dev->name, peer->internal_id,
  				    &peer->endpoint.addr);
-@@ -380,7 +465,9 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
+@@ -380,7 +474,9 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
  	 * again in software.
  	 */
  	skb->ip_summed = CHECKSUM_UNNECESSARY;
@@ -48775,7 +48820,27 @@ index eb88511..b646a4a 100644
  	skb->protocol = ip_tunnel_parse_protocol(skb);
  	if (skb->protocol == htons(ETH_P_IP)) {
  		len = ntohs(ip_hdr(skb)->tot_len);
-@@ -495,15 +582,26 @@ void wg_packet_decrypt_worker(struct work_struct *work)
+@@ -443,6 +539,7 @@ int wg_packet_rx_poll(struct napi_struct *napi, int budget)
+ 	enum packet_state state;
+ 	struct sk_buff *skb;
+ 	int work_done = 0;
++	u32 udp_window;
+ 	bool free;
+ 
+ 	if (unlikely(budget <= 0))
+@@ -470,6 +567,11 @@ int wg_packet_rx_poll(struct napi_struct *napi, int budget)
+ 		if (unlikely(wg_socket_endpoint_from_skb(&endpoint, skb)))
+ 			goto next;
+ 
++
++		udp_window = PACKET_CB(skb)->padding + MESSAGE_MINIMUM_LENGTH + skb->len;
++		if (READ_ONCE(peer->udp_window) < udp_window)
++			WRITE_ONCE(peer->udp_window, udp_window);
++
+ 		wg_reset_packet(skb, false);
+ 		wg_packet_consume_data_done(peer, skb, &endpoint);
+ 		free = false;
+@@ -495,15 +597,26 @@ void wg_packet_decrypt_worker(struct work_struct *work)
  	struct crypt_queue *queue = container_of(work, struct multicore_worker,
  						 work)->ptr;
  	struct sk_buff *skb;
@@ -48804,7 +48869,7 @@ index eb88511..b646a4a 100644
  }
  
  static void wg_packet_consume_data(struct wg_device *wg, struct sk_buff *skb)
-@@ -543,10 +641,10 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
+@@ -543,10 +656,11 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
  {
  	if (unlikely(prepare_skb_header(skb, wg) < 0))
  		goto err;
@@ -48812,6 +48877,7 @@ index eb88511..b646a4a 100644
 -	case cpu_to_le32(MESSAGE_HANDSHAKE_INITIATION):
 -	case cpu_to_le32(MESSAGE_HANDSHAKE_RESPONSE):
 -	case cpu_to_le32(MESSAGE_HANDSHAKE_COOKIE): {
++
 +	switch(PACKET_CB(skb)->type) {
 +	case MESSAGE_HANDSHAKE_INITIATION:
 +	case MESSAGE_HANDSHAKE_RESPONSE:
@@ -48819,7 +48885,7 @@ index eb88511..b646a4a 100644
  		int cpu, ret = -EBUSY;
  
  		if (unlikely(!rng_is_initialized()))
-@@ -571,7 +669,7 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
+@@ -571,7 +685,7 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
  			      &per_cpu_ptr(wg->handshake_queue.worker, cpu)->work);
  		break;
  	}
@@ -49559,10 +49625,10 @@ index d4bb40a..007cd44 100644
  		}
  		test += test_count;
 diff --git a/drivers/net/wireguard/send.c b/net/wireguard/send.c
-similarity index 74%
+similarity index 72%
 rename from a/drivers/net/wireguard/send.c
 rename to b/net/wireguard/send.c
-index 67d0147..15bc9f5 100644
+index 67d0147..ffdfc2b 100644
 --- a/drivers/net/wireguard/send.c
 +++ b/net/wireguard/send.c
 @@ -3,6 +3,8 @@
@@ -49710,7 +49776,16 @@ index 67d0147..15bc9f5 100644
  		}
  	}
  }
-@@ -116,9 +172,16 @@ void wg_packet_send_handshake_cookie(struct wg_device *wg,
+@@ -113,12 +169,25 @@ void wg_packet_send_handshake_cookie(struct wg_device *wg,
+ {
+ 	struct message_handshake_cookie packet;
+ 
++	if (wg->disable_cookies) {
++		net_dbg_skb_ratelimited("%s: Sending cookie response disabled for %pISpfsc due to disabled cookies\n",
++				wg->dev->name, initiating_skb);
++		return;
++	}
++
  	net_dbg_skb_ratelimited("%s: Sending cookie response for denied handshake message for %pISpfsc\n",
  				wg->dev->name, initiating_skb);
  	wg_cookie_message_create(&packet, initiating_skb, sender_index,
@@ -49729,7 +49804,7 @@ index 67d0147..15bc9f5 100644
  }
  
  static void keep_key_fresh(struct wg_peer *peer)
-@@ -131,13 +194,33 @@ static void keep_key_fresh(struct wg_peer *peer)
+@@ -131,13 +200,30 @@ static void keep_key_fresh(struct wg_peer *peer)
  	send = keypair && READ_ONCE(keypair->sending.is_valid) &&
  	       (atomic64_read(&keypair->sending_counter) > REKEY_AFTER_MESSAGES ||
  		(keypair->i_am_the_initiator &&
@@ -49746,9 +49821,6 @@ index 67d0147..15bc9f5 100644
 +	unsigned int packet_size = skb->len, space;
 +	u16 addition;
 +
-+	if (u16_range_is_zero(addition_range))
-+		return 0;
-+
 +	addition = u16_range_pick_one(addition_range);
 +	if (likely(PACKET_CB(skb)->mtu)) {
 +		if (unlikely(packet_size > PACKET_CB(skb)->mtu))
@@ -49764,14 +49836,15 @@ index 67d0147..15bc9f5 100644
  static unsigned int calculate_skb_padding(struct sk_buff *skb)
  {
  	unsigned int padded_size, last_unit = skb->len;
-@@ -159,13 +242,17 @@ static unsigned int calculate_skb_padding(struct sk_buff *skb)
+@@ -159,13 +245,27 @@ static unsigned int calculate_skb_padding(struct sk_buff *skb)
  	return padded_size - last_unit;
  }
  
 -static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
-+static bool encrypt_packet(struct wg_device *wg, struct sk_buff *skb, struct noise_keypair *keypair
++static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair
 +	COMPAT_MAYBE_SIMD_CONTEXT(simd_context_t *simd_context))
  {
++	struct wg_peer *peer = keypair->entry.peer;
  	unsigned int padding_len, plaintext_len, trailer_len;
  	struct scatterlist sg[MAX_SKB_FRAGS + 8];
 +	struct chacha_state state;
@@ -49779,18 +49852,33 @@ index 67d0147..15bc9f5 100644
  	struct sk_buff *trailer;
 +	char *crypto;
  	int num_frags;
-+	int padding = wg->transport_padding;
++	unsigned int udp_window;
++	int padding;
++	u16_range_t content_padding_addition;
++
++	padding = peer->device->transport_padding;
++	content_padding_addition = peer->device->content_padding_addition;
++
++	udp_window = padding + MESSAGE_MINIMUM_LENGTH + skb->len;
++	if (READ_ONCE(peer->udp_window) < udp_window)
++		WRITE_ONCE(peer->udp_window, udp_window);
  
  	/* Force hash calculation before encryption so that flow analysis is
  	 * consistent over the inner packet.
-@@ -173,21 +260,12 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
+@@ -173,21 +273,18 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
  	skb_get_hash(skb);
  
  	/* Calculate lengths. */
 -	padding_len = calculate_skb_padding(skb);
-+	padding_len = !u16_range_is_zero(wg->content_padding_addition) ?
-+		randomize_skb_padding(skb, wg->content_padding_addition) :
-+		calculate_skb_padding(skb);
++	if (!u16_range_is_zero(content_padding_addition)) {
++		padding_len = randomize_skb_padding(skb, content_padding_addition);
++	} else if (peer->device->random_trailers) {
++		padding_len = wg_peer_skb_random_trailer(peer, peer->device,
++			skb->len + MESSAGE_MINIMUM_LENGTH + padding);
++	} else {
++		padding_len = calculate_skb_padding(skb);
++	}
++
  	trailer_len = padding_len + noise_encrypted_len(0);
  	plaintext_len = skb->len + padding_len;
  
@@ -49808,7 +49896,7 @@ index 67d0147..15bc9f5 100644
  	/* Expand data section to have room for padding and auth tag. */
  	num_frags = skb_cow_data(skb, trailer_len, &trailer);
  	if (unlikely(num_frags < 0 || num_frags > ARRAY_SIZE(sg)))
-@@ -198,24 +276,42 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
+@@ -198,24 +295,43 @@ static bool encrypt_packet(struct sk_buff *skb, struct noise_keypair *keypair)
  	 */
  	memset(skb_tail_pointer(trailer), 0, padding_len);
  
@@ -49829,7 +49917,8 @@ index 67d0147..15bc9f5 100644
  	skb_set_inner_network_header(skb, 0);
  	header = (struct message_data *)skb_push(skb, sizeof(*header));
 -	header->header.type = cpu_to_le32(MESSAGE_DATA);
-+	header->header.type = cpu_to_le32(u32_range_pick_one(wg->transport_header));
++	header->header.type = cpu_to_le32(
++		u32_range_pick_one(peer->device->transport_header));
  	header->key_idx = keypair->remote_index;
  	header->counter = cpu_to_le64(PACKET_CB(skb)->nonce);
  	pskb_put(skb, trailer, trailer_len);
@@ -49837,7 +49926,7 @@ index 67d0147..15bc9f5 100644
 +	crypto = skb_push(skb, padding);
 +	get_random_bytes(crypto, padding);
 +
-+	if (awg_header_protection_init(&state, wg, crypto))
++	if (awg_header_protection_init(&state, peer->device, crypto))
 +		chacha20_crypt(&state, (u8*)header, (u8*)header, sizeof(*header));
 +
  	/* Now we can encrypt the scattergather segments */
@@ -49854,7 +49943,7 @@ index 67d0147..15bc9f5 100644
  }
  
  void wg_packet_send_keepalive(struct wg_peer *peer)
-@@ -230,6 +326,7 @@ void wg_packet_send_keepalive(struct wg_peer *peer)
+@@ -230,6 +346,7 @@ void wg_packet_send_keepalive(struct wg_peer *peer)
  		skb_reserve(skb, DATA_PACKET_HEAD_ROOM);
  		skb->dev = peer->device->dev;
  		PACKET_CB(skb)->mtu = skb->dev->mtu;
@@ -49862,7 +49951,7 @@ index 67d0147..15bc9f5 100644
  		skb_queue_tail(&peer->staged_packet_queue, skb);
  		net_dbg_ratelimited("%s: Sending keepalive packet to peer %llu (%pISpfsc)\n",
  				    peer->device->dev->name, peer->internal_id,
-@@ -242,14 +339,13 @@ void wg_packet_send_keepalive(struct wg_peer *peer)
+@@ -242,12 +359,13 @@ void wg_packet_send_keepalive(struct wg_peer *peer)
  static void wg_packet_create_data_done(struct wg_peer *peer, struct sk_buff *first)
  {
  	struct sk_buff *skb, *next;
@@ -49873,17 +49962,14 @@ index 67d0147..15bc9f5 100644
  	wg_timers_any_authenticated_packet_sent(peer);
  	skb_list_walk_safe(first, skb, next) {
 -		is_keepalive = skb->len == message_data_len(0);
++		bool is_keepalive = PACKET_CB(skb)->is_keepalive;
++
  		if (likely(!wg_socket_send_skb_to_peer(peer, skb,
--				PACKET_CB(skb)->ds) && !is_keepalive))
-+				PACKET_CB(skb)->ds) && !PACKET_CB(skb)->is_keepalive))
+ 				PACKET_CB(skb)->ds) && !is_keepalive))
  			data_sent = true;
- 	}
- 
-@@ -289,13 +385,23 @@ void wg_packet_encrypt_worker(struct work_struct *work)
- 	struct crypt_queue *queue = container_of(work, struct multicore_worker,
+@@ -290,12 +408,18 @@ void wg_packet_encrypt_worker(struct work_struct *work)
  						 work)->ptr;
  	struct sk_buff *first, *skb, *next;
-+	struct wg_device *wg;
  
 +#ifdef COMPAT_CRYPTO_IS_ZINC
 +	simd_context_t simd_context;
@@ -49895,17 +49981,14 @@ index 67d0147..15bc9f5 100644
  		skb_list_walk_safe(first, skb, next) {
 -			if (likely(encrypt_packet(skb,
 -					PACKET_CB(first)->keypair))) {
-+			wg = PACKET_PEER(first)->device;
-+
 +			if (likely(encrypt_packet(
-+						  wg,
 +						  skb,
 +						  PACKET_CB(first)->keypair
 +						  COMPAT_MAYBE_SIMD_CONTEXT(&simd_context)))) {
  				wg_reset_packet(skb, true);
  			} else {
  				state = PACKET_STATE_DEAD;
-@@ -303,9 +409,16 @@ void wg_packet_encrypt_worker(struct work_struct *work)
+@@ -303,9 +427,16 @@ void wg_packet_encrypt_worker(struct work_struct *work)
  			}
  		}
  		wg_queue_enqueue_per_peer_tx(first, state);
@@ -49924,10 +50007,10 @@ index 67d0147..15bc9f5 100644
  static void wg_packet_create_data(struct wg_peer *peer, struct sk_buff *first)
 diff --git b/net/wireguard/socket.c b/net/wireguard/socket.c
 new file mode 100644
-index 0000000..ff7dd4b
+index 0000000..3695c02
 --- /dev/null
 +++ b/net/wireguard/socket.c
-@@ -0,0 +1,452 @@
+@@ -0,0 +1,478 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -50121,21 +50204,31 @@ index 0000000..ff7dd4b
 +int wg_socket_send_buffer_to_peer(struct wg_peer *peer, void *buffer,
 +				  size_t len, u8 ds, size_t padding)
 +{
-+	struct sk_buff *skb = alloc_skb(len + padding + SKB_HEADER_LEN, GFP_ATOMIC);
-+	void* crypto;
++	struct sk_buff *skb;
++	void *crypto = NULL;
++	size_t trailer_len;
 +	struct chacha_state state;
 +
++	trailer_len = wg_peer_skb_random_trailer(peer, peer->device, padding + len);
++	
++	skb = alloc_skb(len + padding + trailer_len + SKB_HEADER_LEN, GFP_ATOMIC);
 +	if (unlikely(!skb))
 +		return -ENOMEM;
 +
 +	skb_reserve(skb, SKB_HEADER_LEN);
 +	skb_set_inner_network_header(skb, 0);
 +
-+	crypto = skb_put(skb, padding);
-+	get_random_bytes(crypto, padding);
++	if (padding) {
++		crypto = skb_put(skb, padding);
++		get_random_bytes(crypto, padding);
++	}
 +
 +	buffer = skb_put_data(skb, buffer, len);
-+	if (padding != 0 &&
++
++	if (trailer_len)
++		get_random_bytes(skb_put(skb, trailer_len), trailer_len);
++
++	if (crypto &&
 +			awg_header_protection_init(&state, peer->device, crypto))
 +		chacha20_crypt(&state, buffer, buffer, len);
 +
@@ -50144,12 +50237,14 @@ index 0000000..ff7dd4b
 +
 +int wg_socket_send_buffer_as_reply_to_skb(struct wg_device *wg,
 +					  struct sk_buff *in_skb, void *buffer,
-+					  size_t len, size_t junk_size)
++					  size_t len, size_t padding)
 +{
 +	int ret = 0;
 +	struct sk_buff *skb;
++	void* crypto = NULL;
++	struct chacha_state state;
 +	struct endpoint endpoint;
-+	void* junk;
++	unsigned int trailer_len;
 +
 +	if (unlikely(!in_skb))
 +		return -EINVAL;
@@ -50157,14 +50252,27 @@ index 0000000..ff7dd4b
 +	if (unlikely(ret < 0))
 +		return ret;
 +
-+	skb = alloc_skb(len + junk_size + SKB_HEADER_LEN, GFP_ATOMIC);
++	trailer_len = wg_peer_skb_random_trailer(NULL, wg, padding + len);
++
++	skb = alloc_skb(padding + len + trailer_len + SKB_HEADER_LEN, GFP_ATOMIC);
 +	if (unlikely(!skb))
 +		return -ENOMEM;
 +	skb_reserve(skb, SKB_HEADER_LEN);
 +	skb_set_inner_network_header(skb, 0);
-+	junk = skb_put(skb, junk_size);
-+	get_random_bytes(junk, junk_size);
-+	skb_put_data(skb, buffer, len);
++
++	if (padding) {
++		crypto = skb_put(skb, padding);
++		get_random_bytes(crypto, padding);
++	}
++
++	buffer = skb_put_data(skb, buffer, len);
++
++	if (trailer_len)
++		get_random_bytes(skb_put(skb, trailer_len), trailer_len);
++
++	if (crypto &&
++			awg_header_protection_init(&state, wg, crypto))
++		chacha20_crypt(&state, buffer, buffer, len);
 +
 +	if (endpoint.addr.sa_family == AF_INET)
 +		ret = send4(wg, skb, &endpoint, 0, NULL);
@@ -50239,6 +50347,7 @@ index 0000000..ff7dd4b
 +	dst_cache_reset(&peer->endpoint_cache);
 +out:
 +	write_unlock_bh(&peer->endpoint_lock);
++	WRITE_ONCE(peer->udp_window, DEFAULT_UDP_WINDOW);
 +}
 +
 +void wg_socket_set_peer_endpoint_from_skb(struct wg_peer *peer,
@@ -50381,10 +50490,10 @@ index 0000000..ff7dd4b
 +	sock_free(old6);
 +}
 diff --git a/drivers/net/wireguard/socket.h b/net/wireguard/socket.h
-similarity index 93%
+similarity index 94%
 rename from a/drivers/net/wireguard/socket.h
 rename to b/net/wireguard/socket.h
-index bab5848..82eb53e 100644
+index bab5848..804565d 100644
 --- a/drivers/net/wireguard/socket.h
 +++ b/net/wireguard/socket.h
 @@ -15,12 +15,12 @@ int wg_socket_init(struct wg_device *wg, u16 port);
@@ -50392,13 +50501,13 @@ index bab5848..82eb53e 100644
  		      struct sock *new6);
  int wg_socket_send_buffer_to_peer(struct wg_peer *peer, void *data,
 -				  size_t len, u8 ds);
-+				  size_t len, u8 ds, size_t junk_size);
++				  size_t len, u8 ds, size_t padding);
  int wg_socket_send_skb_to_peer(struct wg_peer *peer, struct sk_buff *skb,
  			       u8 ds);
  int wg_socket_send_buffer_as_reply_to_skb(struct wg_device *wg,
  					  struct sk_buff *in_skb,
 -					  void *out_buffer, size_t len);
-+					  void *out_buffer, size_t len, size_t junk_size);
++					  void *out_buffer, size_t len, size_t padding);
  
  int wg_socket_endpoint_from_skb(struct endpoint *endpoint,
  				const struct sk_buff *skb);
@@ -52491,10 +52600,10 @@ index 0000000..aa39e03
 +#endif // _WG_TYPE
 diff --git b/net/wireguard/uapi/wireguard.h b/net/wireguard/uapi/wireguard.h
 new file mode 100644
-index 0000000..979fbb5
+index 0000000..e1afa2c
 --- /dev/null
 +++ b/net/wireguard/uapi/wireguard.h
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,258 @@
 +/* SPDX-License-Identifier: (GPL-2.0 WITH Linux-syscall-note) OR MIT */
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -52707,6 +52816,8 @@ index 0000000..979fbb5
 +	WGDEVICE_A_REJECT_AFTER_TIME,
 +	WGDEVICE_A_KEEPALIVE_TIMEOUT,
 +	WGDEVICE_A_MAX_HANDSHAKE_ATTEMPTS,
++	WGDEVICE_A_RANDOM_TRAILERS,
++	WGDEVICE_A_DISABLE_COOKIES,
 +	__WGDEVICE_A_LAST
 +};
 +#define WGDEVICE_A_MAX (__WGDEVICE_A_LAST - 1)
@@ -52753,10 +52864,10 @@ index 0000000..979fbb5
 +#endif /* _WG_UAPI_WIREGUARD_H */
 diff --git b/net/wireguard/version.h b/net/wireguard/version.h
 new file mode 100644
-index 0000000..83ab415
+index 0000000..9088b75
 --- /dev/null
 +++ b/net/wireguard/version.h
 @@ -0,0 +1,3 @@
 +#ifndef WIREGUARD_VERSION
-+#define WIREGUARD_VERSION "3.0.20260805"
++#define WIREGUARD_VERSION "3.1.20260812"
 +#endif
