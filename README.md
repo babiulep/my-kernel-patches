@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-08-27
+* TIP: upgrade amneziawg in-tree to 3.1.20260827  
+
 ## 2026-08-13
 * TIP: upgrade amneziawg in-tree to 3.1.20260812  
   (upgrade your awg/awg-quick as well: amneziawg-tools v3.1.20260812 - https://amnezia.org)
