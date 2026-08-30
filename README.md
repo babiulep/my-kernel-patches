@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-08-31
+- added 7.3 patches
+
 ## 2026-08-27
 * TIP: upgrade amneziawg in-tree to 3.1.20260827  
 
