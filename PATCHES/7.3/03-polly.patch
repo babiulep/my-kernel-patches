@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index 45958eb..4eb96fc 100644
+index 57294c1..5dbe1ab 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -946,6 +946,22 @@ endif
@@ -7,10 +7,10 @@ index 45958eb..4eb96fc 100644
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
 +ifdef CONFIG_POLLY_CLANG
-+KBUILD_CFLAGS	+= -mllvm -polly -mllvm -polly-omp-backend=LLVM -mllvm -polly-num-threads=8 \
++KBUILD_CFLAGS	+= -mllvm -polly \
 +		   -mllvm -polly-ast-use-context \
 +		   -mllvm -polly-invariant-load-hoisting \
-+		   -mllvm -polly-loopfusion-greedy \
++		   -mllvm -polly-only-region=max \
 +		   -mllvm -polly-run-inliner \
 +		   -mllvm -polly-vectorizer=stripmine
 +# Polly may optimise loops with dead paths beyound what the linker

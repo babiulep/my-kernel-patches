@@ -4,6 +4,9 @@
 - [README 2025](README2025.md) 
 
 ## 2026-08-31
+- update 7.3 patches
+
+## 2026-08-30
 - added 7.3 patches
 - amneziawg fix: use udp window for RandomPaddingAddition (v3.1.20260828)
 - amneziawg fix: disable the whole underload if DisableCookies is on (v3.1.20260828)
