@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-01
+- update zstd review patches  
+  (https://www.phoronix.com/news/In-Kernel-Zstd-BMI2-Probing)
+
 ## 2026-08-31
 - update 7.3 patches
 
