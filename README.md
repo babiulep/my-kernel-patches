@@ -3,6 +3,12 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-04
+- NVIDIA 610.57.04 fix:  
+  Commit e11640b9cea4e changed the function arguments of  
+  dmem_cgroup_register_region() to except a struct *dmem_cgroup_init  
+  instead of a u64.
+
 ## 2026-09-02
 - update [zstd review patches](https://www.phoronix.com/news/In-Kernel-Zstd-BMI2-Probing)
 
