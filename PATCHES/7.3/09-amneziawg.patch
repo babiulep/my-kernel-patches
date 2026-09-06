@@ -49664,7 +49664,7 @@ diff --git a/drivers/net/wireguard/send.c b/net/wireguard/send.c
 similarity index 74%
 rename from a/drivers/net/wireguard/send.c
 rename to b/net/wireguard/send.c
-index 67d0147..81d5d1d 100644
+index 67d0147..b3f80b0 100644
 --- a/drivers/net/wireguard/send.c
 +++ b/net/wireguard/send.c
 @@ -3,6 +3,8 @@
@@ -49723,7 +49723,7 @@ index 67d0147..81d5d1d 100644
 +		if (spec->pkt_size > 0) {
 +			mutex_lock(&spec->lock);
 +			jp_spec_applymods(spec, peer);
-+			wg_socket_send_buffer_to_peer(peer, spec->pkt, spec->pkt_size, 0, 0);
++			wg_socket_send_buffer_to_peer(peer, spec->pkt, spec->pkt_size, 0, 0, false);
 +			atomic_inc(&peer->jp_packet_counter);
 +			mutex_unlock(&spec->lock);
 +		}
@@ -49742,7 +49742,7 @@ index 67d0147..81d5d1d 100644
 +
 +			get_random_bytes(buffer, junk_packet_size);
 +			get_random_bytes(&ds, 1);
-+			wg_socket_send_buffer_to_peer(peer, buffer, junk_packet_size, ds, 0);
++			wg_socket_send_buffer_to_peer(peer, buffer, junk_packet_size, ds, 0, false);
 +		}
 +
 +		kfree(buffer);
@@ -49757,7 +49757,7 @@ index 67d0147..81d5d1d 100644
  			     ktime_get_coarse_boottime_ns());
  		wg_socket_send_buffer_to_peer(peer, &packet, sizeof(packet),
 -					      HANDSHAKE_DSCP);
-+					      HANDSHAKE_DSCP, wg->init_padding);
++					      HANDSHAKE_DSCP, wg->init_padding, true);
  		wg_timers_handshake_initiated(peer);
  	}
  }
@@ -49808,7 +49808,7 @@ index 67d0147..81d5d1d 100644
  						      sizeof(packet),
 -						      HANDSHAKE_DSCP);
 +						      HANDSHAKE_DSCP,
-+							  wg->resp_padding);
++							  wg->resp_padding, true);
  		}
  	}
  }
@@ -50012,10 +50012,10 @@ index 67d0147..81d5d1d 100644
  static void wg_packet_create_data(struct wg_peer *peer, struct sk_buff *first)
 diff --git b/net/wireguard/socket.c b/net/wireguard/socket.c
 new file mode 100644
-index 0000000..3695c02
+index 0000000..f321c91
 --- /dev/null
 +++ b/net/wireguard/socket.c
-@@ -0,0 +1,478 @@
+@@ -0,0 +1,480 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -50207,15 +50207,17 @@ index 0000000..3695c02
 +}
 +
 +int wg_socket_send_buffer_to_peer(struct wg_peer *peer, void *buffer,
-+				  size_t len, u8 ds, size_t padding)
++				  size_t len, u8 ds, size_t padding, bool trailer)
 +{
 +	struct sk_buff *skb;
 +	void *crypto = NULL;
 +	size_t trailer_len;
 +	struct chacha_state state;
 +
-+	trailer_len = wg_peer_skb_random_trailer(peer, peer->device, padding + len);
-+	
++	trailer_len = trailer
++		? wg_peer_skb_random_trailer(peer, peer->device, padding + len)
++		: 0;
++
 +	skb = alloc_skb(len + padding + trailer_len + SKB_HEADER_LEN, GFP_ATOMIC);
 +	if (unlikely(!skb))
 +		return -ENOMEM;
@@ -50495,10 +50497,10 @@ index 0000000..3695c02
 +	sock_free(old6);
 +}
 diff --git a/drivers/net/wireguard/socket.h b/net/wireguard/socket.h
-similarity index 94%
+similarity index 93%
 rename from a/drivers/net/wireguard/socket.h
 rename to b/net/wireguard/socket.h
-index bab5848..804565d 100644
+index bab5848..073a9b8 100644
 --- a/drivers/net/wireguard/socket.h
 +++ b/net/wireguard/socket.h
 @@ -15,12 +15,12 @@ int wg_socket_init(struct wg_device *wg, u16 port);
@@ -50506,7 +50508,7 @@ index bab5848..804565d 100644
  		      struct sock *new6);
  int wg_socket_send_buffer_to_peer(struct wg_peer *peer, void *data,
 -				  size_t len, u8 ds);
-+				  size_t len, u8 ds, size_t padding);
++				  size_t len, u8 ds, size_t padding, bool trailer);
  int wg_socket_send_skb_to_peer(struct wg_peer *peer, struct sk_buff *skb,
  			       u8 ds);
  int wg_socket_send_buffer_as_reply_to_skb(struct wg_device *wg,
@@ -52869,10 +52871,10 @@ index 0000000..e1afa2c
 +#endif /* _WG_UAPI_WIREGUARD_H */
 diff --git b/net/wireguard/version.h b/net/wireguard/version.h
 new file mode 100644
-index 0000000..5ff6e56
+index 0000000..a3c29db
 --- /dev/null
 +++ b/net/wireguard/version.h
 @@ -0,0 +1,3 @@
 +#ifndef WIREGUARD_VERSION
-+#define WIREGUARD_VERSION "3.1.20260827"
++#define WIREGUARD_VERSION "3.1.20260906"
 +#endif

@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-06
+- amneziawg update to: 3.1.20260906
+
 ## 2026-09-04
 - NVIDIA 610.57.04 fix:  
   Commit e11640b9cea4e changed the function arguments of  
