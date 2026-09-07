@@ -63,11 +63,29 @@ index df22113..3b0ed46 100644
  {
  	/* With PTI, we unconditionally serialize before running user code. */
  	if (cpu_feature_enabled(X86_FEATURE_PTI))
+diff --git a/arch/x86/kernel/cpu/amd.c b/arch/x86/kernel/cpu/amd.c
+index 54e14ed..0befde2 100644
+--- a/arch/x86/kernel/cpu/amd.c
++++ b/arch/x86/kernel/cpu/amd.c
+@@ -1044,11 +1044,8 @@ static const struct x86_cpu_id zen5_rdseed_microcode[] = {
+ 
+ static void init_amd_zen5(struct cpuinfo_x86 *c)
+ {
+-	if (!x86_match_min_microcode_rev(zen5_rdseed_microcode)) {
+-		clear_cpu_cap(c, X86_FEATURE_RDSEED);
+-		msr_clear_bit(MSR_AMD64_CPUID_FN_7, 18);
+-		pr_emerg_once("RDSEED32 is broken. Disabling the corresponding CPUID bit.\n");
+-	}
++	if (!x86_match_min_microcode_rev(zen5_rdseed_microcode))
++		pr_emerg_once("RDSEED32 is broken. Please update your firmware.\n");
+ }
+ 
+ static void init_amd(struct cpuinfo_x86 *c)
 diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
-index 61c1840..893f694 100644
+index d70a3e7..ae5c2aa 100644
 --- a/drivers/bluetooth/btusb.c
 +++ b/drivers/bluetooth/btusb.c
-@@ -576,6 +576,8 @@ static const struct usb_device_id quirks_table[] = {
+@@ -569,6 +569,8 @@ static const struct usb_device_id quirks_table[] = {
  						     BTUSB_WIDEBAND_SPEECH },
  	{ USB_DEVICE(0x13d3, 0x3612), .driver_info = BTUSB_REALTEK |
  						     BTUSB_WIDEBAND_SPEECH },
@@ -76,7 +94,7 @@ index 61c1840..893f694 100644
  	{ USB_DEVICE(0x0489, 0xe122), .driver_info = BTUSB_REALTEK |
  						     BTUSB_WIDEBAND_SPEECH },
  
-@@ -706,6 +708,8 @@ static const struct usb_device_id quirks_table[] = {
+@@ -699,6 +701,8 @@ static const struct usb_device_id quirks_table[] = {
  	{ USB_DEVICE(0x13d3, 0x3596), .driver_info = BTUSB_MEDIATEK |
  						     BTUSB_WIDEBAND_SPEECH },
  	/* MediaTek MT7922 Bluetooth devices */
@@ -85,26 +103,6 @@ index 61c1840..893f694 100644
  	{ USB_DEVICE(0x13d3, 0x3585), .driver_info = BTUSB_MEDIATEK |
  						     BTUSB_WIDEBAND_SPEECH },
  	{ USB_DEVICE(0x13d3, 0x3610), .driver_info = BTUSB_MEDIATEK |
-diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
-index f490beb..8d38439 100644
---- a/drivers/gpu/drm/i915/display/intel_psr.c
-+++ b/drivers/gpu/drm/i915/display/intel_psr.c
-@@ -698,8 +698,14 @@ static void _psr_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *co
- 		 * To support PSR version 02h and PSR version 03h without
- 		 * Y-coordinate requirement panels we would need to enable
- 		 * GTC first.
-+		 *
-+		 * Early Transport (version 04h) implies Y-coordinate
-+		 * support. Accept it without explicit Y-coordinate
-+		 * requirement bit.
- 		 */
--		connector->dp.psr_caps.su_support = y_req &&
-+		connector->dp.psr_caps.su_support =
-+			(y_req || connector->dp.psr_caps.dpcd[0] ==
-+			 DP_PSR2_WITH_Y_COORD_ET_SUPPORTED) &&
- 			intel_alpm_aux_wake_supported(intel_dp);
- 		drm_dbg_kms(display->drm, "PSR2 %ssupported\n",
- 			    connector->dp.psr_caps.su_support ? "" : "not ");
 diff --git a/drivers/gpu/drm/i915/gt/intel_rc6.c b/drivers/gpu/drm/i915/gt/intel_rc6.c
 index e91e5cd..a0361f8 100644
 --- a/drivers/gpu/drm/i915/gt/intel_rc6.c
@@ -138,6 +136,18 @@ index e91e5cd..a0361f8 100644
  	if (intel_vgpu_active(i915))
  		return false;
  
+diff --git a/drivers/i2c/i2c-core-acpi.c b/drivers/i2c/i2c-core-acpi.c
+index 8f3bdd5..e5b2737 100644
+--- a/drivers/i2c/i2c-core-acpi.c
++++ b/drivers/i2c/i2c-core-acpi.c
+@@ -371,6 +371,7 @@ static const struct acpi_device_id i2c_acpi_force_100khz_device_ids[] = {
+ 	 * the device works without issues on Windows at what is expected to be
+ 	 * a 400KHz frequency. The root cause of the issue is not known.
+ 	 */
++	{ "ASUE140D", 0 },
+ 	{ "DLL0945", 0 },
+ 	{ "ELAN0678", 0 },
+ 	{ "ELAN06FA", 0 },
 diff --git a/drivers/net/wireless/intel/iwlwifi/mld/mac80211.c b/drivers/net/wireless/intel/iwlwifi/mld/mac80211.c
 index 3a4c8fd..a007acb 100644
 --- a/drivers/net/wireless/intel/iwlwifi/mld/mac80211.c
@@ -184,6 +194,26 @@ index de9bbcc..7cbdbdd 100644
  		pci_info(dev, "broken device, retraining non-functional downstream link at 2.5GT/s\n");
  		ret = pcie_set_target_speed(dev, PCIE_SPEED_2_5GT, false);
  		if (ret)
+diff --git a/drivers/platform/x86/amd/pmf/spc.c b/drivers/platform/x86/amd/pmf/spc.c
+index 94355b4..592ba4d 100644
+--- a/drivers/platform/x86/amd/pmf/spc.c
++++ b/drivers/platform/x86/amd/pmf/spc.c
+@@ -17,7 +17,6 @@
+ #include <linux/units.h>
+ #include "pmf.h"
+ 
+-#ifdef CONFIG_AMD_PMF_DEBUG
+ u32 amd_pmf_get_ta_custom_bios_inputs(struct ta_pmf_enact_table *in, int index)
+ {
+ 	switch (index) {
+@@ -31,6 +30,7 @@ u32 amd_pmf_get_ta_custom_bios_inputs(struct ta_pmf_enact_table *in, int index)
+ }
+ EXPORT_SYMBOL(amd_pmf_get_ta_custom_bios_inputs);
+ 
++#ifdef CONFIG_AMD_PMF_DEBUG
+ void amd_pmf_dump_ta_inputs(struct amd_pmf_dev *dev, struct ta_pmf_enact_table *in)
+ {
+ 	int i;
 diff --git a/drivers/usb/core/message.c b/drivers/usb/core/message.c
 index 75e2bfd..1d83f8b 100644
 --- a/drivers/usb/core/message.c
@@ -369,6 +399,64 @@ index 82825e7..ce83fc7 100644
  {
  	if (vtime_accounting_enabled_this_cpu())
  		vtime_task_switch_generic(prev);
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 853afc8..ddbea1c 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -5091,7 +5091,7 @@ static inline void prepare_task(struct task_struct *next)
+ 	WRITE_ONCE(next->on_cpu, 1);
+ }
+ 
+-static inline void finish_task(struct task_struct *prev)
++static __always_inline void finish_task(struct task_struct *prev)
+ {
+ 	/*
+ 	 * This must be the very last reference to @prev from this CPU. After
+@@ -5135,7 +5135,7 @@ static void zap_balance_callbacks(struct rq *rq)
+ 	rq->balance_callback = found ? &balance_push_callback : NULL;
+ }
+ 
+-static void do_balance_callbacks(struct rq *rq, struct balance_callback *head)
++static __always_inline void do_balance_callbacks(struct rq *rq, struct balance_callback *head)
+ {
+ 	void (*func)(struct rq *rq);
+ 	struct balance_callback *next;
+@@ -5170,7 +5170,7 @@ struct balance_callback balance_push_callback = {
+ 	.func = balance_push,
+ };
+ 
+-static inline struct balance_callback *
++static __always_inline struct balance_callback *
+ __splice_balance_callbacks(struct rq *rq, bool split)
+ {
+ 	struct balance_callback *head = rq->balance_callback;
+@@ -5244,7 +5244,7 @@ prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf
+ 	__acquire(__rq_lockp(this_rq()));
+ }
+ 
+-static inline void finish_lock_switch(struct rq *rq)
++static __always_inline void finish_lock_switch(struct rq *rq)
+ 	__releases(__rq_lockp(rq))
+ {
+ 	/*
+@@ -5278,7 +5278,7 @@ static inline void kmap_local_sched_out(void)
+ #endif
+ }
+ 
+-static inline void kmap_local_sched_in(void)
++static __always_inline void kmap_local_sched_in(void)
+ {
+ #ifdef CONFIG_KMAP_LOCAL
+ 	if (unlikely(current->kmap_ctrl.idx))
+@@ -5332,7 +5332,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
+  * past. 'prev == current' is still correct but we need to recalculate this_rq
+  * because prev may have moved to another CPU.
+  */
+-static struct rq *finish_task_switch(struct task_struct *prev)
++static __always_inline struct rq *finish_task_switch(struct task_struct *prev)
+ 	__releases(__rq_lockp(this_rq()))
+ {
+ 	struct rq *rq = this_rq();
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
 index b8bd308..bc03e60 100644
 --- a/kernel/sched/fair.c
@@ -491,3 +579,23 @@ index 6c3ad70..931eb6e 100644
  	__releases(__rq_lockp(rq))
  {
  	raw_spin_rq_unlock(rq);
+diff --git a/sound/soc/intel/boards/sof_sdw.c b/sound/soc/intel/boards/sof_sdw.c
+index 72fe013..60b4d86 100644
+--- a/sound/soc/intel/boards/sof_sdw.c
++++ b/sound/soc/intel/boards/sof_sdw.c
+@@ -845,6 +845,15 @@ static const struct dmi_system_id sof_sdw_quirk_table[] = {
+ 		},
+ 		.driver_data = (void *)(SOC_SDW_PCH_DMIC),
+ 	},
++	{
++		/* Dell XPS 13 DX13260 (Wildcat Lake), CS42L43 + 2x CS35L63 sidecar amps */
++		.callback = sof_sdw_quirk_cb,
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc"),
++			DMI_EXACT_MATCH(DMI_PRODUCT_SKU, "0E53")
++		},
++		.driver_data = (void *)(SOC_SDW_SIDECAR_AMPS),
++	},
+ 	{}
+ };
+ 
