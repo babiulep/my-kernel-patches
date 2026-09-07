@@ -1,0 +1,13 @@
+diff --git a/kernel/time/tick-sched.c b/kernel/time/tick-sched.c
+index 6c3fea3..ce88215 100644
+--- a/kernel/time/tick-sched.c
++++ b/kernel/time/tick-sched.c
+@@ -1085,7 +1085,7 @@ static bool report_idle_softirq(void)
+ 		return false;
+ 
+ 	if (ratelimit < 10) {
+-		pr_warn("NOHZ tick-stop error: local softirq work is pending, handler #%02x!!!\n",
++		pr_debug("NOHZ tick-stop error: local softirq work is pending, handler #%02x!!!\n",
+ 			pending);
+ 		ratelimit++;
+ 	}

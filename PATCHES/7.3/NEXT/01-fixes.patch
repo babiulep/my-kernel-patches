@@ -1,0 +1,493 @@
+diff --git a/arch/arm/include/asm/mmu_context.h b/arch/arm/include/asm/mmu_context.h
+index db2cb06..bebde46 100644
+--- a/arch/arm/include/asm/mmu_context.h
++++ b/arch/arm/include/asm/mmu_context.h
+@@ -80,7 +80,7 @@ static inline void check_and_switch_context(struct mm_struct *mm,
+ #ifndef MODULE
+ #define finish_arch_post_lock_switch \
+ 	finish_arch_post_lock_switch
+-static inline void finish_arch_post_lock_switch(void)
++static __always_inline void finish_arch_post_lock_switch(void)
+ {
+ 	struct mm_struct *mm = current->mm;
+ 
+diff --git a/arch/riscv/include/asm/sync_core.h b/arch/riscv/include/asm/sync_core.h
+index 9153016..2fe6b7f 100644
+--- a/arch/riscv/include/asm/sync_core.h
++++ b/arch/riscv/include/asm/sync_core.h
+@@ -6,7 +6,7 @@
+  * RISC-V implements return to user-space through an xRET instruction,
+  * which is not core serializing.
+  */
+-static inline void sync_core_before_usermode(void)
++static __always_inline void sync_core_before_usermode(void)
+ {
+ 	asm volatile ("fence.i" ::: "memory");
+ }
+diff --git a/arch/s390/include/asm/mmu_context.h b/arch/s390/include/asm/mmu_context.h
+index bd1ef5e..95d03be 100644
+--- a/arch/s390/include/asm/mmu_context.h
++++ b/arch/s390/include/asm/mmu_context.h
+@@ -93,7 +93,7 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
+ }
+ 
+ #define finish_arch_post_lock_switch finish_arch_post_lock_switch
+-static inline void finish_arch_post_lock_switch(void)
++static __always_inline void finish_arch_post_lock_switch(void)
+ {
+ 	struct task_struct *tsk = current;
+ 	struct mm_struct *mm = tsk->mm;
+diff --git a/arch/sparc/include/asm/mmu_context_64.h b/arch/sparc/include/asm/mmu_context_64.h
+index 78bbacc..d196721 100644
+--- a/arch/sparc/include/asm/mmu_context_64.h
++++ b/arch/sparc/include/asm/mmu_context_64.h
+@@ -160,7 +160,7 @@ static inline void arch_start_context_switch(struct task_struct *prev)
+ }
+ 
+ #define finish_arch_post_lock_switch	finish_arch_post_lock_switch
+-static inline void finish_arch_post_lock_switch(void)
++static __always_inline void finish_arch_post_lock_switch(void)
+ {
+ 	/* Restore the state of MCDPER register for the new process
+ 	 * just switched to.
+diff --git a/arch/x86/include/asm/sync_core.h b/arch/x86/include/asm/sync_core.h
+index df22113..3b0ed46 100644
+--- a/arch/x86/include/asm/sync_core.h
++++ b/arch/x86/include/asm/sync_core.h
+@@ -93,7 +93,7 @@ static __always_inline void sync_core(void)
+  * to user-mode. x86 implements return to user-space through sysexit,
+  * sysrel, and sysretq, which are not core serializing.
+  */
+-static inline void sync_core_before_usermode(void)
++static __always_inline void sync_core_before_usermode(void)
+ {
+ 	/* With PTI, we unconditionally serialize before running user code. */
+ 	if (cpu_feature_enabled(X86_FEATURE_PTI))
+diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
+index 61c1840..893f694 100644
+--- a/drivers/bluetooth/btusb.c
++++ b/drivers/bluetooth/btusb.c
+@@ -576,6 +576,8 @@ static const struct usb_device_id quirks_table[] = {
+ 						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x13d3, 0x3612), .driver_info = BTUSB_REALTEK |
+ 						     BTUSB_WIDEBAND_SPEECH },
++	{ USB_DEVICE(0x0489, 0xe112), .driver_info = BTUSB_REALTEK |
++						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x0489, 0xe122), .driver_info = BTUSB_REALTEK |
+ 						     BTUSB_WIDEBAND_SPEECH },
+ 
+@@ -706,6 +708,8 @@ static const struct usb_device_id quirks_table[] = {
+ 	{ USB_DEVICE(0x13d3, 0x3596), .driver_info = BTUSB_MEDIATEK |
+ 						     BTUSB_WIDEBAND_SPEECH },
+ 	/* MediaTek MT7922 Bluetooth devices */
++	{ USB_DEVICE(0x13d3, 0x3625), .driver_info = BTUSB_MEDIATEK |
++						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x13d3, 0x3585), .driver_info = BTUSB_MEDIATEK |
+ 						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_DEVICE(0x13d3, 0x3610), .driver_info = BTUSB_MEDIATEK |
+diff --git a/drivers/gpu/drm/i915/display/intel_psr.c b/drivers/gpu/drm/i915/display/intel_psr.c
+index f490beb..8d38439 100644
+--- a/drivers/gpu/drm/i915/display/intel_psr.c
++++ b/drivers/gpu/drm/i915/display/intel_psr.c
+@@ -698,8 +698,14 @@ static void _psr_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *co
+ 		 * To support PSR version 02h and PSR version 03h without
+ 		 * Y-coordinate requirement panels we would need to enable
+ 		 * GTC first.
++		 *
++		 * Early Transport (version 04h) implies Y-coordinate
++		 * support. Accept it without explicit Y-coordinate
++		 * requirement bit.
+ 		 */
+-		connector->dp.psr_caps.su_support = y_req &&
++		connector->dp.psr_caps.su_support =
++			(y_req || connector->dp.psr_caps.dpcd[0] ==
++			 DP_PSR2_WITH_Y_COORD_ET_SUPPORTED) &&
+ 			intel_alpm_aux_wake_supported(intel_dp);
+ 		drm_dbg_kms(display->drm, "PSR2 %ssupported\n",
+ 			    connector->dp.psr_caps.su_support ? "" : "not ");
+diff --git a/drivers/gpu/drm/i915/gt/intel_rc6.c b/drivers/gpu/drm/i915/gt/intel_rc6.c
+index e91e5cd..a0361f8 100644
+--- a/drivers/gpu/drm/i915/gt/intel_rc6.c
++++ b/drivers/gpu/drm/i915/gt/intel_rc6.c
+@@ -2,9 +2,9 @@
+ /*
+  * Copyright © 2019 Intel Corporation
+  */
+-
+ #include <linux/pm_runtime.h>
+ #include <linux/string_helpers.h>
++#include <linux/dmi.h>
+ 
+ #include <drm/drm_print.h>
+ #include <drm/intel/intel_pcode_regs.h>
+@@ -499,6 +499,17 @@ static bool rc6_supported(struct intel_rc6 *rc6)
+ 	if (!HAS_RC6(i915))
+ 		return false;
+ 
++	if (dmi_match(DMI_PRODUCT_SKU, "IBP1XI08MK1") ||
++	    dmi_match(DMI_PRODUCT_SKU, "IBP14I08MK2") ||
++	    dmi_match(DMI_PRODUCT_SKU, "IBP1XI08MK2") ||
++	    dmi_match(DMI_PRODUCT_SKU, "IBP16I08MK2") ||
++	    dmi_match(DMI_PRODUCT_SKU, "OMNIA08IMK1") ||
++	    dmi_match(DMI_PRODUCT_SKU, "OMNIA08IMK2")) {
++		drm_notice(&i915->drm,
++			   "RC6 disabled by quirk\n");
++		return false;
++	}
++
+ 	if (intel_vgpu_active(i915))
+ 		return false;
+ 
+diff --git a/drivers/net/wireless/intel/iwlwifi/mld/mac80211.c b/drivers/net/wireless/intel/iwlwifi/mld/mac80211.c
+index 3a4c8fd..a007acb 100644
+--- a/drivers/net/wireless/intel/iwlwifi/mld/mac80211.c
++++ b/drivers/net/wireless/intel/iwlwifi/mld/mac80211.c
+@@ -516,6 +516,10 @@ iwl_mld_mac80211_tx(struct ieee80211_hw *hw,
+ 	u32 link_id = u32_get_bits(info->control.flags,
+ 				   IEEE80211_TX_CTRL_MLO_LINK);
+ 
++	if (unlikely(test_bit(STATUS_FW_ERROR, &mld->trans->status))) {
++		ieee80211_free_txskb(hw, skb);
++		return;
++	}
+ 	/* In AP mode, mgmt frames are sent on the bcast station,
+ 	 * so the FW can't translate the MLD addr to the link addr. Do it here
+ 	 */
+diff --git a/drivers/net/wireless/intel/iwlwifi/mld/tx.c b/drivers/net/wireless/intel/iwlwifi/mld/tx.c
+index 2df6643..7db7554 100644
+--- a/drivers/net/wireless/intel/iwlwifi/mld/tx.c
++++ b/drivers/net/wireless/intel/iwlwifi/mld/tx.c
+@@ -987,6 +987,9 @@ void iwl_mld_tx_from_txq(struct iwl_mld *mld, struct ieee80211_txq *txq)
+ 	struct sk_buff *skb = NULL;
+ 	u8 zero_addr[ETH_ALEN] = {};
+ 
++	if (unlikely(test_bit(STATUS_FW_ERROR, &mld->trans->status)))
++		return;
++
+ 	/*
+ 	 * Don't transmit during firmware restart. The firmware is dead,
+ 	 * so iwl_trans_tx() would return -EIO for each frame. Avoid the
+diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
+index de9bbcc..7cbdbdd 100644
+--- a/drivers/pci/quirks.c
++++ b/drivers/pci/quirks.c
+@@ -108,7 +108,11 @@ int pcie_failed_link_retrain(struct pci_dev *dev)
+ 
+ 	pcie_capability_read_word(dev, PCI_EXP_LNKSTA, &lnksta);
+ 	pcie_capability_read_word(dev, PCI_EXP_LNKCTL2, &oldlnkctl2);
+-	if (!(lnksta & PCI_EXP_LNKSTA_DLLLA) && pcie_lbms_seen(dev, lnksta)) {
++	if (lnksta & PCI_EXP_LNKSTA_DLLLA) {
++		;
++	} else if (PCIE_LNKCTL2_TLS2SPEED(oldlnkctl2) == PCIE_SPEED_2_5GT) {
++		return ret;
++	} else if (pcie_lbms_seen(dev, lnksta)) {
+ 		pci_info(dev, "broken device, retraining non-functional downstream link at 2.5GT/s\n");
+ 		ret = pcie_set_target_speed(dev, PCIE_SPEED_2_5GT, false);
+ 		if (ret)
+diff --git a/drivers/usb/core/message.c b/drivers/usb/core/message.c
+index 75e2bfd..1d83f8b 100644
+--- a/drivers/usb/core/message.c
++++ b/drivers/usb/core/message.c
+@@ -1052,6 +1052,25 @@ int usb_string(struct usb_device *dev, int index, char *buf, size_t size)
+ 			UTF16_LITTLE_ENDIAN, buf, size);
+ 	buf[err] = 0;
+ 
++	/*
++	 * Some devices report string descriptors with a declared length
++	 * greater than the actual serial, leaving uninitialized firmware
++	 * memory (often including C0 control characters) appended to the
++	 * returned string. Truncate at the first control character so
++	 * callers get a clean, well-formed string.
++	 */
++	{
++		int i;
++		for (i = 0; i < err; i++) {
++			unsigned char c = buf[i];
++			if (c < 0x20 || c == 0x7f) {
++				buf[i] = 0;
++				err = i;
++				break;
++			}
++		}
++	}
++
+ 	if (tbuf[1] != USB_DT_STRING)
+ 		dev_dbg(&dev->dev,
+ 			"wrong descriptor type %02x for string %d (\"%s\")\n",
+diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
+index 5842552..2c163e2 100644
+--- a/include/linux/perf_event.h
++++ b/include/linux/perf_event.h
+@@ -1632,7 +1632,7 @@ static inline void perf_event_task_migrate(struct task_struct *task)
+ 		task->sched_migrated = 1;
+ }
+ 
+-static inline void perf_event_task_sched_in(struct task_struct *prev,
++static __always_inline void perf_event_task_sched_in(struct task_struct *prev,
+ 					    struct task_struct *task)
+ {
+ 	if (static_branch_unlikely(&perf_sched_events))
+diff --git a/include/linux/sched/mm.h b/include/linux/sched/mm.h
+index d7c6a94..99d555f 100644
+--- a/include/linux/sched/mm.h
++++ b/include/linux/sched/mm.h
+@@ -32,7 +32,7 @@ extern struct mm_struct *mm_alloc(void);
+  * See also <Documentation/mm/active_mm.rst> for an in-depth explanation
+  * of &mm_struct.mm_count vs &mm_struct.mm_users.
+  */
+-static inline void mmgrab(struct mm_struct *mm)
++static __always_inline void mmgrab(struct mm_struct *mm)
+ {
+ 	atomic_inc(&mm->mm_count);
+ }
+@@ -44,7 +44,7 @@ static inline void smp_mb__after_mmgrab(void)
+ 
+ extern void __mmdrop(struct mm_struct *mm);
+ 
+-static inline void mmdrop(struct mm_struct *mm)
++static __always_inline void mmdrop(struct mm_struct *mm)
+ {
+ 	/*
+ 	 * The implicit full barrier implied by atomic_dec_and_test() is
+@@ -71,27 +71,27 @@ static inline void __mmdrop_delayed(struct rcu_head *rhp)
+  * Invoked from finish_task_switch(). Delegates the heavy lifting on RT
+  * kernels via RCU.
+  */
+-static inline void mmdrop_sched(struct mm_struct *mm)
++static __always_inline void mmdrop_sched(struct mm_struct *mm)
+ {
+ 	/* Provides a full memory barrier. See mmdrop() */
+ 	if (atomic_dec_and_test(&mm->mm_count))
+ 		call_rcu(&mm->delayed_drop, __mmdrop_delayed);
+ }
+ #else
+-static inline void mmdrop_sched(struct mm_struct *mm)
++static __always_inline void mmdrop_sched(struct mm_struct *mm)
+ {
+ 	mmdrop(mm);
+ }
+ #endif
+ 
+ /* Helpers for lazy TLB mm refcounting */
+-static inline void mmgrab_lazy_tlb(struct mm_struct *mm)
++static __always_inline void mmgrab_lazy_tlb(struct mm_struct *mm)
+ {
+ 	if (IS_ENABLED(CONFIG_MMU_LAZY_TLB_REFCOUNT))
+ 		mmgrab(mm);
+ }
+ 
+-static inline void mmdrop_lazy_tlb(struct mm_struct *mm)
++static __always_inline void mmdrop_lazy_tlb(struct mm_struct *mm)
+ {
+ 	if (IS_ENABLED(CONFIG_MMU_LAZY_TLB_REFCOUNT)) {
+ 		mmdrop(mm);
+@@ -104,7 +104,7 @@ static inline void mmdrop_lazy_tlb(struct mm_struct *mm)
+ 	}
+ }
+ 
+-static inline void mmdrop_lazy_tlb_sched(struct mm_struct *mm)
++static __always_inline void mmdrop_lazy_tlb_sched(struct mm_struct *mm)
+ {
+ 	if (IS_ENABLED(CONFIG_MMU_LAZY_TLB_REFCOUNT))
+ 		mmdrop_sched(mm);
+@@ -128,12 +128,12 @@ static inline void mmdrop_lazy_tlb_sched(struct mm_struct *mm)
+  * See also <Documentation/mm/active_mm.rst> for an in-depth explanation
+  * of &mm_struct.mm_count vs &mm_struct.mm_users.
+  */
+-static inline void mmget(struct mm_struct *mm)
++static __always_inline void mmget(struct mm_struct *mm)
+ {
+ 	atomic_inc(&mm->mm_users);
+ }
+ 
+-static inline bool mmget_not_zero(struct mm_struct *mm)
++static __always_inline bool mmget_not_zero(struct mm_struct *mm)
+ {
+ 	return atomic_inc_not_zero(&mm->mm_users);
+ }
+@@ -531,7 +531,7 @@ enum {
+ #include <asm/membarrier.h>
+ #endif
+ 
+-static inline void membarrier_mm_sync_core_before_usermode(struct mm_struct *mm)
++static __always_inline void membarrier_mm_sync_core_before_usermode(struct mm_struct *mm)
+ {
+ 	/*
+ 	 * The atomic_read() below prevents CSE. The following should
+diff --git a/include/linux/tick.h b/include/linux/tick.h
+index b121c5d..ea7002a 100644
+--- a/include/linux/tick.h
++++ b/include/linux/tick.h
+@@ -172,7 +172,7 @@ extern cpumask_var_t tick_nohz_full_mask;
+ #ifdef CONFIG_NO_HZ_FULL
+ extern bool tick_nohz_full_running;
+ 
+-static inline bool tick_nohz_full_enabled(void)
++static __always_inline bool tick_nohz_full_enabled(void)
+ {
+ 	if (!context_tracking_enabled())
+ 		return false;
+@@ -296,7 +296,7 @@ static inline void __tick_nohz_task_switch(void) { }
+ static inline void tick_nohz_full_setup(cpumask_var_t cpumask) { }
+ #endif
+ 
+-static inline void tick_nohz_task_switch(void)
++static __always_inline void tick_nohz_task_switch(void)
+ {
+ 	if (tick_nohz_full_enabled())
+ 		__tick_nohz_task_switch();
+diff --git a/include/linux/vtime.h b/include/linux/vtime.h
+index 82825e7..ce83fc7 100644
+--- a/include/linux/vtime.h
++++ b/include/linux/vtime.h
+@@ -89,24 +89,24 @@ static __always_inline void vtime_account_guest_exit(void)
+  * For now vtime state is tied to context tracking. We might want to decouple
+  * those later if necessary.
+  */
+-static inline bool vtime_accounting_enabled(void)
++static __always_inline bool vtime_accounting_enabled(void)
+ {
+ 	return context_tracking_enabled();
+ }
+ 
+-static inline bool vtime_accounting_enabled_cpu(int cpu)
++static __always_inline bool vtime_accounting_enabled_cpu(int cpu)
+ {
+ 	return vtime_generic_enabled_cpu(cpu);
+ }
+ 
+-static inline bool vtime_accounting_enabled_this_cpu(void)
++static __always_inline bool vtime_accounting_enabled_this_cpu(void)
+ {
+ 	return vtime_generic_enabled_this_cpu();
+ }
+ 
+ extern void vtime_task_switch_generic(struct task_struct *prev);
+ 
+-static inline void vtime_task_switch(struct task_struct *prev)
++static __always_inline void vtime_task_switch(struct task_struct *prev)
+ {
+ 	if (vtime_accounting_enabled_this_cpu())
+ 		vtime_task_switch_generic(prev);
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index b8bd308..bc03e60 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -13520,12 +13520,15 @@ redo:
+ 		 * still unbalanced. ld_moved simply stays zero, so it is
+ 		 * correctly treated as an imbalance.
+ 		 */
+-		env.loop_max  = min(sysctl_sched_nr_migrate, busiest->nr_running);
+-
+ more_balance:
+ 		rq_lock_irqsave(busiest, &rf);
+ 		update_rq_clock(busiest);
+ 
++		if (!env.loop_max)
++			env.loop_max  = min(sysctl_sched_nr_migrate, busiest->cfs.h_nr_queued);
++		else
++			env.loop_max  = min(env.loop_max, busiest->cfs.h_nr_queued);
++
+ 		/*
+ 		 * cur_ld_moved - load moved in current iteration
+ 		 * ld_moved     - cumulative load moved across iterations
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index 6c3ad70..931eb6e 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -1482,12 +1482,12 @@ static inline struct cpumask *sched_group_span(struct sched_group *sg);
+ 
+ DECLARE_STATIC_KEY_FALSE(__sched_core_enabled);
+ 
+-static inline bool sched_core_enabled(struct rq *rq)
++static __always_inline bool sched_core_enabled(struct rq *rq)
+ {
+ 	return static_branch_unlikely(&__sched_core_enabled) && rq->core_enabled;
+ }
+ 
+-static inline bool sched_core_disabled(void)
++static __always_inline bool sched_core_disabled(void)
+ {
+ 	return !static_branch_unlikely(&__sched_core_enabled);
+ }
+@@ -1496,7 +1496,7 @@ static inline bool sched_core_disabled(void)
+  * Be careful with this function; not for general use. The return value isn't
+  * stable unless you actually hold a relevant rq->__lock.
+  */
+-static inline raw_spinlock_t *rq_lockp(struct rq *rq)
++static __always_inline raw_spinlock_t *rq_lockp(struct rq *rq)
+ {
+ 	if (sched_core_enabled(rq))
+ 		return &rq->core->__lock;
+@@ -1504,7 +1504,7 @@ static inline raw_spinlock_t *rq_lockp(struct rq *rq)
+ 	return &rq->__lock;
+ }
+ 
+-static inline raw_spinlock_t *__rq_lockp(struct rq *rq)
++static __always_inline raw_spinlock_t *__rq_lockp(struct rq *rq)
+ 	__returns_ctx_lock(rq_lockp(rq)) /* alias them */
+ {
+ 	if (rq->core_enabled)
+@@ -1607,12 +1607,12 @@ static inline bool sched_core_disabled(void)
+ 	return true;
+ }
+ 
+-static inline raw_spinlock_t *rq_lockp(struct rq *rq)
++static __always_inline raw_spinlock_t *rq_lockp(struct rq *rq)
+ {
+ 	return &rq->__lock;
+ }
+ 
+-static inline raw_spinlock_t *__rq_lockp(struct rq *rq)
++static __always_inline raw_spinlock_t *__rq_lockp(struct rq *rq)
+ 	__returns_ctx_lock(rq_lockp(rq)) /* alias them */
+ {
+ 	return &rq->__lock;
+@@ -1672,33 +1672,33 @@ extern void raw_spin_rq_lock_nested(struct rq *rq, int subclass)
+ extern bool raw_spin_rq_trylock(struct rq *rq)
+ 	__cond_acquires(true, __rq_lockp(rq));
+ 
+-static inline void raw_spin_rq_lock(struct rq *rq)
++static __always_inline void raw_spin_rq_lock(struct rq *rq)
+ 	__acquires(__rq_lockp(rq))
+ {
+ 	raw_spin_rq_lock_nested(rq, 0);
+ }
+ 
+-static inline void raw_spin_rq_unlock(struct rq *rq)
++static __always_inline void raw_spin_rq_unlock(struct rq *rq)
+ 	__releases(__rq_lockp(rq))
+ {
+ 	raw_spin_unlock(rq_lockp(rq));
+ }
+ 
+-static inline void raw_spin_rq_lock_irq(struct rq *rq)
++static __always_inline void raw_spin_rq_lock_irq(struct rq *rq)
+ 	__acquires(__rq_lockp(rq))
+ {
+ 	local_irq_disable();
+ 	raw_spin_rq_lock(rq);
+ }
+ 
+-static inline void raw_spin_rq_unlock_irq(struct rq *rq)
++static __always_inline void raw_spin_rq_unlock_irq(struct rq *rq)
+ 	__releases(__rq_lockp(rq))
+ {
+ 	raw_spin_rq_unlock(rq);
+ 	local_irq_enable();
+ }
+ 
+-static inline unsigned long _raw_spin_rq_lock_irqsave(struct rq *rq)
++static __always_inline unsigned long _raw_spin_rq_lock_irqsave(struct rq *rq)
+ 	__acquires(__rq_lockp(rq))
+ {
+ 	unsigned long flags;
+@@ -1709,7 +1709,7 @@ static inline unsigned long _raw_spin_rq_lock_irqsave(struct rq *rq)
+ 	return flags;
+ }
+ 
+-static inline void raw_spin_rq_unlock_irqrestore(struct rq *rq, unsigned long flags)
++static __always_inline void raw_spin_rq_unlock_irqrestore(struct rq *rq, unsigned long flags)
+ 	__releases(__rq_lockp(rq))
+ {
+ 	raw_spin_rq_unlock(rq);
