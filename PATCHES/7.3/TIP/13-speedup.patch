@@ -1,0 +1,5082 @@
+diff --git a/.gitignore b/.gitignore
+index 9875120..00fc262 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -38,6 +38,7 @@
+ *.lzo
+ *.mod
+ *.mod.c
++*.mod.S
+ *.o
+ *.o.*
+ *.patch
+diff --git a/Documentation/kbuild/kbuild.rst b/Documentation/kbuild/kbuild.rst
+index 5a9013b..ebfc231 100644
+--- a/Documentation/kbuild/kbuild.rst
++++ b/Documentation/kbuild/kbuild.rst
+@@ -110,6 +110,19 @@ HOSTLDLIBS
+ ----------
+ Additional libraries to link against when building host programs.
+ 
++KGZIP
++-----
++The gzip compressor used for the compressed kernel image, compressed
++modules and packaging.
++
++If unset, it defaults to pigz (a parallel implementation of gzip) if available,
++otherwise gzip.
++
++KBZIP2, KLZOP, LZMA, LZ4, XZ, ZSTD
++----------------------------------
++The compressor programs for the other formats. Each defaults to the program
++of the same name.
++
+ .. _userkbuildflags:
+ 
+ USERCFLAGS
+diff --git a/Documentation/kbuild/reproducible-builds.rst b/Documentation/kbuild/reproducible-builds.rst
+index bc1eb82..b95586d 100644
+--- a/Documentation/kbuild/reproducible-builds.rst
++++ b/Documentation/kbuild/reproducible-builds.rst
+@@ -76,6 +76,22 @@ include generated files.  You should ensure the source tree is
+ pristine by running ``make mrproper`` or ``git clean -d -f -x`` before
+ building a source package.
+ 
++Compression tools
++-----------------
++
++The compressed kernel image, compressed modules and packages are produced
++using the binary specified by the environment variable ``KGZIP`` (described
++in Documentation/kbuild/kbuild.rst).
++
++This variable defaults to ``pigz`` if installed (a parallel implementation
++of gzip), or ``gzip`` otherwise.
++
++The generated output between two invocations of identical builds with
++either of the default tools will be byte-for-byte equivalent.
++
++However, for reproducible builds, ensure the same tool is used on all build
++hosts, as different tools may generate different output from one another.
++
+ Module signing
+ --------------
+ 
+diff --git a/Kbuild b/Kbuild
+index a6a0192..9670556 100644
+--- a/Kbuild
++++ b/Kbuild
+@@ -115,3 +115,8 @@ obj-$(CONFIG_NET)	+= net/
+ obj-y			+= virt/
+ obj-y			+= $(ARCH_DRIVERS)
+ obj-$(CONFIG_DRM_HEADER_TEST)	+= include/
++
++# Rust code elsewhere in the tree depends upon rust/.
++ifdef CONFIG_RUST
++$(KBUILD_RUST_DIRS): | rust
++endif
+diff --git a/Makefile b/Makefile
+index 5a0438b..9d616d6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -561,7 +561,7 @@ PERL		= perl
+ PYTHON3		= python3
+ CHECK		= sparse
+ BASH		= bash
+-KGZIP		= gzip
++KGZIP		:= $(if $(shell command -v pigz 2>/dev/null),pigz,gzip)
+ KBZIP2		= bzip2
+ KLZOP		= lzop
+ LZMA		= lzma
+@@ -966,8 +966,8 @@ endif
+ ifdef CONFIG_CC_IS_GCC
+ # gcc-10 renamed --param=allow-store-data-races=0 to
+ # -fno-allow-store-data-races.
+-KBUILD_CFLAGS	+= $(call cc-option,--param=allow-store-data-races=0)
+-KBUILD_CFLAGS	+= $(call cc-option,-fno-allow-store-data-races)
++KBUILD_CFLAGS	+= $(if $(CONFIG_CC_HAS_ALLOW_STORE_DATA_RACES_PARAM),--param=allow-store-data-races=0)
++KBUILD_CFLAGS	+= $(if $(CONFIG_CC_HAS_NO_ALLOW_STORE_DATA_RACES),-fno-allow-store-data-races)
+ endif
+ 
+ ifdef CONFIG_READABLE_ASM
+@@ -1031,18 +1031,18 @@ endif
+ endif
+ 
+ # Explicitly clear padding bits during variable initialization
+-KBUILD_CFLAGS += $(call cc-option,-fzero-init-padding-bits=all)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_ZERO_INIT_PADDING_BITS),-fzero-init-padding-bits=all)
+ 
+ # While VLAs have been removed, GCC produces unreachable stack probes
+ # for the randomize_kstack_offset feature. Disable it for all compilers.
+-KBUILD_CFLAGS	+= $(call cc-option, -fno-stack-clash-protection)
++KBUILD_CFLAGS	+= $(if $(CONFIG_CC_HAS_NO_STACK_CLASH_PROTECTION),-fno-stack-clash-protection)
+ 
+ # Get details on warnings generated due to GCC value tracking.
+-KBUILD_CFLAGS	+= $(call cc-option, -fdiagnostics-show-context=2)
++KBUILD_CFLAGS	+= $(if $(CONFIG_CC_HAS_DIAGNOSTICS_SHOW_CONTEXT),-fdiagnostics-show-context=2)
+ 
+ # Show inlining notes for __attribute__((warning/error)) call chains.
+ # GCC supports this unconditionally while Clang 23+ provides a flag.
+-KBUILD_CFLAGS	+= $(call cc-option, -fdiagnostics-show-inlining-chain)
++KBUILD_CFLAGS	+= $(if $(CONFIG_CC_HAS_DIAGNOSTICS_SHOW_INLINING_CHAIN),-fdiagnostics-show-inlining-chain)
+ 
+ # Clear used registers at func exit (to reduce data lifetime and ROP gadgets).
+ ifdef CONFIG_ZERO_CALL_USED_REGS
+@@ -1053,7 +1053,7 @@ ifdef CONFIG_FUNCTION_TRACER
+ ifdef CONFIG_FTRACE_MCOUNT_USE_CC
+   CC_FLAGS_FTRACE	+= -mrecord-mcount
+   ifdef CONFIG_HAVE_NOP_MCOUNT
+-    ifeq ($(call cc-option-yn, -mnop-mcount),y)
++    ifdef CONFIG_CC_HAS_MNOP_MCOUNT
+       CC_FLAGS_FTRACE	+= -mnop-mcount
+       CC_FLAGS_USING	+= -DCC_USING_NOP_MCOUNT
+     endif
+@@ -1071,8 +1071,7 @@ ifdef CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT
+   endif
+ endif
+ ifdef CONFIG_HAVE_FENTRY
+-  # s390-linux-gnu-gcc did not support -mfentry until gcc-9.
+-  ifeq ($(call cc-option-yn, -mfentry),y)
++  ifdef CONFIG_CC_HAS_MFENTRY
+     CC_FLAGS_FTRACE	+= -mfentry
+     CC_FLAGS_USING	+= -DCC_USING_FENTRY
+   endif
+@@ -1180,7 +1179,7 @@ NOSTDINC_FLAGS += -nostdinc
+ # the kernel uses only C99 flexible arrays for dynamically sized trailing
+ # arrays. Enforce this for everything that may examine structure sizes and
+ # perform bounds checking.
+-KBUILD_CFLAGS += $(call cc-option, -fstrict-flex-arrays=3)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_STRICT_FLEX_ARRAYS),-fstrict-flex-arrays=3)
+ 
+ # disable invalid "can't wrap" optimizations for signed / pointers
+ KBUILD_CFLAGS	+= -fno-strict-overflow
+@@ -1225,6 +1224,10 @@ KBUILD_RUSTFLAGS += --remap-path-prefix=$(srcroot)/= --remap-path-scope=macro
+ endif
+ endif
+ 
++ifdef CONFIG_RUST
++KBUILD_RUSTFLAGS += $(if $(CONFIG_RUSTC_HAS_JOBS),-j8,$(if $(CONFIG_RUSTC_HAS_ZTHREADS),-Zthreads=8))
++endif
++
+ # include additional Makefiles when needed
+ include-y			:= scripts/Makefile.warn
+ include-$(CONFIG_DEBUG_INFO)	+= scripts/Makefile.debug
+@@ -1260,11 +1263,11 @@ LDFLAGS_vmlinux += --build-id=sha1
+ # COMDAT-deduplicated sections. Use --force-group-allocation to resolve these
+ # groups when linking modules. The option is available from ld.bfd 2.29 and
+ # ld.lld 19.1.0.
+-KBUILD_LDFLAGS_MODULE += $(call ld-option,--force-group-allocation)
++KBUILD_LDFLAGS_MODULE += $(if $(CONFIG_LD_HAS_FORCE_GROUP_ALLOCATION),--force-group-allocation)
+ 
+ KBUILD_LDFLAGS	+= -z noexecstack
+ ifeq ($(CONFIG_LD_IS_BFD),y)
+-KBUILD_LDFLAGS	+= $(call ld-option,--no-warn-rwx-segments)
++KBUILD_LDFLAGS	+= $(if $(CONFIG_LD_HAS_NO_WARN_RWX_SEGMENTS),--no-warn-rwx-segments)
+ endif
+ 
+ ifeq ($(CONFIG_STRIP_ASM_SYMS),y)
+@@ -1283,8 +1286,10 @@ LDFLAGS_vmlinux += --orphan-handling=$(CONFIG_LD_ORPHAN_WARN_LEVEL)
+ endif
+ 
+ ifneq ($(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS),)
+-LDFLAGS_vmlinux	+= --emit-relocs --discard-none
++LDFLAGS_vmlinux	+= --discard-none
++LDFLAGS_vmlinux_relocs := --emit-relocs
+ endif
++export LDFLAGS_vmlinux_relocs
+ 
+ # Align the architecture of userspace programs with the kernel
+ USERFLAGS_FROM_KERNEL := --target=%
+@@ -1441,14 +1446,17 @@ archprepare: outputmakefile archheaders archscripts scripts include/config/kerne
+ 	include/generated/rustc_cfg remove-stale-files
+ 
+ prepare0: archprepare
+-	$(Q)$(MAKE) $(build)=scripts/mod
+ 	$(Q)$(MAKE) $(build)=. prepare
++	$(Q)$(MAKE) $(build)=scripts/mod
++
++ifdef CONFIG_RUST
++export KBUILD_RUST_DIRS := drivers lib mm samples
++endif
+ 
+ # All the preparing..
+ prepare: prepare0
+ ifdef CONFIG_RUST
+ 	+$(Q)$(CONFIG_SHELL) $(srctree)/scripts/rust_is_available.sh
+-	$(Q)$(MAKE) $(build)=rust
+ endif
+ 
+ PHONY += remove-stale-files
+@@ -1775,6 +1783,12 @@ modules: modules_prepare
+ # Target to prepare building external modules
+ modules_prepare: prepare
+ 	$(Q)$(MAKE) $(build)=scripts scripts/module.lds
++ifdef CONFIG_RUST
++# Ensure rust/ is build before any external rust module which will rely upon it.
++ifeq ($(MAKECMDGOALS),modules_prepare)
++	$(Q)$(MAKE) $(build)=rust
++endif
++endif
+ 
+ endif # CONFIG_MODULES
+ 
+@@ -2257,13 +2271,14 @@ clean: $(clean-dirs)
+ 	$(call cmd,rmfiles)
+ 	@find . $(RCS_FIND_IGNORE) \
+ 		\( -name '*.[aios]' -o -name '*.rsi' -o -name '*.ko' -o -name '.*.cmd' \
++		-o -name '.depcheck.mk' -o -name '.depcheck.mk.tmp' \
+ 		-o -name '*.ko.*' -o -name '*.o.thinlto.bc' \
+ 		-o -name '*.dtb' -o -name '*.dtbo' \
+ 		-o -name '*.dtb.S' -o -name '*.dtbo.S' \
+ 		-o -name '*.dt.yaml' -o -name 'dtbs-list' \
+ 		-o -name '*.dwo' -o -name '*.lst' \
+ 		-o -name '*.su' -o -name '*.mod' \
+-		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \
++		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' -o -name '*.mod.S' \
+ 		-o -name '*.lex.c' -o -name '*.tab.[ch]' \
+ 		-o -name '*.asn1.[ch]' \
+ 		-o -name '*.symtypes' -o -name 'modules.order' \
+diff --git a/arch/arm64/kernel/pi/Makefile b/arch/arm64/kernel/pi/Makefile
+index be92d73..5aa8dff 100644
+--- a/arch/arm64/kernel/pi/Makefile
++++ b/arch/arm64/kernel/pi/Makefile
+@@ -9,7 +9,7 @@ KBUILD_CFLAGS	:= $(subst $(CC_FLAGS_FTRACE),,$(KBUILD_CFLAGS)) -fpie \
+ 		   -include $(srctree)/include/linux/hidden.h \
+ 		   -D__DISABLE_EXPORTS -ffreestanding -D__NO_FORTIFY \
+ 		   -fno-asynchronous-unwind-tables -fno-unwind-tables \
+-		   $(call cc-option,-fno-addrsig)
++		   $(if $(CONFIG_CC_HAS_NO_ADDRSIG),-fno-addrsig)
+ 
+ # this code may run with the MMU off so disable unaligned accesses
+ CFLAGS_map_range.o += -mstrict-align
+diff --git a/arch/riscv/kernel/pi/Makefile b/arch/riscv/kernel/pi/Makefile
+index bc098ed..e0ed7ca 100644
+--- a/arch/riscv/kernel/pi/Makefile
++++ b/arch/riscv/kernel/pi/Makefile
+@@ -8,7 +8,7 @@ KBUILD_CFLAGS	:= $(subst $(CC_FLAGS_FTRACE),,$(KBUILD_CFLAGS)) -fpie \
+ 		   -include $(srctree)/include/linux/hidden.h \
+ 		   -D__DISABLE_EXPORTS -ffreestanding \
+ 		   -fno-asynchronous-unwind-tables -fno-unwind-tables \
+-		   $(call cc-option,-fno-addrsig)
++		   $(if $(CONFIG_CC_HAS_NO_ADDRSIG),-fno-addrsig)
+ 
+ # Disable LTO
+ KBUILD_CFLAGS	:= $(filter-out $(CC_FLAGS_LTO), $(KBUILD_CFLAGS))
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index b153659..4090b6e 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -2364,6 +2364,23 @@ config CC_HAS_KCFI_ARITY
+ 	def_bool $(cc-option,-fsanitize=kcfi -fsanitize-kcfi-arity)
+ 	depends on CC_IS_CLANG && !RUST
+ 
++config CC_HAS_INDIRECT_BRANCH_CS_PREFIX
++	def_bool $(cc-option,-mindirect-branch-cs-prefix)
++
++config CC_HAS_CF_PROTECTION_NONE
++	def_bool $(cc-option,-fcf-protection=none)
++
++# with jump tables off: the compilers use NOTRACK for them, which kernel IBT
++# does not allow
++config CC_HAS_CF_PROTECTION_BRANCH
++	def_bool $(cc-option,-fcf-protection=branch -fno-jump-tables)
++
++config CC_HAS_FALIGN_JUMPS
++	def_bool $(cc-option,-falign-jumps=1)
++
++config CC_HAS_FALIGN_LOOPS
++	def_bool $(cc-option,-falign-loops=1)
++
+ config FUNCTION_PADDING_CFI
+ 	int
+ 	default 59 if FUNCTION_ALIGNMENT_64B
+diff --git a/arch/x86/Makefile b/arch/x86/Makefile
+index 598f178..29bb515 100644
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -20,7 +20,7 @@ ifdef CONFIG_CC_IS_CLANG
+ RETPOLINE_CFLAGS	:= -mretpoline-external-thunk
+ RETPOLINE_VDSO_CFLAGS	:= -mretpoline
+ endif
+-RETPOLINE_CFLAGS	+= $(call cc-option,-mindirect-branch-cs-prefix)
++RETPOLINE_CFLAGS	+= $(if $(CONFIG_CC_HAS_INDIRECT_BRANCH_CS_PREFIX),-mindirect-branch-cs-prefix)
+ 
+ ifdef CONFIG_MITIGATION_RETHUNK
+ RETHUNK_CFLAGS		:= -mfunction-return=thunk-extern
+@@ -52,7 +52,7 @@ REALMODE_CFLAGS	:= $(CC_FLAGS_DIALECT) -m16 -g -Os \
+ 		   -DDISABLE_BRANCH_PROFILING -D__DISABLE_EXPORTS \
+ 		   -Wall -Wstrict-prototypes -march=i386 -mregparm=3 \
+ 		   -fno-strict-aliasing -fomit-frame-pointer -fno-pic \
+-		   -mno-mmx -mno-sse $(call cc-option,-fcf-protection=none)
++		   -mno-mmx -mno-sse $(if $(CONFIG_CC_HAS_CF_PROTECTION_NONE),-fcf-protection=none)
+ 
+ REALMODE_CFLAGS += -ffreestanding
+ REALMODE_CFLAGS += -fno-stack-protector
+@@ -99,10 +99,10 @@ ifeq ($(CONFIG_X86_KERNEL_IBT),y)
+ #
+ #   https://gcc.gnu.org/bugzilla/show_bug.cgi?id=104816
+ #
+-KBUILD_CFLAGS += $(call cc-option,-fcf-protection=branch -fno-jump-tables)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_CF_PROTECTION_BRANCH),-fcf-protection=branch -fno-jump-tables)
+ KBUILD_RUSTFLAGS += -Zcf-protection=branch $(if $(call rustc-min-version,109300),-Cjump-tables=n,-Zno-jump-tables)
+ else
+-KBUILD_CFLAGS += $(call cc-option,-fcf-protection=none)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_CF_PROTECTION_NONE),-fcf-protection=none)
+ endif
+ 
+ ifeq ($(CONFIG_X86_32),y)
+@@ -138,10 +138,10 @@ else
+         KBUILD_CFLAGS += -m64
+ 
+         # Align jump targets to 1 byte, not the default 16 bytes:
+-        KBUILD_CFLAGS += $(call cc-option,-falign-jumps=1)
++        KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_FALIGN_JUMPS),-falign-jumps=1)
+ 
+         # Pack loops tightly as well:
+-        KBUILD_CFLAGS += $(call cc-option,-falign-loops=1)
++        KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_FALIGN_LOOPS),-falign-loops=1)
+ 
+         # Don't autogenerate traditional x87 instructions
+         KBUILD_CFLAGS += -mno-80387
+diff --git a/arch/x86/boot/Makefile b/arch/x86/boot/Makefile
+index 3f9fb36..4a9bce3 100644
+--- a/arch/x86/boot/Makefile
++++ b/arch/x86/boot/Makefile
+@@ -74,7 +74,7 @@ SETUP_OBJS = $(addprefix $(obj)/,$(setup-y))
+ sed-zoffset := -e 's/^\([0-9a-fA-F]*\) [a-zA-Z] \(startup_32\|efi.._stub_entry\|efi\(32\)\?_pe_entry\|input_data\|kernel_info\|_end\|_ehead\|_text\|_e\?data\|_e\?sbat\|z_.*\)$$/\#define ZO_\2 0x\1/p'
+ 
+ quiet_cmd_zoffset = ZOFFSET $@
+-      cmd_zoffset = $(NM) $< | sed -n $(sed-zoffset) > $@
++      cmd_zoffset = $(NM) -p $< | sed -n $(sed-zoffset) > $@
+ 
+ targets += zoffset.h
+ $(obj)/zoffset.h: $(obj)/compressed/vmlinux FORCE
+diff --git a/arch/x86/boot/compressed/Makefile b/arch/x86/boot/compressed/Makefile
+index 06934f9..6ec5e03 100644
+--- a/arch/x86/boot/compressed/Makefile
++++ b/arch/x86/boot/compressed/Makefile
+@@ -76,7 +76,7 @@ HOST_EXTRACFLAGS += -I$(srctree)/tools/include
+ sed-voffset := -e 's/^\([0-9a-fA-F]*\) [ABbCDGRSTtVW] \(_text\|__start_rodata\|_sinittext\|__inittext_end\|__bss_start\|_end\)$$/\#define VO_\2 _AC(0x\1,UL)/p'
+ 
+ quiet_cmd_voffset = VOFFSET $@
+-      cmd_voffset = $(NM) $< | sed -n $(sed-voffset) > $@
++      cmd_voffset = $(NM) -p $< | sed -n $(sed-voffset) > $@
+ 
+ targets += ../voffset.h
+ 
+diff --git a/drivers/firmware/efi/libstub/Makefile b/drivers/firmware/efi/libstub/Makefile
+index 77a2b2d..80058bb 100644
+--- a/drivers/firmware/efi/libstub/Makefile
++++ b/drivers/firmware/efi/libstub/Makefile
+@@ -40,7 +40,7 @@ KBUILD_CFLAGS			:= $(subst $(CC_FLAGS_FTRACE),,$(cflags-y)) \
+ 				   -D__NO_FORTIFY \
+ 				   -ffreestanding \
+ 				   -fno-stack-protector \
+-				   $(call cc-option,-fno-addrsig) \
++				   $(if $(CONFIG_CC_HAS_NO_ADDRSIG),-fno-addrsig) \
+ 				   -D__DISABLE_EXPORTS
+ 
+ #
+diff --git a/include/asm-generic/vmlinux.lds.h b/include/asm-generic/vmlinux.lds.h
+index b2988aa..7be9e03 100644
+--- a/include/asm-generic/vmlinux.lds.h
++++ b/include/asm-generic/vmlinux.lds.h
+@@ -855,7 +855,7 @@
+ 		KLP_SYMID
+ 
+ #define MODINFO								\
+-		.modinfo : { *(.modinfo) . = ALIGN(8); }
++		.modinfo (INFO) : { *(.modinfo) . = ALIGN(8); }
+ 
+ #ifdef CONFIG_GENERIC_BUG
+ #define BUG_TABLE							\
+diff --git a/include/linux/vermagic.h b/include/linux/vermagic.h
+index 335c360..09f05d0 100644
+--- a/include/linux/vermagic.h
++++ b/include/linux/vermagic.h
+@@ -3,7 +3,7 @@
+ #define _LINUX_VERMAGIC_H
+ 
+ #ifndef INCLUDE_VERMAGIC
+-#error "This header can be included from kernel/module.c or *.mod.c only"
++#error "This header can be included from kernel/module.c or scripts/module-common.c only"
+ #endif
+ 
+ #include <generated/utsrelease.h>
+diff --git a/init/Kconfig b/init/Kconfig
+index ef1d030..6069e6a 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -144,6 +144,44 @@ config CC_HAS_ASSUME
+ config CC_HAS_NO_PROFILE_FN_ATTR
+ 	def_bool $(success,echo '__attribute__((no_profile_instrument_function)) int x();' | $(CC) -x c - -c -o /dev/null -Werror)
+ 
++config CC_HAS_ZERO_INIT_PADDING_BITS
++	def_bool $(cc-option,-fzero-init-padding-bits=all)
++
++config CC_HAS_NO_STACK_CLASH_PROTECTION
++	def_bool $(cc-option,-fno-stack-clash-protection)
++
++config CC_HAS_NO_ADDRSIG
++	def_bool $(cc-option,-fno-addrsig)
++
++config CC_HAS_DIAGNOSTICS_SHOW_CONTEXT
++	def_bool $(cc-option,-fdiagnostics-show-context=2)
++
++config CC_HAS_DIAGNOSTICS_SHOW_INLINING_CHAIN
++	def_bool $(cc-option,-fdiagnostics-show-inlining-chain)
++
++config CC_HAS_STRICT_FLEX_ARRAYS
++	def_bool $(cc-option,-fstrict-flex-arrays=3)
++
++# gcc-10 renamed --param=allow-store-data-races=0 to -fno-allow-store-data-races
++config CC_HAS_ALLOW_STORE_DATA_RACES_PARAM
++	def_bool CC_IS_GCC && $(cc-option,--param=allow-store-data-races=0)
++
++config CC_HAS_NO_ALLOW_STORE_DATA_RACES
++	def_bool CC_IS_GCC && $(cc-option,-fno-allow-store-data-races)
++
++config CC_HAS_MNOP_MCOUNT
++	def_bool $(cc-option,-mnop-mcount)
++
++# s390-linux-gnu-gcc did not support -mfentry until gcc-9.
++config CC_HAS_MFENTRY
++	def_bool $(cc-option,-mfentry)
++
++config LD_HAS_FORCE_GROUP_ALLOCATION
++	def_bool $(ld-option,--force-group-allocation)
++
++config LD_HAS_NO_WARN_RWX_SEGMENTS
++	def_bool $(ld-option,--no-warn-rwx-segments)
++
+ config CC_HAS_COUNTED_BY
+ 	bool
+ 	# clang needs to be at least 20.1.0 to avoid potential crashes
+@@ -193,6 +231,13 @@ config RUSTC_HAS_FILE_AS_C_STR
+ config RUSTC_HAS_SUSPICIOUS_RUNTIME_SYMBOL_DEFINITIONS
+ 	def_bool RUSTC_VERSION >= 109800
+ 
++# rustc's parallel front end: -j is the coming spelling, -Zthreads the current one
++config RUSTC_HAS_JOBS
++	def_bool $(rustc-option,-j8)
++
++config RUSTC_HAS_ZTHREADS
++	def_bool $(rustc-option,-Zthreads=8)
++
+ config PAHOLE_VERSION
+ 	int
+ 	default "$(PAHOLE_VERSION)"
+@@ -1019,6 +1064,45 @@ config CC_STRINGOP_OVERFLOW
+ 	bool
+ 	default y if CC_IS_GCC && !CC_NO_STRINGOP_OVERFLOW
+ 
++config CC_HAS_WNO_ADDRESS_OF_PACKED_MEMBER
++	def_bool $(cc-option,-Wno-address-of-packed-member)
++
++config CC_HAS_WNO_FORMAT_OVERFLOW_NON_KPRINTF
++	def_bool CC_IS_CLANG && $(cc-option,-Wno-format-overflow-non-kprintf)
++
++config CC_HAS_WNO_FORMAT_TRUNCATION_NON_KPRINTF
++	def_bool CC_IS_CLANG && $(cc-option,-Wno-format-truncation-non-kprintf)
++
++config CC_HAS_WNO_DEFAULT_CONST_INIT_UNSAFE
++	def_bool CC_IS_CLANG && $(cc-option,-Wno-default-const-init-unsafe)
++
++config CC_HAS_WNO_DANGLING_POINTER
++	def_bool $(cc-option,-Wno-dangling-pointer)
++
++config CC_HAS_WVLA_LARGER_THAN
++	def_bool $(cc-option,-Wvla-larger-than=1)
++
++config CC_HAS_WSTRINGOP_OVERFLOW
++	def_bool $(cc-option,-Wstringop-overflow)
++
++config CC_HAS_WNO_UNTERMINATED_STRING_INITIALIZATION
++	def_bool $(cc-option,-Wno-unterminated-string-initialization)
++
++config CC_HAS_WERROR_DESIGNATED_INIT
++	def_bool $(cc-option,-Werror=designated-init)
++
++config CC_HAS_WENUM_CONVERSION
++	def_bool $(cc-option,-Wenum-conversion)
++
++config CC_HAS_WNO_PACKED_NOT_ALIGNED
++	def_bool $(cc-option,-Wno-packed-not-aligned)
++
++config CC_HAS_WNO_FORMAT_OVERFLOW
++	def_bool $(cc-option,-Wno-format-overflow)
++
++config CC_HAS_WNO_STRINGOP_TRUNCATION
++	def_bool $(cc-option,-Wno-stringop-truncation)
++
+ #
+ # For architectures that know their GCC __int128 support is sound
+ #
+diff --git a/rust/Makefile b/rust/Makefile
+index da1a740..74d21ae 100644
+--- a/rust/Makefile
++++ b/rust/Makefile
+@@ -728,6 +728,11 @@ endef
+ $(obj)/helpers/helpers.o: $(src)/helpers/helpers.c $(recordmcount_source) FORCE
+ 	+$(call if_changed_rule,rust_cc_library)
+ 
++# The exported symbol lists are generated from the crates' objects.
++$(obj)/exports.o: $(obj)/exports_core_generated.h \
++    $(obj)/exports_bindings_generated.h $(obj)/exports_kernel_generated.h \
++    $(if $(CONFIG_RUST_INLINE_HELPERS),,$(obj)/exports_helpers_generated.h)
++
+ # Disable symbol versioning for exports.o to avoid conflicts with the actual
+ # symbol versions generated from Rust objects.
+ $(obj)/exports.o: private skip_gendwarfksyms = 1
+diff --git a/scripts/Makefile b/scripts/Makefile
+index 3434a82..d469321 100644
+--- a/scripts/Makefile
++++ b/scripts/Makefile
+@@ -3,7 +3,7 @@
+ # scripts contains sources for various helper programs used throughout
+ # the kernel for the build process.
+ 
+-hostprogs-always-$(CONFIG_KALLSYMS)			+= kallsyms
++hostprogs-always-y				+= kallsyms
+ hostprogs-always-$(BUILD_C_RECORDMCOUNT)		+= recordmcount
+ hostprogs-always-$(CONFIG_BUILDTIME_TABLE_SORT)		+= sorttable
+ hostprogs-always-$(CONFIG_ASN1)				+= asn1_compiler
+@@ -13,6 +13,7 @@ hostprogs-always-$(CONFIG_RUST_KERNEL_DOCTESTS)		+= rustdoc_test_builder
+ hostprogs-always-$(CONFIG_RUST_KERNEL_DOCTESTS)		+= rustdoc_test_gen
+ hostprogs-always-$(CONFIG_TRACEPOINTS)			+= tracepoint-update
+ 
++kallsyms-objs := kallsyms.o kallsyms-sysmap.o elf-parse.o
+ sorttable-objs := sorttable.o elf-parse.o
+ tracepoint-update-objs := tracepoint-update.o elf-parse.o
+ 
+@@ -30,6 +31,7 @@ rustdoc_test_builder-rust := y
+ rustdoc_test_gen-rust := y
+ 
+ HOSTCFLAGS_tracepoint-update.o = -I$(srctree)/tools/include
++HOSTCFLAGS_kallsyms-sysmap.o = -I$(srctree)/tools/include
+ HOSTCFLAGS_elf-parse.o = -I$(srctree)/tools/include
+ HOSTCFLAGS_sorttable.o = -I$(srctree)/tools/include
+ HOSTLDLIBS_sorttable = -lpthread
+diff --git a/scripts/Makefile.build b/scripts/Makefile.build
+index 4349108..77351d6 100644
+--- a/scripts/Makefile.build
++++ b/scripts/Makefile.build
+@@ -122,6 +122,14 @@ multi-obj-m	:= $(addprefix $(obj)/, $(multi-obj-m))
+ subdir-ym	:= $(addprefix $(obj)/, $(subdir-ym))
+ endif
+ 
++# Cache which list each object is in and which composite objects it belongs to,
++# once per object for $(part-of-builtin), $(part-of-module) and $(modname-multi).
++$(foreach o, $(real-obj-y) $(lib-y), $(eval part-of-builtin_$o := y))
++$(foreach o, $(real-obj-m), $(eval part-of-module_$o := y))
++$(foreach m, $(multi-obj-ym), \
++	$(foreach o, $(call suffix-search, $m, .o, -objs -y -m), \
++		$(eval modname-multi_$o += $(m:.o=))))
++
+ ifndef obj
+ $(warning kbuild: Makefile.build is included improperly)
+ endif
+@@ -352,8 +360,11 @@ quiet_cmd_rustc_o_rs = $(RUSTC_OR_CLIPPY_QUIET) $(quiet_modtag) $@
+ 		$(cmd_ld_single)) \
+ 	$(cmd_objtool)
+ 
++rust-dir-ok = $(or $(KBUILD_EXTMOD),$(filter rust $(KBUILD_RUST_DIRS),$(firstword $(subst /, ,$@))))
++
++# Ensure that any rust code located elsewhere from rust/ is listed in KBUILD_RUST_DIRS.
+ define rule_rustc_o_rs
+-	$(call cmd_and_fixdep,rustc_o_rs)
++	$(if $(rust-dir-ok),,$(error $@: Rust code in a directory not listed in KBUILD_RUST_DIRS, see the top Makefile))$(call cmd_and_fixdep,rustc_o_rs)
+ 	$(call cmd,gen_objtooldep)
+ endef
+ 
+@@ -584,7 +595,19 @@ $(obj)/: $(if $(KBUILD_BUILTIN), $(targets-for-builtin)) \
+ 
+ existing-targets := $(wildcard $(sort $(targets)))
+ 
+--include $(foreach f,$(existing-targets),$(dir $(f)).$(notdir $(f)).cmd)
++cmd-files := $(foreach f,$(existing-targets),$(dir $(f)).$(notdir $(f)).cmd)
++
++# depcheck checks timestamps first and outputs only saved command lines of
++# up-to-date targets, falling back to .cmd files if it fails.
++depcheck := $(wildcard $(objtree)/scripts/basic/depcheck)
++
++ifneq ($(and $(depcheck),$(cmd-files)),)
++ifeq ($(shell $(depcheck) $(obj)/.depcheck.mk $(cmd-files) && echo ok),ok)
++cmd-files := $(obj)/.depcheck.mk
++endif
++endif
++
++-include $(cmd-files)
+ 
+ # Create directories for object files if they do not exist
+ obj-dirs := $(sort $(patsubst %/,%, $(dir $(targets))))
+diff --git a/scripts/Makefile.lib b/scripts/Makefile.lib
+index 0a4fdd8..2f447bc 100644
+--- a/scripts/Makefile.lib
++++ b/scripts/Makefile.lib
+@@ -2,8 +2,7 @@
+ 
+ # Finds the multi-part object the current object will be linked into.
+ # If the object belongs to two or more multi-part objects, list them all.
+-modname-multi = $(sort $(foreach m,$(multi-obj-ym),\
+-		$(if $(filter $*.o, $(call suffix-search, $m, .o, -objs -y -m)),$(m:.o=))))
++modname-multi = $(sort $(modname-multi_$*.o))
+ 
+ __modname = $(or $(modname-multi),$(basetarget))
+ 
+@@ -149,8 +148,8 @@ endif
+ # If $(is-kernel-object) is 'y', this object will be linked to vmlinux or modules
+ is-kernel-object = $(or $(part-of-builtin),$(part-of-module))
+ 
+-part-of-builtin = $(if $(filter $(basename $@).o, $(real-obj-y) $(lib-y)),y)
+-part-of-module = $(if $(filter $(basename $@).o, $(real-obj-m)),y)
++part-of-builtin = $(part-of-builtin_$(basename $@).o)
++part-of-module = $(part-of-module_$(basename $@).o)
+ quiet_modtag = $(if $(part-of-module),[M],   )
+ 
+ modkern_cflags =                                          \
+diff --git a/scripts/Makefile.modfinal b/scripts/Makefile.modfinal
+index 01a37ec..858fa79 100644
+--- a/scripts/Makefile.modfinal
++++ b/scripts/Makefile.modfinal
+@@ -13,17 +13,42 @@ include $(srctree)/scripts/Makefile.lib
+ # find all modules listed in modules.order
+ modules := $(call read-file, modules.order)
+ 
++modfinal-chunk-size := 128
++
++ifdef modfinal-first
++
++# this instance handles the chunk of modules.order starting at $(modfinal-first)
++modules := $(wordlist $(modfinal-first), $(words $(modules)), $(modules))
++modules := $(wordlist 1, $(modfinal-chunk-size), $(modules))
++
+ __modfinal: $(modules:%.o=%.ko)
+ 	@:
+ 
++else
++
++modfinal-chunks := $(addprefix chunk-, $(shell seq 1 $(modfinal-chunk-size) $(words $(modules))))
++
++PHONY += $(modfinal-chunks)
++$(modfinal-chunks): .module-common.o
++	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal modfinal-first=$(@:chunk-%=%)
++
++__modfinal: $(modfinal-chunks)
++	@:
++
++endif
++
+ # modname and part-of-module are set to make c_flags define proper module flags
+ modname = $(notdir $(@:.mod.o=))
+ part-of-module = y
+ GCOV_PROFILE := n
+-ccflags-remove-y := $(CC_FLAGS_CFI)
+ 
+-%.mod.o: %.mod.c FORCE
+-	$(call if_changed_rule,cc_o_c)
++# modpost lays the <module>.mod.S out completely (write_mod_S_file()), so it
++# needs only the assembler and no dependency tracking.
++quiet_cmd_as_mod_o = AS [M]  $@
++      cmd_as_mod_o = $(CC) $(_a_flags) $(modkern_aflags) -c -o $@ $<
++
++%.mod.o: %.mod.S FORCE
++	$(call if_changed,as_mod_o)
+ 
+ .module-common.o: $(srctree)/scripts/module-common.c FORCE
+ 	$(call if_changed_rule,cc_o_c)
+@@ -54,7 +79,10 @@ ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+ endif
+ 	+$(call cmd,check_tracepoint)
+ 
+-targets += $(modules:%.o=%.ko) $(modules:%.o=%.mod.o) .module-common.o
++targets += .module-common.o
++ifdef modfinal-first
++targets += $(modules:%.o=%.ko) $(modules:%.o=%.mod.o)
++endif
+ 
+ # Add FORCE to the prerequisites of a target to force it to be always rebuilt.
+ # ---------------------------------------------------------------------------
+diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
+index d7d4506..eecf5f5 100644
+--- a/scripts/Makefile.modpost
++++ b/scripts/Makefile.modpost
+@@ -13,7 +13,7 @@
+ # Stage 2 is handled by this file and does the following
+ # 1) Find all modules listed in modules.order
+ # 2) modpost is then used to
+-# 3)  create one <module>.mod.c file per module
++# 3)  create one <module>.mod.S file per module
+ # 4)  create one Module.symvers file with CRC for all exported symbols
+ 
+ # Step 3 is used to place certain information in the module's ELF
+diff --git a/scripts/Makefile.vmlinux b/scripts/Makefile.vmlinux
+index fcae1e4..1fc7a0c 100644
+--- a/scripts/Makefile.vmlinux
++++ b/scripts/Makefile.vmlinux
+@@ -64,7 +64,8 @@ ARCH_POSTLINK := $(wildcard $(srctree)/arch/$(SRCARCH)/Makefile.postlink)
+ 
+ # Final link of vmlinux with optional arch pass after final link
+ cmd_link_vmlinux =							\
+-	$< "$(LD)" "$(KBUILD_LDFLAGS)" "$(LDFLAGS_vmlinux)" "$@";	\
++	$< "$(LD)" "$(KBUILD_LDFLAGS)" "$(LDFLAGS_vmlinux)" "$@"	\
++	   "$(LDFLAGS_vmlinux_relocs)";					\
+ 	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
+ 
+ targets += vmlinux.unstripped .vmlinux.export.o
+@@ -89,11 +90,9 @@ remove-section-$(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS) += '.rel.*'
+ 
+ remove-symbols := -w --strip-unneeded-symbol='__mod_device_table__*'
+ 
+-# To avoid warnings: "empty loadable segment detected at ..." from GNU objcopy,
+-# it is necessary to remove the PT_LOAD flag from the segment.
++# none of the removed sections is allocated, so no segment is left empty
+ quiet_cmd_strip_relocs = OBJCOPY $@
+-      cmd_strip_relocs = $(OBJCOPY) $(patsubst %,--set-section-flags %=noload,$(remove-section-y)) $< $@; \
+-                         $(OBJCOPY) $(addprefix --remove-section=,$(remove-section-y)) $(remove-symbols) $@
++      cmd_strip_relocs = $(OBJCOPY) $(addprefix --remove-section=,$(remove-section-y)) $(remove-symbols) $< $@
+ 
+ targets += vmlinux
+ vmlinux: vmlinux.unstripped FORCE
+@@ -102,21 +101,11 @@ vmlinux: vmlinux.unstripped FORCE
+ # modules.builtin.modinfo
+ # ---------------------------------------------------------------------------
+ 
+-# .modinfo in vmlinux.unstripped is aligned to 8 bytes for compatibility with
+-# tools that expect vmlinux to have sufficiently aligned sections but the
+-# additional bytes used for padding .modinfo to satisfy this requirement break
+-# certain versions of kmod with
+-#
+-#   depmod: ERROR: kmod_builtin_iter_next: unexpected string without modname prefix
+-#
+-# Strip the trailing padding bytes after extracting .modinfo to comply with
+-# what kmod expects to parse.
++# use --dump-section to include non-allocated sections
+ quiet_cmd_modules_builtin_modinfo = GEN     $@
+-      cmd_modules_builtin_modinfo = $(cmd_objcopy); \
+-                                    sed -i 's/\x00\+$$/\x00/g' $@; \
+-                                    chmod -x $@
+-
+-OBJCOPYFLAGS_modules.builtin.modinfo := -j .modinfo -O binary
++      cmd_modules_builtin_modinfo = $(OBJCOPY) -O binary -j .modinfo --dump-section .modinfo=$@ $< $@.tmp; \
++                                    rm -f $@.tmp; \
++                                    sed -i 's/\x00\+$$/\x00/g' $@
+ 
+ targets += modules.builtin.modinfo
+ modules.builtin.modinfo: vmlinux.unstripped FORCE
+diff --git a/scripts/Makefile.warn b/scripts/Makefile.warn
+index 35af7d6..83d274f 100644
+--- a/scripts/Makefile.warn
++++ b/scripts/Makefile.warn
+@@ -17,7 +17,7 @@ KBUILD_CFLAGS += -Werror=strict-prototypes
+ KBUILD_CFLAGS += -Wno-format-security
+ KBUILD_CFLAGS += -Wno-trigraphs
+ KBUILD_CFLAGS += -Wno-frame-address
+-KBUILD_CFLAGS += $(call cc-option, -Wno-address-of-packed-member)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_ADDRESS_OF_PACKED_MEMBER),-Wno-address-of-packed-member)
+ KBUILD_CFLAGS += -Wmissing-declarations
+ KBUILD_CFLAGS += -Wmissing-prototypes
+ 
+@@ -30,8 +30,8 @@ KBUILD_CFLAGS-$(CONFIG_CC_NO_ARRAY_BOUNDS) += -Wno-array-bounds
+ ifdef CONFIG_CC_IS_CLANG
+ # Clang checks for overflow/truncation with '%p', while GCC does not:
+ # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=111219
+-KBUILD_CFLAGS += $(call cc-option, -Wno-format-overflow-non-kprintf)
+-KBUILD_CFLAGS += $(call cc-option, -Wno-format-truncation-non-kprintf)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_FORMAT_OVERFLOW_NON_KPRINTF),-Wno-format-overflow-non-kprintf)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_FORMAT_TRUNCATION_NON_KPRINTF),-Wno-format-truncation-non-kprintf)
+ 
+ # Clang may emit a warning when a const variable, such as the dummy variables
+ # in typecheck(), or const member of an aggregate type are not initialized,
+@@ -43,7 +43,7 @@ KBUILD_CFLAGS += $(call cc-option, -Wno-format-truncation-non-kprintf)
+ # disabled with this same switch, there should not be too much coverage lost
+ # because -Wuninitialized will still flag when an uninitialized const variable
+ # is used.
+-KBUILD_CFLAGS += $(call cc-option, -Wno-default-const-init-unsafe)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_DEFAULT_CONST_INIT_UNSAFE),-Wno-default-const-init-unsafe)
+ else
+ 
+ # gcc inanely warns about local variables called 'main'
+@@ -54,7 +54,7 @@ endif
+ KBUILD_CFLAGS += -Wno-type-limits
+ 
+ # These result in bogus false positives
+-KBUILD_CFLAGS += $(call cc-option, -Wno-dangling-pointer)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_DANGLING_POINTER),-Wno-dangling-pointer)
+ 
+ # Stack Variable Length Arrays (VLAs) must not be used in the kernel.
+ # Function array parameters should, however, be usable, but -Wvla will
+@@ -62,7 +62,7 @@ KBUILD_CFLAGS += $(call cc-option, -Wno-dangling-pointer)
+ # types, so depend on GCC for now to keep stack VLAs out of the tree.
+ # https://github.com/llvm/llvm-project/issues/57098
+ # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=98217
+-KBUILD_CFLAGS += $(call cc-option,-Wvla-larger-than=1)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WVLA_LARGER_THAN),-Wvla-larger-than=1)
+ 
+ # disable pointer signed / unsigned warnings in gcc 4.0
+ KBUILD_CFLAGS += -Wno-pointer-sign
+@@ -73,11 +73,11 @@ KBUILD_CFLAGS += -Wno-pointer-sign
+ KBUILD_CFLAGS += -Wcast-function-type
+ 
+ # Currently, disable -Wstringop-overflow for GCC 11, globally.
+-KBUILD_CFLAGS-$(CONFIG_CC_NO_STRINGOP_OVERFLOW) += $(call cc-option, -Wno-stringop-overflow)
+-KBUILD_CFLAGS-$(CONFIG_CC_STRINGOP_OVERFLOW) += $(call cc-option, -Wstringop-overflow)
++KBUILD_CFLAGS-$(CONFIG_CC_NO_STRINGOP_OVERFLOW) += $(if $(CONFIG_CC_HAS_WSTRINGOP_OVERFLOW),-Wno-stringop-overflow)
++KBUILD_CFLAGS-$(CONFIG_CC_STRINGOP_OVERFLOW) += $(if $(CONFIG_CC_HAS_WSTRINGOP_OVERFLOW),-Wstringop-overflow)
+ 
+ # Currently, disable -Wunterminated-string-initialization as broken
+-KBUILD_CFLAGS += $(call cc-option, -Wno-unterminated-string-initialization)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_UNTERMINATED_STRING_INITIALIZATION),-Wno-unterminated-string-initialization)
+ 
+ # The allocators already balk at large sizes, so silence the compiler
+ # warnings for bounds checks involving those possible values. While
+@@ -100,10 +100,10 @@ KBUILD_CFLAGS += -Werror=date-time
+ KBUILD_CFLAGS += -Werror=incompatible-pointer-types
+ 
+ # Require designated initializers for all marked structures
+-KBUILD_CFLAGS += $(call cc-option,-Werror=designated-init)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WERROR_DESIGNATED_INIT),-Werror=designated-init)
+ 
+ # Warn if there is an enum types mismatch
+-KBUILD_CFLAGS += $(call cc-option,-Wenum-conversion)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WENUM_CONVERSION),-Wenum-conversion)
+ 
+ KBUILD_CFLAGS += -Wunused
+ 
+@@ -125,12 +125,12 @@ else
+ # Suppress them by using -Wno... except for W=1.
+ KBUILD_CFLAGS += -Wno-unused-but-set-variable
+ KBUILD_CFLAGS += -Wno-unused-const-variable
+-KBUILD_CFLAGS += $(call cc-option, -Wno-packed-not-aligned)
+-KBUILD_CFLAGS += $(call cc-option, -Wno-format-overflow)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_PACKED_NOT_ALIGNED),-Wno-packed-not-aligned)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_FORMAT_OVERFLOW),-Wno-format-overflow)
+ ifdef CONFIG_CC_IS_GCC
+ KBUILD_CFLAGS += -Wno-format-truncation
+ endif
+-KBUILD_CFLAGS += $(call cc-option, -Wno-stringop-truncation)
++KBUILD_CFLAGS += $(if $(CONFIG_CC_HAS_WNO_STRINGOP_TRUNCATION),-Wno-stringop-truncation)
+ 
+ KBUILD_CFLAGS += -Wno-override-init # alias for -Wno-initializer-overrides in clang
+ 
+diff --git a/scripts/basic/.gitignore b/scripts/basic/.gitignore
+index 07c195f..761ee14 100644
+--- a/scripts/basic/.gitignore
++++ b/scripts/basic/.gitignore
+@@ -1,3 +1,4 @@
+ # SPDX-License-Identifier: GPL-2.0-only
++/depcheck
+ /fixdep
+ /randstruct.seed
+diff --git a/scripts/basic/Makefile b/scripts/basic/Makefile
+index fb8e2c3..ff98780 100644
+--- a/scripts/basic/Makefile
++++ b/scripts/basic/Makefile
+@@ -2,7 +2,7 @@
+ #
+ # fixdep: used to generate dependency information during build process
+ 
+-hostprogs-always-y	+= fixdep
++hostprogs-always-y	+= fixdep depcheck
+ 
+ # randstruct: the seed is needed before building the gcc-plugin or
+ # before running a Clang kernel build.
+diff --git b/scripts/basic/depcheck.c b/scripts/basic/depcheck.c
+new file mode 100644
+index 0000000..5f9bbdf
+--- /dev/null
++++ b/scripts/basic/depcheck.c
+@@ -0,0 +1,442 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * depcheck - check the dependency timestamps of a directory's targets so that
++ * make reads only what it needs from their .cmd files.
++ *
++ * fixdep writes a .cmd file as:
++ *
++ *	savedcmd_dir/foo.o := <command line>
++ *
++ *	source_dir/foo.o := dir/foo.c
++ *
++ *	deps_dir/foo.o := \
++ *	  include/linux/bar.h \
++ *	    $(wildcard include/config/BAZ) \
++ *
++ *	dir/foo.o: $(deps_dir/foo.o)
++ *
++ *	$(deps_dir/foo.o):
++ *
++ * and kbuild may append rules of its own after that, such as one making the
++ * target depend on objtool.
++ *
++ * For a target that exists and is newer than every dependency listed, make can
++ * have nothing to do with the list, so it is left out and only what precedes
++ * and follows it is passed on; for anything else the .cmd file is passed on in
++ * full.
++ *
++ * Usage: depcheck <output> <.cmd files...>
++ *
++ * The output is a makefile fragment to include in place of the .cmd files; a
++ * non-zero exit status means the caller should include those instead.
++ */
++#include <limits.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/stat.h>
++#include <time.h>
++#include <unistd.h>
++
++#include <hash.h>
++#include <hashtable.h>
++#include <xalloc.h>
++
++/* What fixdep writes, see above. */
++#define DEPS_PREFIX		"deps_"
++#define DEPS_RULE_PREFIX	"$(" DEPS_PREFIX
++#define RULE_SUFFIX		":"
++#define LINE_CONTINUATION	" \\"
++#define WILDCARD_OPEN		"$(wildcard "
++#define WILDCARD_CLOSE		")"
++#define CMD_SUFFIX		".cmd"
++
++/* A line of a .cmd file, without its newline. */
++struct line {
++	const char *text;
++	size_t len;
++};
++
++static bool is_blank(char chr)
++{
++	return chr == ' ' || chr == '\t';
++}
++
++static bool str_ends_with(const char *str, const char *suffix)
++{
++	const size_t len = strlen(str), suffix_len = strlen(suffix);
++
++	return len >= suffix_len && !strcmp(str + len - suffix_len, suffix);
++}
++
++static bool line_starts_with(const struct line *line, const char *prefix)
++{
++	const size_t len = strlen(prefix);
++
++	return line->len >= len && !memcmp(line->text, prefix, len);
++}
++
++static bool line_ends_with(const struct line *line, const char *suffix)
++{
++	const size_t len = strlen(suffix);
++
++	return line->len >= len &&
++	       !memcmp(line->text + line->len - len, suffix, len);
++}
++
++static bool line_is_blank(const struct line *line)
++{
++	size_t i;
++
++	for (i = 0; i < line->len; i++)
++		if (!is_blank(line->text[i]))
++			return false;
++
++	return true;
++}
++
++/* Whether the line ends in " \", continuing the list on the next line. */
++static bool line_is_continued(const struct line *line)
++{
++	return line_ends_with(line, LINE_CONTINUATION);
++}
++
++static void line_strip_continuation(struct line *line)
++{
++	if (line_is_continued(line))
++		line->len -= strlen(LINE_CONTINUATION);
++}
++
++static void line_trim(struct line *line)
++{
++	while (line->len && is_blank(line->text[0])) {
++		line->text++;
++		line->len--;
++	}
++	while (line->len && is_blank(line->text[line->len - 1]))
++		line->len--;
++}
++
++/* Take the next line out of [*pos, end); false once there are none left. */
++static bool next_line(const char **pos, const char *end, struct line *line)
++{
++	const char *newline;
++
++	if (*pos >= end)
++		return false;
++
++	newline = memchr(*pos, '\n', end - *pos);
++	line->text = *pos;
++	line->len = (newline ? newline : end) - *pos;
++	*pos = newline ? newline + 1 : end;
++
++	return true;
++}
++
++/* Describes a dependency file. */
++struct dep {
++	struct hlist_node hnode;
++	struct timespec mtime;
++	bool exists;
++	char path[];
++};
++
++static HASHTABLE_DEFINE(dep_table, 1U << 16);
++
++static const struct dep *lookup_dep(const char *path)
++{
++	const unsigned int key = hash_str(path);
++	struct dep *dep;
++	struct stat st;
++
++	hash_for_each_possible(dep_table, dep, hnode, key) {
++		if (!strcmp(dep->path, path))
++			return dep;
++	}
++
++	dep = xmalloc(sizeof(*dep) + strlen(path) + 1);
++	strcpy(dep->path, path);
++	dep->exists = !stat(path, &st);
++	if (dep->exists)
++		dep->mtime = st.st_mtim;
++	hash_add(dep_table, &dep->hnode, key);
++
++	return dep;
++}
++
++/* Strictly newer, as make compares timestamps. */
++static bool newer(const struct timespec *time_a, const struct timespec *time_b)
++{
++	if (time_a->tv_sec != time_b->tv_sec)
++		return time_a->tv_sec > time_b->tv_sec;
++
++	return time_a->tv_nsec > time_b->tv_nsec;
++}
++
++/*
++ * $(wildcard include/config/FOO) is a prerequisite only while FOO is set:
++ * unwrap it and say that it is optional.
++ */
++static bool line_unwrap_wildcard(struct line *line)
++{
++	if (!line_starts_with(line, WILDCARD_OPEN) ||
++	    !line_ends_with(line, WILDCARD_CLOSE))
++		return false;
++
++	line->text += strlen(WILDCARD_OPEN);
++	line->len -= strlen(WILDCARD_OPEN) + strlen(WILDCARD_CLOSE);
++
++	return true;
++}
++
++/* fixdep doubles '$' and escapes '#' in a path: undo that into path[]. */
++static bool unescape_path(const struct line *line, char *path, size_t size)
++{
++	size_t i, out_len = 0;
++
++	if (line->len >= size)
++		return false;
++
++	for (i = 0; i < line->len; i++) {
++		const char chr = line->text[i];
++		const char next_chr = i + 1 < line->len ? line->text[i + 1] : '\0';
++
++		if ((chr == '$' && next_chr == '$') || (chr == '\\' && next_chr == '#'))
++			i++;
++		path[out_len++] = line->text[i];
++	}
++	path[out_len] = '\0';
++
++	return true;
++}
++
++/* Is the path contained in line older than the target? */
++static bool dep_is_fresh(struct line line, const struct timespec *target)
++{
++	char path[PATH_MAX];
++	const struct dep *dep;
++	bool optional;
++
++	line_strip_continuation(&line);
++	line_trim(&line);
++	if (!line.len)
++		return false;
++
++	optional = line_unwrap_wildcard(&line);
++	if (!line.len || !unescape_path(&line, path, sizeof(path)))
++		return false;
++
++	dep = lookup_dep(path);
++	if (!dep->exists)
++		return optional;
++
++	return !newer(&dep->mtime, target);
++}
++
++/*
++ * Parse a dependency list which consists of one file per line and determine if
++ * all dependencies are 'fresh', i.e. older than the target.
++ */
++static bool deps_are_fresh(const char *pos, const char *end,
++			   const struct timespec *target)
++{
++	struct line line;
++
++	while (next_line(&pos, end, &line)) {
++		if (line_is_blank(&line))
++			return true;
++		if (!dep_is_fresh(line, target))
++			return false;
++		if (!line_is_continued(&line))
++			return true;
++	}
++
++	return true;
++}
++
++/*
++ * Find the "deps_" line in the input.
++ *
++ * On success returns true and *deps_off is set to its offset and *list is set
++ * to the list's own lines start or NULL if the line is not continued.
++ *
++ * Otherwise returns false if the prefix cannot be found.
++ */
++static bool find_deps(const char *buf, size_t len, size_t *deps_off,
++		      const char **list)
++{
++	const char *pos = buf, *end = buf + len;
++	struct line line;
++
++	while (next_line(&pos, end, &line)) {
++		if (!line_starts_with(&line, DEPS_PREFIX))
++			continue;
++
++		*deps_off = line.text - buf;
++		*list = line_is_continued(&line) ? pos : NULL;
++		return true;
++	}
++
++	return false;
++}
++
++/*
++ * Is this the target of a .cmd file, i.e. 'dir/.name.cmd names dir/name.'?
++ */
++static bool target_of(const char *cmd_path, char *target, size_t size)
++{
++	const char *slash = strrchr(cmd_path, '/');
++	const char *base = slash ? slash + 1 : cmd_path;
++	const size_t dir_len = base - cmd_path;
++	size_t name_len;
++
++	if (base[0] != '.' || !str_ends_with(base, CMD_SUFFIX))
++		return false;
++
++	name_len = strlen(base) - strlen(".") - strlen(CMD_SUFFIX);
++	if (!name_len)
++		return false;
++
++	return snprintf(target, size, "%.*s%.*s", (int)dir_len, cmd_path,
++			(int)name_len, base + 1) < (int)size;
++}
++
++/*
++ * Does the .cmd file's target exists and is it newer than everything in its
++ * dependency list?
++ *
++ * Returns true if so and sets *deps_off to the start of the list, otherwise
++ * returns false.
++ */
++static bool target_is_fresh(const char *cmd_path, const char *buf, size_t len,
++			    size_t *deps_off)
++{
++	char target[PATH_MAX];
++	struct stat st;
++	const char *list;
++
++	if (!target_of(cmd_path, target, sizeof(target)) || stat(target, &st))
++		return false;
++	if (!find_deps(buf, len, deps_off, &list))
++		return false;
++	if (!list)
++		return true;
++
++	return deps_are_fresh(list, buf + len, &st.st_mtim);
++}
++
++static char *read_file(const char *path, size_t *len)
++{
++	FILE *file = fopen(path, "r");
++	struct stat st;
++	char *buf;
++	size_t nr_read = 0;
++
++	if (!file)
++		return NULL;
++	if (fstat(fileno(file), &st)) {
++		fclose(file);
++		return NULL;
++	}
++
++	buf = xmalloc(st.st_size + 1);
++	while (nr_read < (size_t)st.st_size) {
++		const size_t chunk = fread(buf + nr_read, 1, st.st_size - nr_read, file);
++
++		if (!chunk)
++			break;
++		nr_read += chunk;
++	}
++	fclose(file);
++
++	buf[nr_read] = '\0';
++	*len = nr_read;
++	return buf;
++}
++
++/*
++ * Find the end of the dependency block: the offset just past its closing
++ * "$(deps_x):" line. Anything after that was appended by kbuild and is not for
++ * us to judge. Returns len if the line cannot be found.
++ */
++static size_t deps_block_end(const char *buf, size_t len, size_t deps_off)
++{
++	const char *pos = buf + deps_off, *end = buf + len;
++	struct line line;
++
++	while (next_line(&pos, end, &line)) {
++		if (line_starts_with(&line, DEPS_RULE_PREFIX) &&
++		    line_ends_with(&line, RULE_SUFFIX))
++			return pos - buf;
++	}
++
++	return len;
++}
++
++/* The target is fresh: pass on everything but the dependency block. */
++static void write_without_deps(FILE *out, const char *buf, size_t len,
++			       size_t deps_off)
++{
++	const size_t tail_off = deps_block_end(buf, len, deps_off);
++
++	fwrite(buf, 1, deps_off, out);
++	fputc('\n', out);
++	fwrite(buf + tail_off, 1, len - tail_off, out);
++}
++
++/*
++ * Generate a fragment for make from one .cmd file - without the dependency
++ * block if the target is fresh, otherwise all of it.
++ */
++static void process(FILE *out, const char *cmd_path)
++{
++	size_t len, deps_off;
++	char *buf;
++
++	buf = read_file(cmd_path, &len);
++	if (!buf)
++		return;
++
++	if (target_is_fresh(cmd_path, buf, len, &deps_off))
++		write_without_deps(out, buf, len, deps_off);
++	else
++		fwrite(buf, 1, len, out);
++
++	free(buf);
++}
++
++int main(int argc, char **argv)
++{
++	char tmp_path[PATH_MAX];
++	FILE *out;
++	int i;
++
++	if (argc < 2) {
++		fprintf(stderr, "usage: %s <output> <.cmd files...>\n", argv[0]);
++		return 1;
++	}
++
++	if (snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", argv[1]) >=
++	    (int)sizeof(tmp_path)) {
++		fprintf(stderr, "%s: path too long\n", argv[1]);
++		return 1;
++	}
++
++	out = fopen(tmp_path, "w");
++	if (!out) {
++		perror(tmp_path);
++		return 1;
++	}
++
++	for (i = 2; i < argc; i++)
++		process(out, argv[i]);
++
++	if (fclose(out) || rename(tmp_path, argv[1])) {
++		perror(argv[1]);
++		unlink(tmp_path);
++		return 1;
++	}
++
++	return 0;
++}
+diff --git a/scripts/check-function-names.sh b/scripts/check-function-names.sh
+index 0807113..94883e6 100755
+--- a/scripts/check-function-names.sh
++++ b/scripts/check-function-names.sh
+@@ -13,7 +13,8 @@ if [ ! -f "$objfile" ]; then
+ 	exit 1
+ fi
+ 
+-bad_symbols=$(${NM:-nm} "$objfile" | awk '$2 ~ /^[TtWw]$/ {print $3}' | grep -E '^(startup|exit|split|unlikely|hot|unknown)(\.|$)')
++bad_symbols=$(${NM:-nm} -p "$objfile" | awk '$2 ~ /^[TtWw]$/ {print $3}' |
++	      grep -E '^(startup|exit|split|unlikely|hot|unknown)(\.|$)')
+ 
+ if [ -n "$bad_symbols" ]; then
+ 	echo "$bad_symbols" | while read -r sym; do
+diff --git a/scripts/elf-parse.c b/scripts/elf-parse.c
+index 99869ff..87aa95b 100644
+--- a/scripts/elf-parse.c
++++ b/scripts/elf-parse.c
+@@ -17,15 +17,21 @@ struct elf_funcs elf_parser;
+  * Get the whole file as a programming convenience in order to avoid
+  * malloc+lseek+read+free of many pieces.  If successful, then mmap
+  * avoids copying unused pieces; else just read the whole file.
+- * Open for both read and write.
++ * Open for both read and write if writable is true, otherwise open
++ * read-only.
+  */
+-static void *map_file(char const *fname, size_t *size)
++static void *map_file(char const *fname, size_t *size, bool writable)
+ {
+-	int fd;
++	int fd, prot = PROT_READ, flags = MAP_PRIVATE;
+ 	struct stat sb;
+ 	void *addr = NULL;
+ 
+-	fd = open(fname, O_RDWR);
++	if (writable) {
++		prot |= PROT_WRITE;
++		flags = MAP_SHARED;
++	}
++
++	fd = open(fname, writable ? O_RDWR : O_RDONLY);
+ 	if (fd < 0) {
+ 		perror(fname);
+ 		return NULL;
+@@ -39,7 +45,7 @@ static void *map_file(char const *fname, size_t *size)
+ 		goto out;
+ 	}
+ 
+-	addr = mmap(0, sb.st_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
++	addr = mmap(0, sb.st_size, prot, flags, fd, 0);
+ 	if (addr == MAP_FAILED) {
+ 		fprintf(stderr, "Could not mmap file: %s\n", fname);
+ 		goto out;
+@@ -57,6 +63,12 @@ static int elf_parse(const char *fname, void *addr, uint32_t types)
+ 	Elf_Ehdr *ehdr = addr;
+ 	uint16_t type;
+ 
++	if (memcmp(ELFMAG, ehdr->e32.e_ident, SELFMAG) != 0 ||
++	    ehdr->e32.e_ident[EI_VERSION] != EV_CURRENT) {
++		fprintf(stderr, "unrecognized ELF file %s\n", fname);
++		return -1;
++	}
++
+ 	switch (ehdr->e32.e_ident[EI_DATA]) {
+ 	case ELFDATA2LSB:
+ 		elf_parser.r	= rle;
+@@ -78,12 +90,6 @@ static int elf_parse(const char *fname, void *addr, uint32_t types)
+ 		return -1;
+ 	}
+ 
+-	if (memcmp(ELFMAG, ehdr->e32.e_ident, SELFMAG) != 0 ||
+-	    ehdr->e32.e_ident[EI_VERSION] != EV_CURRENT) {
+-		fprintf(stderr, "unrecognized ELF file %s\n", fname);
+-		return -1;
+-	}
+-
+ 	type = elf_parser.r2(&ehdr->e32.e_type);
+ 	if (!((1 << type) & types)) {
+ 		fprintf(stderr, "Invalid ELF type file %s\n", fname);
+@@ -103,7 +109,9 @@ static int elf_parse(const char *fname, void *addr, uint32_t types)
+ 		elf_parser.shdr_name		= shdr32_name;
+ 		elf_parser.shdr_type		= shdr32_type;
+ 		elf_parser.shdr_entsize		= shdr32_entsize;
++		elf_parser.shdr_flags		= shdr32_flags;
+ 		elf_parser.sym_type		= sym32_type;
++		elf_parser.sym_bind		= sym32_bind;
+ 		elf_parser.sym_name		= sym32_name;
+ 		elf_parser.sym_value		= sym32_value;
+ 		elf_parser.sym_shndx		= sym32_shndx;
+@@ -133,7 +141,9 @@ static int elf_parse(const char *fname, void *addr, uint32_t types)
+ 		elf_parser.shdr_name		= shdr64_name;
+ 		elf_parser.shdr_type		= shdr64_type;
+ 		elf_parser.shdr_entsize		= shdr64_entsize;
++		elf_parser.shdr_flags		= shdr64_flags;
+ 		elf_parser.sym_type		= sym64_type;
++		elf_parser.sym_bind		= sym64_bind;
+ 		elf_parser.sym_name		= sym64_name;
+ 		elf_parser.sym_value		= sym64_value;
+ 		elf_parser.sym_shndx		= sym64_shndx;
+@@ -174,12 +184,13 @@ int elf_map_long_size(void *addr)
+ 	return ehdr->e32.e_ident[EI_CLASS] == ELFCLASS32 ? 4 : 8;
+ }
+ 
+-void *elf_map(char const *fname, size_t *size, uint32_t types)
++static void *__elf_map(char const *fname, size_t *size, uint32_t types,
++		       bool writable)
+ {
+ 	void *addr;
+ 	int ret;
+ 
+-	addr = map_file(fname, size);
++	addr = map_file(fname, size, writable);
+ 	if (!addr)
+ 		return NULL;
+ 
+@@ -192,6 +203,17 @@ void *elf_map(char const *fname, size_t *size, uint32_t types)
+ 	return addr;
+ }
+ 
++void *elf_map(char const *fname, size_t *size, uint32_t types)
++{
++	return __elf_map(fname, size, types, true);
++}
++
++/* For tools that only read the file. */
++void *elf_map_ro(char const *fname, size_t *size, uint32_t types)
++{
++	return __elf_map(fname, size, types, false);
++}
++
+ void elf_unmap(void *addr, size_t size)
+ {
+ 	munmap(addr, size);
+diff --git a/scripts/elf-parse.h b/scripts/elf-parse.h
+index f4411e0..453286e 100644
+--- a/scripts/elf-parse.h
++++ b/scripts/elf-parse.h
+@@ -37,10 +37,12 @@ struct elf_funcs {
+ 	uint64_t (*shdr_offset)(Elf_Shdr *shdr);
+ 	uint64_t (*shdr_size)(Elf_Shdr *shdr);
+ 	uint64_t (*shdr_entsize)(Elf_Shdr *shdr);
++	uint64_t (*shdr_flags)(Elf_Shdr *shdr);
+ 	uint32_t (*shdr_link)(Elf_Shdr *shdr);
+ 	uint32_t (*shdr_name)(Elf_Shdr *shdr);
+ 	uint32_t (*shdr_type)(Elf_Shdr *shdr);
+ 	uint8_t (*sym_type)(Elf_Sym *sym);
++	uint8_t (*sym_bind)(Elf_Sym *sym);
+ 	uint32_t (*sym_name)(Elf_Sym *sym);
+ 	uint64_t (*sym_value)(Elf_Sym *sym);
+ 	uint16_t (*sym_shndx)(Elf_Sym *sym);
+@@ -143,6 +145,7 @@ SHDR_ADDR(addr)
+ SHDR_ADDR(offset)
+ SHDR_ADDR(size)
+ SHDR_ADDR(entsize)
++SHDR_ADDR(flags)
+ 
+ SHDR_WORD(link)
+ SHDR_WORD(name)
+@@ -211,6 +214,21 @@ static inline uint8_t sym_type(Elf_Sym *sym)
+ 	return elf_parser.sym_type(sym);
+ }
+ 
++static inline uint8_t sym64_bind(Elf_Sym *sym)
++{
++	return ELF64_ST_BIND(sym->e64.st_info);
++}
++
++static inline uint8_t sym32_bind(Elf_Sym *sym)
++{
++	return ELF32_ST_BIND(sym->e32.st_info);
++}
++
++static inline uint8_t sym_bind(Elf_Sym *sym)
++{
++	return elf_parser.sym_bind(sym);
++}
++
+ SYM_ADDR(value)
+ SYM_WORD(name)
+ SYM_HALF(shndx)
+@@ -298,6 +316,7 @@ static inline void w8le(uint64_t val, uint64_t *x)
+ }
+ 
+ void *elf_map(char const *fname, size_t *size, uint32_t types);
++void *elf_map_ro(char const *fname, size_t *size, uint32_t types);
+ void elf_unmap(void *addr, size_t size);
+ int elf_map_machine(void *addr);
+ int elf_map_long_size(void *addr);
+diff --git b/scripts/kallsyms-sysmap.c b/scripts/kallsyms-sysmap.c
+new file mode 100644
+index 0000000..64b2e11
+--- /dev/null
++++ b/scripts/kallsyms-sysmap.c
+@@ -0,0 +1,269 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Obtain symbols from vmlinux for usage by kallsyms. Replaces mksysmap.
++ *
++ * To retain compatibility, it provides the same output as nm, only faster.
++ */
++
++#include <ctype.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <xalloc.h>
++
++#include "elf-parse.h"
++#include "kallsyms.h"
++
++/* The mapped file and its symbol table. */
++struct elf_file {
++	void *base;
++	size_t size;
++	const char *shdrs;
++	unsigned int shnum, shentsize;
++	const char *shstrtab;
++	Elf_Shdr *symtab;
++	const char *strtab;
++	size_t nr_syms;
++};
++
++/* What mksysmap dropped from System.map, by name. */
++static const char *const sysmap_omit_prefixes[] = {
++	"$", ".L", "__efistub_", "__pi_$", "__pi_.L", "__kvm_nvhe_$",
++	"__kvm_nvhe_.L", "__kcfi_typeid_", "__kvm_nvhe___kcfi_typeid_",
++	"__pi___kcfi_typeid_", "__crc_", "__kstrtab_", "__kstrtabns_",
++	"__mod_device_table__",
++};
++static const char *const sysmap_omit_suffixes[] = {
++	"_from_arm", "_from_thumb", "_veneer",
++};
++static const char *const sysmap_omit_names[] = {
++	"L0", "_SDA_BASE_", "_SDA2_BASE_",
++};
++
++/* __<alnum>*Thunk_: the linker's range extension thunks on arm. */
++static bool is_range_thunk(const char *name)
++{
++	const char *p;
++
++	if (!string_starts_with(name, "__"))
++		return false;
++	for (p = name + 2; isalnum((unsigned char)*p); p++)
++		;
++	return p - name >= 7 && *p == '_' && strncmp(p - 5, "Thunk", 5) == 0;
++}
++
++/* __UNIQUE_ID_modinfo_<n>: the MODULE_INFO() strings of built-in code. */
++static bool is_modinfo_id(const char *name)
++{
++	static const char prefix[] = "__UNIQUE_ID_modinfo_";
++	const char *p;
++
++	if (!string_starts_with(name, prefix))
++		return false;
++	for (p = name + strlen(prefix); isdigit((unsigned char)*p); p++)
++		;
++	return !*p;
++}
++
++static bool sysmap_omits(const char *name, char type)
++{
++	size_t i;
++
++	/* Absolute, undefined and debugging symbols. */
++	if (type == 'a' || type == 'N' || type == 'U' || type == 'w')
++		return true;
++
++	for (i = 0; i < ARRAY_SIZE(sysmap_omit_prefixes); i++)
++		if (string_starts_with(name, sysmap_omit_prefixes[i]))
++			return true;
++	for (i = 0; i < ARRAY_SIZE(sysmap_omit_suffixes); i++)
++		if (string_ends_with(name, sysmap_omit_suffixes[i]))
++			return true;
++	for (i = 0; i < ARRAY_SIZE(sysmap_omit_names); i++)
++		if (strcmp(name, sysmap_omit_names[i]) == 0)
++			return true;
++
++	return is_range_thunk(name) || is_modinfo_id(name) ||
++	       strstr(name, ".long_branch.") || strstr(name, ".plt_branch.");
++}
++
++static Elf_Shdr *elf_section(const struct elf_file *elf, unsigned int index)
++{
++	return (Elf_Shdr *)(elf->shdrs + (size_t)index * elf->shentsize);
++}
++
++static const char *elf_section_name(const struct elf_file *elf, Elf_Shdr *shdr)
++{
++	return elf->shstrtab + shdr_name(shdr);
++}
++
++static Elf_Sym *elf_symbol(const struct elf_file *elf, size_t index)
++{
++	const char *base = elf->base;
++
++	return (Elf_Sym *)(base + shdr_offset(elf->symtab) +
++			   index * shdr_entsize(elf->symtab));
++}
++
++/* nm's letter for a symbol defined in a section, as BFD classifies it. */
++static char section_symbol_type(Elf_Shdr *shdr, const char *secname)
++{
++	static const char *const debug_prefixes[] = {
++		".debug", ".zdebug", ".gnu.debuglto_.debug_",
++		".gnu.linkonce.wi.", ".line", ".stab",
++	};
++	const uint64_t flags = shdr_flags(shdr);
++	size_t i;
++
++	if (flags & SHF_EXECINSTR)
++		return 't';
++	if (flags & SHF_ALLOC) {
++		if (shdr_type(shdr) == SHT_NOBITS)
++			return 'b';
++		return flags & SHF_WRITE ? 'd' : 'r';
++	}
++	for (i = 0; i < ARRAY_SIZE(debug_prefixes); i++)
++		if (string_starts_with(secname, debug_prefixes[i]))
++			return 'N';
++	if (shdr_type(shdr) != SHT_NOBITS && !(flags & SHF_WRITE))
++		return 'n';
++	return '?';
++}
++
++/* The letter nm prints for a symbol, or 0 for one it leaves out. */
++static char elf_symbol_type(const struct elf_file *elf, Elf_Sym *sym)
++{
++	unsigned int bind = sym_bind(sym), type = sym_type(sym);
++	unsigned int shndx = sym_shndx(sym);
++	Elf_Shdr *shdr;
++	char c;
++
++	if (type == STT_SECTION || type == STT_FILE)
++		return 0;
++	if (shndx == SHN_COMMON)
++		return 'C';
++	if (shndx == SHN_UNDEF) {
++		if (bind == STB_WEAK)
++			return type == STT_OBJECT ? 'v' : 'w';
++		return 'U';
++	}
++	if (type == STT_GNU_IFUNC)
++		return 'i';
++	if (bind == STB_WEAK)
++		return type == STT_OBJECT ? 'V' : 'W';
++	if (bind == STB_GNU_UNIQUE)
++		return 'u';
++	if (bind != STB_GLOBAL && bind != STB_LOCAL)
++		return '?';
++
++	if (shndx == SHN_ABS) {
++		c = 'a';
++	} else if (shndx < elf->shnum) {
++		shdr = elf_section(elf, shndx);
++		c = section_symbol_type(shdr, elf_section_name(elf, shdr));
++	} else {
++		return '?';
++	}
++
++	return bind == STB_GLOBAL ? toupper(c) : c;
++}
++
++/* nm -n order: by address, then by name. */
++static int compare_symbols(const void *a, const void *b)
++{
++	const struct sysmap_symbol *sa = a, *sb = b;
++
++	if (sa->addr != sb->addr)
++		return sa->addr < sb->addr ? -1 : 1;
++	return strcmp(sa->name, sb->name);
++}
++
++static void elf_open(struct elf_file *elf, const char *path)
++{
++	Elf_Ehdr *ehdr;
++	unsigned int i;
++
++	elf->base = elf_map_ro(path, &elf->size, (1 << ET_EXEC) | (1 << ET_DYN));
++	if (!elf->base)
++		exit(EXIT_FAILURE);
++
++	ehdr = elf->base;
++	elf->shdrs = (const char *)elf->base + ehdr_shoff(ehdr);
++	elf->shnum = ehdr_shnum(ehdr);
++	elf->shentsize = ehdr_shentsize(ehdr);
++	elf->shstrtab = (const char *)elf->base +
++			shdr_offset(elf_section(elf, ehdr_shstrndx(ehdr)));
++
++	for (i = 0; i < elf->shnum && !elf->symtab; i++)
++		if (shdr_type(elf_section(elf, i)) == SHT_SYMTAB)
++			elf->symtab = elf_section(elf, i);
++
++	if (!elf->symtab) {
++		fprintf(stderr, "%s: no symbol table\n", path);
++		exit(EXIT_FAILURE);
++	}
++
++	elf->strtab = (const char *)elf->base +
++		      shdr_offset(elf_section(elf, shdr_link(elf->symtab)));
++	elf->nr_syms = shdr_size(elf->symtab) / shdr_entsize(elf->symtab);
++}
++
++/* The symbols "nm -n | mksysmap" would list, in that order. */
++static struct sysmap_symbol *elf_read_symbols(const struct elf_file *elf,
++					   size_t *nr_kept)
++{
++	struct sysmap_symbol *syms = xmalloc(elf->nr_syms * sizeof(*syms));
++	size_t i, n = 0;
++
++	for (i = 1; i < elf->nr_syms; i++) {
++		Elf_Sym *sym = elf_symbol(elf, i);
++		const char *name = elf->strtab + sym_name(sym);
++		char type = elf_symbol_type(elf, sym);
++
++		if (!type || sysmap_omits(name, type))
++			continue;
++
++		syms[n].addr = sym_value(sym);
++		syms[n].name = name;
++		syms[n].type = type;
++		n++;
++	}
++
++	qsort(syms, n, sizeof(*syms), compare_symbols);
++	*nr_kept = n;
++	return syms;
++}
++
++struct sysmap *sysmap_read(const char *path)
++{
++	struct sysmap *map = xcalloc(1, sizeof(*map));
++	struct elf_file elf = {};
++
++	elf_open(&elf, path);
++	map->syms = elf_read_symbols(&elf, &map->nr_syms);
++	map->addr_width = elf_map_long_size(elf.base) * 2;
++	/* The names point into the mapping; keep it until the map is freed. */
++	map->file = elf.base;
++	map->file_size = elf.size;
++
++	return map;
++}
++
++void sysmap_write(const struct sysmap *map, FILE *out)
++{
++	size_t i;
++
++	for (i = 0; i < map->nr_syms; i++) {
++		const struct sysmap_symbol *s = &map->syms[i];
++
++		fprintf(out, "%0*llx %c %s\n", map->addr_width, s->addr, s->type,
++			s->name);
++	}
++}
++
++void sysmap_free(struct sysmap *map)
++{
++	free(map->syms);
++	elf_unmap(map->file, map->file_size);
++	free(map);
++}
+diff --git a/scripts/kallsyms.c b/scripts/kallsyms.c
+index 494852a..b383696 100644
+--- a/scripts/kallsyms.c
++++ b/scripts/kallsyms.c
+@@ -5,7 +5,15 @@
+  * This software may be used and distributed according to the terms
+  * of the GNU General Public License, incorporated herein by reference.
+  *
+- * Usage: kallsyms [--all-symbols] in.map > out.S
++ * Usage: kallsyms [--all-symbols] [--pc-relative] [--sysmap=out.map] in out.bin > out.S
++ *        kallsyms --sysmap=out.map in
++ *
++ *      in is vmlinux; an empty file stands for the first link, which has no
++ *  symbols yet, and gives an empty table. --sysmap also writes the symbols
++ *  in System.map format.
++ *
++ *      The byte tables go to out.bin and are pulled into out.S with .incbin;
++ *  wider tables stay assembler source for endianness and relocations.
+  *
+  *      Table compression uses all the unused char codes on the symbols and
+  *  maps these to the most used substrings (tokens). For instance, it might
+@@ -18,7 +26,6 @@
+  *
+  */
+ 
+-#include <errno.h>
+ #include <getopt.h>
+ #include <stdbool.h>
+ #include <stdio.h>
+@@ -26,10 +33,10 @@
+ #include <string.h>
+ #include <ctype.h>
+ #include <limits.h>
+-
++#include <sys/stat.h>
+ #include <xalloc.h>
+ 
+-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
++#include "kallsyms.h"
+ 
+ #define KSYM_NAME_LEN		512
+ 
+@@ -58,20 +65,57 @@ static unsigned int table_size, table_cnt;
+ static int all_symbols;
+ static int pc_relative;
+ 
++/* A dynamic array of symbols, encoded by symbol index. */
++struct sym_arr {
++	unsigned int *sym_indexes;
++	unsigned int cnt, cap;
++};
++
+ static int token_profit[0x10000];
++static struct sym_arr token_syms[0x10000];
+ 
+ /* the table that holds the result of the compression */
+ static unsigned char best_table[256][2];
+ static unsigned char best_table_len[256];
+ 
++static unsigned int sym_arr_last(const struct sym_arr *arr)
++{
++	return arr->cnt ? arr->sym_indexes[arr->cnt - 1] : UINT_MAX;
++}
++
++static void sym_arr_maybe_expand(struct sym_arr *arr)
++{
++	if (arr->cap > arr->cnt)
++		return;
++
++	arr->cap = arr->cap ? arr->cap * 2 : 16;
++	arr->sym_indexes = xrealloc(arr->sym_indexes,
++				    arr->cap * sizeof(*arr->sym_indexes));
++}
++
++static void sym_arr_add(struct sym_arr *arr, unsigned int sym_idx)
++{
++	sym_arr_maybe_expand(arr);
++	arr->sym_indexes[arr->cnt++] = sym_idx;
++}
++
++static void sym_arr_free(struct sym_arr *arr)
++{
++	free(arr->sym_indexes);
++	arr->sym_indexes = NULL;
++	arr->cnt = 0;
++	arr->cap = 0;
++}
+ 
+ static void usage(void)
+ {
+-	fprintf(stderr, "Usage: kallsyms [--all-symbols] in.map > out.S\n");
++	fprintf(stderr, "Usage: kallsyms [--all-symbols] [--pc-relative] [--sysmap=out.map]\n"
++			"                in out.bin > out.S\n"
++			"       kallsyms --sysmap=out.map vmlinux\n");
+ 	exit(1);
+ }
+ 
+-static char *sym_name(const struct sym_entry *s)
++static char *sym_entry_name(const struct sym_entry *s)
+ {
+ 	return (char *)s->sym + 1;
+ }
+@@ -112,37 +156,12 @@ static void check_symbol_range(const char *sym, unsigned long long addr,
+ 	}
+ }
+ 
+-static struct sym_entry *read_symbol(FILE *in, char **buf, size_t *buf_len)
++static struct sym_entry *add_symbol(unsigned long long addr, char type,
++				    const char *name)
+ {
+-	char *name, type, *p;
+-	unsigned long long addr;
+-	size_t len;
+-	ssize_t readlen;
++	size_t len = strlen(name);
+ 	struct sym_entry *sym;
+ 
+-	errno = 0;
+-	readlen = getline(buf, buf_len, in);
+-	if (readlen < 0) {
+-		if (errno) {
+-			perror("read_symbol");
+-			exit(EXIT_FAILURE);
+-		}
+-		return NULL;
+-	}
+-
+-	if ((*buf)[readlen - 1] == '\n')
+-		(*buf)[readlen - 1] = 0;
+-
+-	addr = strtoull(*buf, &p, 16);
+-
+-	if (*buf == p || *p++ != ' ' || !isascii((type = *p++)) || *p++ != ' ') {
+-		fprintf(stderr, "line format error\n");
+-		exit(EXIT_FAILURE);
+-	}
+-
+-	name = p;
+-	len = strlen(name);
+-
+ 	if (len >= KSYM_NAME_LEN) {
+ 		fprintf(stderr, "Symbol %s too long for kallsyms (%zu >= %d).\n"
+ 				"Please increase KSYM_NAME_LEN both in kernel and kallsyms.c\n",
+@@ -167,7 +186,7 @@ static struct sym_entry *read_symbol(FILE *in, char **buf, size_t *buf_len)
+ 	sym->addr = addr;
+ 	sym->len = len;
+ 	sym->sym[0] = type;
+-	strcpy(sym_name(sym), name);
++	strcpy(sym_entry_name(sym), name);
+ 
+ 	return sym;
+ }
+@@ -188,14 +207,9 @@ static int symbol_in_range(const struct sym_entry *s,
+ 	return 0;
+ }
+ 
+-static bool string_starts_with(const char *s, const char *prefix)
+-{
+-	return strncmp(s, prefix, strlen(prefix)) == 0;
+-}
+-
+ static int symbol_valid(const struct sym_entry *s)
+ {
+-	const char *name = sym_name(s);
++	const char *name = sym_entry_name(s);
+ 
+ 	/* if --all-symbols is not specified, then symbols outside the text
+ 	 * and inittext sections are discarded */
+@@ -245,36 +259,55 @@ static void shrink_table(void)
+ 	table_cnt = pos;
+ }
+ 
+-static void read_map(const char *in)
++static void add_table_entry(struct sym_entry *sym)
+ {
+-	FILE *fp;
+-	struct sym_entry *sym;
+-	char *buf = NULL;
+-	size_t buflen = 0;
++	sym->seq = table_cnt;
+ 
+-	fp = fopen(in, "r");
+-	if (!fp) {
+-		perror(in);
+-		exit(1);
++	if (table_cnt >= table_size) {
++		table_size += 10000;
++		table = xrealloc(table, sizeof(*table) * table_size);
+ 	}
+ 
+-	while (!feof(fp)) {
+-		sym = read_symbol(fp, &buf, &buflen);
+-		if (!sym)
+-			continue;
++	table[table_cnt++] = sym;
++}
+ 
+-		sym->seq = table_cnt;
++static bool file_is_empty(const char *path)
++{
++	struct stat st;
+ 
+-		if (table_cnt >= table_size) {
+-			table_size += 10000;
+-			table = xrealloc(table, sizeof(*table) * table_size);
+-		}
+-
+-		table[table_cnt++] = sym;
++	if (stat(path, &st)) {
++		perror(path);
++		exit(EXIT_FAILURE);
+ 	}
+ 
+-	free(buf);
+-	fclose(fp);
++	return st.st_size == 0;
++}
++
++/*
++ * Read the symbols from vmlinux, writing System.map if asked to. The first
++ * link has no symbols yet: an empty file gives an empty table.
++ */
++static void read_elf(const char *path, FILE *sysmap_out)
++{
++	struct sysmap *map;
++	size_t i;
++
++	if (file_is_empty(path))
++		return;
++
++	map = sysmap_read(path);
++	if (sysmap_out)
++		sysmap_write(map, sysmap_out);
++
++	for (i = 0; i < map->nr_syms; i++) {
++		const struct sysmap_symbol *s = &map->syms[i];
++		struct sym_entry *sym = add_symbol(s->addr, s->type, s->name);
++
++		if (sym)
++			add_table_entry(sym);
++	}
++
++	sysmap_free(map);
+ }
+ 
+ static void output_label(const char *label)
+@@ -284,6 +317,40 @@ static void output_label(const char *label)
+ 	printf("%s:\n", label);
+ }
+ 
++static void write_bin(FILE *file, const void *data, size_t len)
++{
++	if (fwrite(data, 1, len, file) == len)
++		return;
++
++	perror("kallsyms: write");
++	exit(EXIT_FAILURE);
++}
++
++static void write_byte_bin(FILE *file, unsigned char byte)
++{
++	write_bin(file, &byte, 1);
++}
++
++static long bin_pos(FILE *file)
++{
++	const long pos = ftell(file);
++
++	if (pos < 0) {
++		perror("kallsyms: ftell");
++		exit(EXIT_FAILURE);
++	}
++
++	return pos;
++}
++
++static void write_incbin(const char *filename, long start, long end)
++{
++	if (start >= end)
++		return;
++
++	printf("\t.incbin \"%s\", %ld, %ld\n", filename, start, end - start);
++}
++
+ /* uncompress a compressed symbol. When this function is called, the best table
+  * might still be compressed itself, so the function needs to be recursive */
+ static int expand_symbol(const unsigned char *data, int len, char *result)
+@@ -317,7 +384,7 @@ static int compare_names(const void *a, const void *b)
+ 	const struct sym_entry *sa = *(const struct sym_entry **)a;
+ 	const struct sym_entry *sb = *(const struct sym_entry **)b;
+ 
+-	ret = strcmp(sym_name(sa), sym_name(sb));
++	ret = strcmp(sym_entry_name(sa), sym_entry_name(sb));
+ 	if (!ret) {
+ 		if (sa->addr > sb->addr)
+ 			return 1;
+@@ -336,11 +403,12 @@ static void sort_symbols_by_name(void)
+ 	qsort(table, table_cnt, sizeof(table[0]), compare_names);
+ }
+ 
+-static void write_src(void)
++static void write_src(FILE *out_bin_file, const char *out_bin_name)
+ {
+-	unsigned int i, k, off;
++	unsigned int i, off;
+ 	unsigned int best_idx[256];
+ 	unsigned int *markers, markers_cnt;
++	long bin_start;
+ 	char buf[KSYM_NAME_LEN];
+ 
+ 	printf("\t.section .rodata, \"a\"\n");
+@@ -355,6 +423,7 @@ static void write_src(void)
+ 	markers = xmalloc(sizeof(*markers) * markers_cnt);
+ 
+ 	output_label("kallsyms_names");
++	bin_start = bin_pos(out_bin_file);
+ 	off = 0;
+ 	for (i = 0; i < table_cnt; i++) {
+ 		if ((i & 0xFF) == 0)
+@@ -378,26 +447,24 @@ static void write_src(void)
+ 		/* Encode length with ULEB128. */
+ 		if (table[i]->len <= 0x7F) {
+ 			/* Most symbols use a single byte for the length. */
+-			printf("\t.byte 0x%02x", table[i]->len);
++			write_byte_bin(out_bin_file, table[i]->len);
+ 			off += table[i]->len + 1;
+ 		} else {
+ 			/* "Big" symbols use two bytes. */
+-			printf("\t.byte 0x%02x, 0x%02x",
+-				(table[i]->len & 0x7F) | 0x80,
+-				(table[i]->len >> 7) & 0x7F);
++			write_byte_bin(out_bin_file, (table[i]->len & 0x7F) | 0x80);
++			write_byte_bin(out_bin_file, (table[i]->len >> 7) & 0x7F);
+ 			off += table[i]->len + 2;
+ 		}
+-		for (k = 0; k < table[i]->len; k++)
+-			printf(", 0x%02x", table[i]->sym[k]);
++		write_bin(out_bin_file, table[i]->sym, table[i]->len);
+ 
+ 		/*
+ 		 * Now that we wrote out the compressed symbol name, restore the
+-		 * original name and print it in the comment.
++		 * original name for the comments below.
+ 		 */
+ 		expand_symbol(table[i]->sym, table[i]->len, buf);
+ 		strcpy((char *)table[i]->sym, buf);
+-		printf("\t/* %s */\n", table[i]->sym);
+ 	}
++	write_incbin(out_bin_name, bin_start, bin_pos(out_bin_file));
+ 	printf(".size kallsyms_names, . - kallsyms_names\n");
+ 	printf("\n");
+ 
+@@ -410,13 +477,15 @@ static void write_src(void)
+ 	free(markers);
+ 
+ 	output_label("kallsyms_token_table");
++	bin_start = bin_pos(out_bin_file);
+ 	off = 0;
+ 	for (i = 0; i < 256; i++) {
+ 		best_idx[i] = off;
+ 		expand_symbol(best_table[i], best_table_len[i], buf);
+-		printf("\t.asciz\t\"%s\"\n", buf);
++		write_bin(out_bin_file, buf, strlen(buf) + 1);
+ 		off += strlen(buf) + 1;
+ 	}
++	write_incbin(out_bin_name, bin_start, bin_pos(out_bin_file));
+ 	printf(".size kallsyms_token_table, . - kallsyms_token_table\n");
+ 	printf("\n");
+ 
+@@ -449,15 +518,25 @@ static void write_src(void)
+ 
+ 	sort_symbols_by_name();
+ 	output_label("kallsyms_seqs_of_names");
+-	for (i = 0; i < table_cnt; i++)
+-		printf("\t.byte 0x%02x, 0x%02x, 0x%02x\t/* %s */\n",
+-			(unsigned char)(table[i]->seq >> 16),
+-			(unsigned char)(table[i]->seq >> 8),
+-			(unsigned char)(table[i]->seq >> 0),
+-		       table[i]->sym);
++	bin_start = bin_pos(out_bin_file);
++	for (i = 0; i < table_cnt; i++) {
++		write_byte_bin(out_bin_file, table[i]->seq >> 16);
++		write_byte_bin(out_bin_file, table[i]->seq >> 8);
++		write_byte_bin(out_bin_file, table[i]->seq >> 0);
++	}
++	write_incbin(out_bin_name, bin_start, bin_pos(out_bin_file));
+ 	printf("\n");
+ }
+ 
++static unsigned int token_index(unsigned char first, unsigned char second)
++{
++	return first + (second << 8);
++}
++
++static unsigned int sym_token_index(const unsigned char *symbol, int first_idx)
++{
++	return token_index(symbol[first_idx], symbol[first_idx + 1]);
++}
+ 
+ /* table lookup compression functions */
+ 
+@@ -467,7 +546,7 @@ static void learn_symbol(const unsigned char *symbol, int len)
+ 	int i;
+ 
+ 	for (i = 0; i < len - 1; i++)
+-		token_profit[ symbol[i] + (symbol[i + 1] << 8) ]++;
++		token_profit[sym_token_index(symbol, i)]++;
+ }
+ 
+ /* decrease the count for all the possible tokens in a symbol */
+@@ -476,16 +555,76 @@ static void forget_symbol(const unsigned char *symbol, int len)
+ 	int i;
+ 
+ 	for (i = 0; i < len - 1; i++)
+-		token_profit[ symbol[i] + (symbol[i + 1] << 8) ]--;
++		token_profit[sym_token_index(symbol, i)]--;
++}
++
++static void token_add_symbol(unsigned int token_idx, unsigned int sym_idx)
++{
++	struct sym_arr *arr = &token_syms[token_idx];
++
++	/* Symbol indexes kept in sorted order, check for duplicate. */
++	if (sym_arr_last(arr) == sym_idx)
++		return;
++
++	sym_arr_add(arr, sym_idx);
++}
++
++static void symbol_index_all_tokens(const unsigned char *symbol, int len,
++				    unsigned int sym_idx)
++{
++	int i;
++
++	for (i = 0; i < len - 1; i++) {
++		const unsigned int token_idx = sym_token_index(symbol, i);
++
++		token_add_symbol(token_idx, sym_idx);
++	}
++}
++
++/*
++ * The symbol just got compressed. The only parts of the symbol that changed
++ * meaningfully are those containing the newly assigned compressed char, so
++ * index those.
++ */
++static void symbol_index_new_tokens(const unsigned char *symbol, int len,
++				    unsigned int sym_idx, int compressed_chr)
++{
++	int i;
++
++	for (i = 0; i < len - 1; i++) {
++		const unsigned int token_idx = sym_token_index(symbol, i);
++
++		if (symbol[i] == compressed_chr ||
++		    symbol[i + 1] == compressed_chr)
++			token_add_symbol(token_idx, sym_idx);
++	}
+ }
+ 
+-/* do the initial token count */
+ static void build_initial_token_table(void)
+ {
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < table_cnt; i++)
+ 		learn_symbol(table[i]->sym, table[i]->len);
++
++	/*
++	 * The initial occurrence counts tell us exactly how much memory should
++	 * be reserved for each token's symbol array.
++	 */
++	for (i = 0; i < ARRAY_SIZE(token_syms); i++) {
++		const int nr_syms = token_profit[i];
++
++		if (!nr_syms)
++			continue;
++
++		token_syms[i].cap = nr_syms;
++		token_syms[i].sym_indexes =
++			xmalloc(nr_syms * sizeof(unsigned int));
++	}
++
++	/* For every symbol, index every token -> symbol it is present in. */
++	for (i = 0; i < table_cnt; i++)
++		symbol_index_all_tokens(table[i]->sym, table[i]->len, i);
+ }
+ 
+ static unsigned char *find_token(unsigned char *str, int len,
+@@ -502,27 +641,30 @@ static unsigned char *find_token(unsigned char *str, int len,
+ 
+ /* replace a given token in all the valid symbols. Use the sampled symbols
+  * to update the counts */
+-static void compress_symbols(const unsigned char *str, int idx)
++static void compress_symbols(const unsigned char *str, int compressed_chr)
+ {
+-	unsigned int i, len, size;
++	const unsigned int token_idx = sym_token_index(str, 0);
++	struct sym_arr *arr = &token_syms[token_idx];
++	unsigned int sym_idx, j, len, size;
+ 	unsigned char *p1, *p2;
+ 
+-	for (i = 0; i < table_cnt; i++) {
++	/* Iterate through all symbols this token is found in and compress. */
++	for (j = 0; j < arr->cnt; j++) {
++		sym_idx = arr->sym_indexes[j];
+ 
+-		len = table[i]->len;
+-		p1 = table[i]->sym;
++		len = table[sym_idx]->len;
++		p1 = table[sym_idx]->sym;
+ 
+-		/* find the token on the symbol */
+ 		p2 = find_token(p1, len, str);
+ 		if (!p2) continue;
+ 
+ 		/* decrease the counts for this symbol's tokens */
+-		forget_symbol(table[i]->sym, len);
++		forget_symbol(table[sym_idx]->sym, len);
+ 
+ 		size = len;
+ 
+ 		do {
+-			*p2 = idx;
++			*p2 = compressed_chr;
+ 			p2++;
+ 			size -= (p2 - p1);
+ 			memmove(p2, p2 + 1, size);
+@@ -536,11 +678,14 @@ static void compress_symbols(const unsigned char *str, int idx)
+ 
+ 		} while (p2);
+ 
+-		table[i]->len = len;
++		table[sym_idx]->len = len;
+ 
+-		/* increase the counts for this symbol's new tokens */
+-		learn_symbol(table[i]->sym, len);
++		learn_symbol(table[sym_idx]->sym, len);
++		symbol_index_new_tokens(table[sym_idx]->sym, len, sym_idx,
++					compressed_chr);
+ 	}
++
++	sym_arr_free(arr); /* No symbol contains this token any more. */
+ }
+ 
+ /* search the token with the maximum profit */
+@@ -615,7 +760,7 @@ static void optimize_token_table(void)
+ /* guess for "linker script provide" symbol */
+ static int may_be_linker_script_provide_symbol(const struct sym_entry *se)
+ {
+-	const char *symbol = sym_name(se);
++	const char *symbol = sym_entry_name(se);
+ 	int len = se->len - 1;
+ 
+ 	if (len < 8)
+@@ -672,8 +817,8 @@ static int compare_symbols(const void *a, const void *b)
+ 		return wa - wb;
+ 
+ 	/* sort by the number of prefix underscores */
+-	wa = strspn(sym_name(sa), "_");
+-	wb = strspn(sym_name(sb), "_");
++	wa = strspn(sym_entry_name(sa), "_");
++	wb = strspn(sym_entry_name(sb), "_");
+ 	if (wa != wb)
+ 		return wa - wb;
+ 
+@@ -688,10 +833,14 @@ static void sort_symbols(void)
+ 
+ int main(int argc, char **argv)
+ {
++	const char *in, *sysmap = NULL, *out_bin_name;
++	FILE *sysmap_out = NULL, *out_bin_file;
++
+ 	while (1) {
+ 		static const struct option long_options[] = {
+ 			{"all-symbols",     no_argument, &all_symbols,     1},
+ 			{"pc-relative",     no_argument, &pc_relative,     1},
++			{"sysmap",    required_argument, NULL,           's'},
+ 			{},
+ 		};
+ 
+@@ -699,18 +848,54 @@ int main(int argc, char **argv)
+ 
+ 		if (c == -1)
+ 			break;
+-		if (c != 0)
++		if (c == 's')
++			sysmap = optarg;
++		else if (c != 0)
+ 			usage();
+ 	}
+ 
+-	if (optind >= argc)
++	if (optind + 2 != argc && !(sysmap && optind + 1 == argc))
+ 		usage();
+ 
+-	read_map(argv[optind]);
++	in = argv[optind];
++	if (sysmap) {
++		sysmap_out = fopen(sysmap, "w");
++		if (!sysmap_out) {
++			perror(sysmap);
++			exit(EXIT_FAILURE);
++		}
++	}
++
++	if (optind + 1 == argc) {
++		read_elf(in, sysmap_out);
++		if (fclose(sysmap_out)) {
++			perror(sysmap);
++			exit(EXIT_FAILURE);
++		}
++		return 0;
++	}
++
++	out_bin_name = argv[optind + 1];
++	out_bin_file = fopen(out_bin_name, "w");
++	if (!out_bin_file) {
++		perror(out_bin_name);
++		exit(EXIT_FAILURE);
++	}
++
++	read_elf(in, sysmap_out);
++	if (sysmap_out && fclose(sysmap_out)) {
++		perror(sysmap);
++		exit(EXIT_FAILURE);
++	}
+ 	shrink_table();
+ 	sort_symbols();
+ 	optimize_token_table();
+-	write_src();
++	write_src(out_bin_file, out_bin_name);
++
++	if (fclose(out_bin_file)) {
++		perror(out_bin_name);
++		exit(EXIT_FAILURE);
++	}
+ 
+ 	return 0;
+ }
+diff --git b/scripts/kallsyms.h b/scripts/kallsyms.h
+new file mode 100644
+index 0000000..1209697
+--- /dev/null
++++ b/scripts/kallsyms.h
+@@ -0,0 +1,44 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef KALLSYMS_H
++#define KALLSYMS_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdio.h>
++#include <string.h>
++
++#include <array_size.h>
++
++static inline bool string_starts_with(const char *s, const char *prefix)
++{
++	return strncmp(s, prefix, strlen(prefix)) == 0;
++}
++
++static inline bool string_ends_with(const char *s, const char *suffix)
++{
++	size_t len = strlen(s), suffix_len = strlen(suffix);
++
++	return len >= suffix_len && strcmp(s + len - suffix_len, suffix) == 0;
++}
++
++/* A symbol as nm lists it. */
++struct sysmap_symbol {
++	unsigned long long addr;
++	const char *name;
++	char type;
++};
++
++/* The symbols of an ELF file that System.map lists, in its order. */
++struct sysmap {
++	struct sysmap_symbol *syms;
++	size_t nr_syms;
++	int addr_width;		/* hex digits of an address */
++	void *file;		/* the mapping the names point into */
++	size_t file_size;
++};
++
++struct sysmap *sysmap_read(const char *path);
++void sysmap_write(const struct sysmap *map, FILE *out);
++void sysmap_free(struct sysmap *map);
++
++#endif /* KALLSYMS_H */
+diff --git a/scripts/link-vmlinux.sh b/scripts/link-vmlinux.sh
+index ab0b812..7e9d067 100755
+--- a/scripts/link-vmlinux.sh
++++ b/scripts/link-vmlinux.sh
+@@ -32,6 +32,7 @@ LD="$1"
+ KBUILD_LDFLAGS="$2"
+ LDFLAGS_vmlinux="$3"
+ VMLINUX="$4"
++LDFLAGS_vmlinux_relocs="$5"
+ 
+ is_enabled() {
+ 	grep -q "^$1=y" include/config/auto.conf
+@@ -96,6 +97,11 @@ vmlinux_link()
+ 		ldflags="${ldflags} ${wl}--strip-debug"
+ 	fi
+ 
++	# Only the final link actually requires the relocations.
++	if [ "${output}" = "${VMLINUX}" ] && [ -n "${LDFLAGS_vmlinux_relocs}" ]; then
++		ldflags="${ldflags} ${wl}${LDFLAGS_vmlinux_relocs}"
++	fi
++
+ 	if [ -n "${generate_map}" ];  then
+ 		ldflags="${ldflags} ${wl}-Map=vmlinux.map"
+ 	fi
+@@ -118,11 +124,15 @@ kallsymso_changed()
+ 	! cmp -s "${kallsymso_prev}.sym" "${kallsymso}.sym"
+ }
+ 
+-# Create ${2}.o file with all symbols from the ${1} object file
++# Create ${2}.o with the kallsyms tables for ${1} (the vmlinux, or an empty
++# listing for the first pass); list the symbols used in ${3} if given.
+ kallsyms()
+ {
+ 	local kallsymopt;
+ 
++	if [ -n "${3:-}" ]; then
++		kallsymopt="--sysmap=${3}"
++	fi
+ 	if is_enabled CONFIG_KALLSYMS_ALL; then
+ 		kallsymopt="${kallsymopt} --all-symbols"
+ 	fi
+@@ -132,7 +142,7 @@ kallsyms()
+ 	fi
+ 
+ 	info KSYMS "${2}.S"
+-	scripts/kallsyms ${kallsymopt} "${1}" > "${2}.S"
++	scripts/kallsyms ${kallsymopt} "${1}" "${2}.bin" > "${2}.S"
+ 
+ 	info AS "${2}.o"
+ 	${CC} ${NOSTDINC_FLAGS} ${LINUXINCLUDE} ${KBUILD_CPPFLAGS} \
+@@ -145,23 +155,20 @@ kallsyms()
+ # Perform kallsyms for the given temporary vmlinux.
+ sysmap_and_kallsyms()
+ {
+-	mksysmap "${1}" "${1}.syms"
+-	kallsyms "${1}.syms" "${1}.kallsyms"
+-
++	kallsyms "${1}" "${1}.kallsyms" "${1}.syms"
+ 	kallsyms_sysmap=${1}.syms
+ }
+ 
+ # Create map file with all symbols from ${1}
+-# See mksymap for additional details
+ mksysmap()
+ {
+-	info NM ${2}
+-	${NM} -n "${1}" | sed -f "${srctree}/scripts/mksysmap" > "${2}"
++	info SYSMAP ${2}
++	scripts/kallsyms --sysmap="${2}" "${1}"
+ }
+ 
+ sorttable()
+ {
+-	${NM} -S ${1} > .tmp_vmlinux.nm-sort
++	${NM} -p -S ${1} > .tmp_vmlinux.nm-sort
+ 	${objtree}/scripts/sorttable -s .tmp_vmlinux.nm-sort ${1}
+ }
+ 
+diff --git a/scripts/mksysmap a/scripts/mksysmap
+deleted file mode 100755
+index c4531ea..0000000
+--- a/scripts/mksysmap
++++ /dev/null
+@@ -1,94 +0,0 @@
+-#!/bin/sed -f
+-# SPDX-License-Identifier: GPL-2.0-only
+-#
+-# sed script to filter out symbols that are not needed for System.map,
+-# or not suitable for kallsyms. The input should be 'nm -n <file>'.
+-#
+-# System.map is used by module-init tools and some debugging
+-# tools to retrieve the actual addresses of symbols in the kernel.
+-#
+-# readprofile starts reading symbols when _stext is found, and
+-# continue until it finds a symbol which is not either of 'T', 't',
+-# 'W' or 'w'.
+-#
+-# ---------------------------------------------------------------------------
+-# Ignored symbol types
+-#
+-
+-# a: local absolute symbols
+-# N: debugging symbols
+-# U: undefined global symbols
+-# w: local weak symbols
+-/ [aNUw] /d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored prefixes
+-#  (do not forget a space before each pattern)
+-
+-# local symbols for ARM, MIPS, etc.
+-/ \$/d
+-
+-# local labels, .LBB, .Ltmpxxx, .L__unnamed_xx, .LASANPC, etc.
+-/ \.L/d
+-
+-# arm64 EFI stub namespace
+-/ __efistub_/d
+-
+-# arm64 local symbols in PIE namespace
+-/ __pi_\\$/d
+-/ __pi_\.L/d
+-
+-# arm64 local symbols in non-VHE KVM namespace
+-/ __kvm_nvhe_\$/d
+-/ __kvm_nvhe_\.L/d
+-
+-# lld arm/aarch64/mips thunks
+-/ __[[:alnum:]]*Thunk_/d
+-
+-# CFI type identifiers
+-/ __kcfi_typeid_/d
+-/ __kvm_nvhe___kcfi_typeid_/d
+-/ __pi___kcfi_typeid_/d
+-
+-# CRC from modversions
+-/ __crc_/d
+-
+-# EXPORT_SYMBOL (symbol name)
+-/ __kstrtab_/d
+-
+-# EXPORT_SYMBOL (namespace)
+-/ __kstrtabns_/d
+-
+-# MODULE_DEVICE_TABLE (symbol name)
+-/ __mod_device_table__/d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored suffixes
+-#  (do not forget '$' after each pattern)
+-
+-# arm
+-/_from_arm$/d
+-/_from_thumb$/d
+-/_veneer$/d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored symbols (exact match)
+-#  (do not forget a space before and '$' after each pattern)
+-
+-# for LoongArch?
+-/ L0$/d
+-
+-# ppc
+-/ _SDA_BASE_$/d
+-/ _SDA2_BASE_$/d
+-
+-# MODULE_INFO()
+-/ __UNIQUE_ID_modinfo[0-9]*$/d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored patterns
+-#  (symbols that contain the pattern are ignored)
+-
+-# ppc stub
+-/\.long_branch\./d
+-/\.plt_branch\./d
+diff --git a/scripts/mod/.gitignore b/scripts/mod/.gitignore
+index 0465ec3..620ab43 100644
+--- a/scripts/mod/.gitignore
++++ b/scripts/mod/.gitignore
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ /devicetable-offsets.h
++/module-offsets.h
+ /elfconfig.h
+ /mk_elfconfig
+ /modpost
+diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
+index c729bc9..fdd4861 100644
+--- a/scripts/mod/Makefile
++++ b/scripts/mod/Makefile
+@@ -5,6 +5,7 @@ hostprogs-always-y	+= modpost mk_elfconfig
+ always-y		+= empty.o
+ 
+ modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
++HOSTLDLIBS_modpost := -lpthread
+ 
+ devicetable-offsets-file := devicetable-offsets.h
+ 
+@@ -13,10 +14,18 @@ $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+ 
+ targets += $(devicetable-offsets-file) devicetable-offsets.s
+ 
++module-offsets-file := module-offsets.h
++
++$(obj)/$(module-offsets-file): $(obj)/module-offsets.s FORCE
++	$(call filechk,offsets,__MODULE_OFFSETS_H__)
++
++targets += $(module-offsets-file) module-offsets.s
++
+ # dependencies on generated files need to be listed explicitly
+ 
+ $(obj)/modpost.o $(obj)/file2alias.o $(obj)/sumversion.o $(obj)/symsearch.o: $(obj)/elfconfig.h
+ $(obj)/file2alias.o: $(obj)/$(devicetable-offsets-file)
++$(obj)/modpost.o: $(obj)/$(module-offsets-file)
+ 
+ quiet_cmd_elfconfig = MKELF   $@
+       cmd_elfconfig = $(obj)/mk_elfconfig < $< > $@
+diff --git a/scripts/mod/modpost.c b/scripts/mod/modpost.c
+index 75374c6..882169e 100644
+--- a/scripts/mod/modpost.c
++++ b/scripts/mod/modpost.c
+@@ -16,6 +16,7 @@
+ #include <fnmatch.h>
+ #include <stdio.h>
+ #include <ctype.h>
++#include <pthread.h>
+ #include <string.h>
+ #include <limits.h>
+ #include <stdbool.h>
+@@ -26,6 +27,7 @@
+ #include <list.h>
+ #include <xalloc.h>
+ #include "modpost.h"
++#include "module-offsets.h"
+ #include "../../include/linux/license.h"
+ 
+ #define MODULE_NS_PREFIX "module:"
+@@ -1155,12 +1157,67 @@ static void check_export_symbol(struct module *mod, struct elf_info *elf,
+ 			 name);
+ }
+ 
++/*
++ * mismatch_cache[section index] ->
++ *   0 - uncached.
++ *  -1 - no mismatch.
++ *  >0 - mismatch index + 1.
++ */
++static int *mismatch_cache;
++
++static void init_mismatch_cache(unsigned int num_sections)
++{
++	mismatch_cache = xcalloc(num_sections, sizeof(*mismatch_cache));
++}
++
++static void reset_mismatch_cache(unsigned int num_sections)
++{
++	memset(mismatch_cache, 0, num_sections * sizeof(*mismatch_cache));
++}
++
++static void free_mismatch_cache(void)
++{
++	free(mismatch_cache);
++	mismatch_cache = NULL;
++}
++
++static const struct sectioncheck
++*cache_mismatch(unsigned int secndx, const struct sectioncheck *mismatch)
++{
++	if (!mismatch) {
++		mismatch_cache[secndx] = -1;
++		return NULL;
++	}
++
++	mismatch_cache[secndx] = (mismatch - sectioncheck) + 1;
++	return mismatch;
++}
++
++static const struct sectioncheck *get_section_mismatch(const char *fromsec,
++		const struct elf_info *elf, unsigned int secndx)
++{
++	int cached;
++
++	if (secndx >= elf->num_sections)
++		return section_mismatch(fromsec, sec_name(elf, secndx));
++
++	cached = mismatch_cache[secndx];
++	if (cached < 0)
++		return NULL;
++	if (cached > 0)
++		return &sectioncheck[cached - 1];
++
++	return cache_mismatch(secndx,
++			      section_mismatch(fromsec, sec_name(elf, secndx)));
++}
++
+ static void check_section_mismatch(struct module *mod, struct elf_info *elf,
+ 				   Elf_Sym *sym,
+ 				   unsigned int fsecndx, const char *fromsec,
+ 				   Elf_Addr faddr, Elf_Addr taddr)
+ {
+-	const char *tosec = sec_name(elf, get_secindex(elf, sym));
++	const unsigned int to_secndx = get_secindex(elf, sym);
++	const char *tosec = sec_name(elf, to_secndx);
+ 	const struct sectioncheck *mismatch;
+ 
+ 	if (module_enabled && elf->export_symbol_secndx == fsecndx) {
+@@ -1168,7 +1225,7 @@ static void check_section_mismatch(struct module *mod, struct elf_info *elf,
+ 		return;
+ 	}
+ 
+-	mismatch = section_mismatch(fromsec, tosec);
++	mismatch = get_section_mismatch(fromsec, elf, to_secndx);
+ 	if (!mismatch)
+ 		return;
+ 
+@@ -1445,6 +1502,8 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
+ {
+ 	int i;
+ 
++	init_mismatch_cache(elf->num_sections);
++
+ 	/* Walk through all sections */
+ 	for (i = 0; i < elf->num_sections; i++) {
+ 		Elf_Shdr *sechdr = &elf->sechdrs[i];
+@@ -1461,6 +1520,9 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
+ 			if (match(secname, section_white_list))
+ 				continue;
+ 
++			/* Reset cache per-section. */
++			reset_mismatch_cache(elf->num_sections);
++
+ 			start = sym_get_data_by_offset(elf, i, 0);
+ 			stop = start + sechdr->sh_size;
+ 
+@@ -1472,6 +1534,8 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
+ 					    start, stop);
+ 		}
+ 	}
++
++	free_mismatch_cache();
+ }
+ 
+ static char *remove_dot(char *s)
+@@ -1654,8 +1718,7 @@ static void read_symbols(const char *modname)
+ 	if (!mod->is_vmlinux) {
+ 		version = get_modinfo(&info, "version");
+ 		if (version || all_versions)
+-			get_src_version(mod->name, mod->srcversion,
+-					sizeof(mod->srcversion) - 1);
++			mod->need_srcversion = true;
+ 	}
+ 
+ 	parse_elf_finish(&info);
+@@ -1673,6 +1736,72 @@ static void read_symbols(const char *modname)
+ 	}
+ }
+ 
++static struct module **srcversion_mods;
++static unsigned int nr_srcversion_mods, next_srcversion_mod;
++
++static bool get_next_src_version(void)
++{
++	struct module *mod;
++	unsigned int idx;
++
++	idx = __sync_fetch_and_add(&next_srcversion_mod, 1);
++	if (idx >= nr_srcversion_mods)
++		return false;
++	mod = srcversion_mods[idx];
++
++	get_src_version(mod->name, mod->srcversion,
++			sizeof(mod->srcversion) - 1);
++	return true;
++}
++
++static void *srcversion_worker(void *arg)
++{
++	while (get_next_src_version())
++		;
++
++	return NULL;
++}
++
++static void hash_srcversions(void)
++{
++	unsigned int i = 0;
++	struct module *mod;
++	pthread_t *threads;
++	long nr_threads;
++
++	list_for_each_entry(mod, &modules, list)
++		if (mod->need_srcversion)
++			nr_srcversion_mods++;
++
++	if (!nr_srcversion_mods)
++		return;
++
++	srcversion_mods = xmalloc(nr_srcversion_mods * sizeof(*srcversion_mods));
++
++	list_for_each_entry(mod, &modules, list)
++		if (mod->need_srcversion)
++			srcversion_mods[i++] = mod;
++
++	nr_threads = sysconf(_SC_NPROCESSORS_ONLN);
++	nr_threads = nr_threads < 1 ? 1 : nr_threads; /* On error assume 1. */
++	if (nr_threads > nr_srcversion_mods)
++		nr_threads = nr_srcversion_mods;
++
++	sumversion_init();
++	threads = xmalloc(nr_threads * sizeof(*threads));
++	for (i = 0; i < nr_threads; i++) {
++		if (pthread_create(&threads[i], NULL, srcversion_worker, NULL)) {
++			perror("pthread_create");
++			exit(1);
++		}
++	}
++	for (i = 0; i < nr_threads; i++)
++		pthread_join(threads[i], NULL);
++
++	free(threads);
++	free(srcversion_mods);
++}
++
+ static void read_symbols_from_files(const char *filename)
+ {
+ 	FILE *in = stdin;
+@@ -1858,39 +1987,6 @@ static void check_modname_len(struct module *mod)
+ 		mod_error(mod, "module name is too long\n");
+ }
+ 
+-/**
+- * Header for the generated file
+- **/
+-static void add_header(struct buffer *b, struct module *mod)
+-{
+-	buf_printf(b, "#include <linux/module.h>\n");
+-	buf_printf(b, "#include <linux/export-internal.h>\n");
+-	buf_printf(b, "#include <linux/compiler.h>\n");
+-	buf_printf(b, "\n");
+-	buf_printf(b, "MODULE_INFO(name, KBUILD_MODNAME);\n");
+-	buf_printf(b, "\n");
+-	buf_printf(b, "__visible struct module __this_module\n");
+-	buf_printf(b, "__section(\".gnu.linkonce.this_module\") = {\n");
+-	buf_printf(b, "\t.name = KBUILD_MODNAME,\n");
+-	if (mod->has_init)
+-		buf_printf(b, "\t.init = init_module,\n");
+-	if (mod->has_cleanup)
+-		buf_printf(b, "#ifdef CONFIG_MODULE_UNLOAD\n"
+-			      "\t.exit = cleanup_module,\n"
+-			      "#endif\n");
+-	buf_printf(b, "\t.arch = MODULE_ARCH_INIT,\n");
+-	buf_printf(b, "};\n");
+-
+-	if (!external_module)
+-		buf_printf(b, "\nMODULE_INFO(intree, \"Y\");\n");
+-
+-	if (strstarts(mod->name, "drivers/staging"))
+-		buf_printf(b, "\nMODULE_INFO(staging, \"Y\");\n");
+-
+-	if (strstarts(mod->name, "tools/testing"))
+-		buf_printf(b, "\nMODULE_INFO(test, \"Y\");\n");
+-}
+-
+ static void add_exported_symbols(struct buffer *buf, struct module *mod)
+ {
+ 	struct symbol *sym;
+@@ -1928,123 +2024,6 @@ static void add_exported_symbols(struct buffer *buf, struct module *mod)
+ 	}
+ }
+ 
+-/**
+- * Record CRCs for unresolved symbols, supporting long names
+- */
+-static void add_extended_versions(struct buffer *b, struct module *mod)
+-{
+-	struct symbol *s;
+-
+-	if (!extended_modversions)
+-		return;
+-
+-	buf_printf(b, "\n");
+-	buf_printf(b, "static const u32 ____version_ext_crcs[]\n");
+-	buf_printf(b, "__used __section(\"__version_ext_crcs\") = {\n");
+-	list_for_each_entry(s, &mod->unresolved_symbols, list) {
+-		if (!s->module)
+-			continue;
+-		if (!s->crc_valid) {
+-			mod_warn(mod, "symbol '%s' has no CRC!\n", s->name);
+-			continue;
+-		}
+-		buf_printf(b, "\t0x%08x,\n", s->crc);
+-	}
+-	buf_printf(b, "};\n");
+-
+-	buf_printf(b, "static const char ____version_ext_names[]\n");
+-	buf_printf(b, "__used __section(\"__version_ext_names\") =\n");
+-	list_for_each_entry(s, &mod->unresolved_symbols, list) {
+-		if (!s->module)
+-			continue;
+-		if (!s->crc_valid)
+-			/*
+-			 * We already warned on this when producing the crc
+-			 * table.
+-			 * We need to skip its name too, as the indexes in
+-			 * both tables need to align.
+-			 */
+-			continue;
+-		buf_printf(b, "\t\"%s\\0\"\n", s->name);
+-	}
+-	buf_printf(b, ";\n");
+-}
+-
+-/**
+- * Record CRCs for unresolved symbols
+- **/
+-static void add_versions(struct buffer *b, struct module *mod)
+-{
+-	struct symbol *s;
+-
+-	if (!basic_modversions)
+-		return;
+-
+-	buf_printf(b, "\n");
+-	buf_printf(b, "static const struct modversion_info ____versions[]\n");
+-	buf_printf(b, "__used __section(\"__versions\") = {\n");
+-
+-	list_for_each_entry(s, &mod->unresolved_symbols, list) {
+-		if (!s->module)
+-			continue;
+-		if (!s->crc_valid) {
+-			mod_warn(mod, "symbol '%s' has no CRC!\n", s->name);
+-			continue;
+-		}
+-		if (strlen(s->name) >= MODULE_NAME_LEN) {
+-			if (extended_modversions) {
+-				/* this symbol will only be in the extended info */
+-				continue;
+-			} else {
+-				mod_error(mod, "too long symbol '%s'\n", s->name);
+-				break;
+-			}
+-		}
+-		buf_printf(b, "\t{ 0x%08x, \"%s\" },\n",
+-			   s->crc, s->name);
+-	}
+-
+-	buf_printf(b, "};\n");
+-}
+-
+-static void add_depends(struct buffer *b, struct module *mod)
+-{
+-	struct symbol *s;
+-	int first = 1;
+-
+-	/* Clear ->seen flag of modules that own symbols needed by this. */
+-	list_for_each_entry(s, &mod->unresolved_symbols, list) {
+-		if (s->module)
+-			s->module->seen = s->module->is_vmlinux;
+-	}
+-
+-	buf_printf(b, "\n");
+-	buf_printf(b, "MODULE_INFO(depends, \"");
+-	list_for_each_entry(s, &mod->unresolved_symbols, list) {
+-		const char *p;
+-		if (!s->module)
+-			continue;
+-
+-		if (s->module->seen)
+-			continue;
+-
+-		s->module->seen = true;
+-		p = get_basename(s->module->name);
+-		buf_printf(b, "%s%s", first ? "" : ",", p);
+-		first = 0;
+-	}
+-	buf_printf(b, "\");\n");
+-}
+-
+-static void add_srcversion(struct buffer *b, struct module *mod)
+-{
+-	if (mod->srcversion[0]) {
+-		buf_printf(b, "\n");
+-		buf_printf(b, "MODULE_INFO(srcversion, \"%s\");\n",
+-			   mod->srcversion);
+-	}
+-}
+-
+ static void write_buf(struct buffer *b, const char *fname)
+ {
+ 	FILE *file;
+@@ -2129,30 +2108,465 @@ static void write_vmlinux_export_c_file(struct module *mod)
+ 	free(buf.p);
+ }
+ 
+-/* do sanity checks, and generate *.mod.c file */
+-static void write_mod_c_file(struct module *mod)
++#if MOD_SIZEOF_LONG == 8
++#define MOD_PTR_DIRECTIVE	".quad"
++#else
++#define MOD_PTR_DIRECTIVE	".long"
++#endif
++
++/* See KSYM_FUNC() in include/linux/export-internal.h. */
++#if MOD_FUNC_PLABEL
++#define MOD_FUNC_PREFIX		"P%"
++#else
++#define MOD_FUNC_PREFIX		""
++#endif
++
++/* See __KSYM_ALIGN in include/linux/export-internal.h. */
++#if MOD_PREL32_RELOCATIONS || MOD_SIZEOF_LONG == 4
++#define KSYM_ALIGN		4
++#else
++#define KSYM_ALIGN		8
++#endif
++
++/* Append the body of an assembler string literal, escaped as needed. */
++static void buf_escaped(struct buffer *buf, const char *str)
++{
++	unsigned char chr;
++
++	while ((chr = *str++)) {
++		if (chr == '"' || chr == '\\')
++			buf_printf(buf, "\\%c", chr);
++		else if (isprint(chr))
++			buf_printf(buf, "%c", chr);
++		else
++			buf_printf(buf, "\\%03o", chr);
++	}
++}
++
++static void buf_asciz(struct buffer *buf, const char *str)
++{
++	buf_printf(buf, "\t.asciz \"");
++	buf_escaped(buf, str);
++	buf_printf(buf, "\"\n");
++}
++
++/* The equivalent of MODULE_INFO(tag, info). */
++static void add_asm_modinfo(struct buffer *buf, const char *tag,
++			    const char *info)
++{
++	buf_printf(buf, "\t.section .modinfo,\"a\",%%progbits\n");
++	buf_printf(buf, "\t.asciz \"%s=", tag);
++	buf_escaped(buf, info);
++	buf_printf(buf, "\"\n");
++}
++
++/* See __KSYM_REF() in include/linux/export-internal.h. */
++static void add_asm_ksym_ref(struct buffer *buf, const char *prefix,
++			     const char *sym)
++{
++#if MOD_PREL32_RELOCATIONS
++	buf_printf(buf, "\t.long %s%s - .\n", prefix, sym);
++#else
++	buf_printf(buf, "\t" MOD_PTR_DIRECTIVE " %s%s\n", prefix, sym);
++#endif
++}
++
++/* The name and namespace strings a ksymtab entry refers to. */
++static void add_asm_kstrtab(struct buffer *buf, const struct symbol *sym)
++{
++	buf_printf(buf, "\t.section \"__ksymtab_strings\",\"aMS\",%%progbits,1\n");
++	buf_printf(buf, "__kstrtab_%s:\n", sym->name);
++	buf_asciz(buf, sym->name);
++	buf_printf(buf, "__kstrtabns_%s:\n", sym->name);
++	buf_asciz(buf, sym->namespace);
++	buf_printf(buf, "\t.previous\n");
++}
++
++/* The equivalent of SYMBOL_FLAGS(). */
++static void add_asm_kflagstab(struct buffer *buf, const struct symbol *sym)
++{
++	buf_printf(buf, "\t.section \"___kflagstab+%s\", \"a\"\n", sym->name);
++	buf_printf(buf, "__flags_%s:\n", sym->name);
++	buf_printf(buf, "\t.byte 0x%02x\n", get_symbol_flags(sym));
++	buf_printf(buf, "\t.previous\n");
++}
++
++/* The equivalent of KSYMTAB_FUNC()/KSYMTAB_DATA(). */
++static void add_asm_ksymtab(struct buffer *buf, const struct symbol *sym)
++{
++	const char *name = sym->name;
++
++	add_asm_kstrtab(buf, sym);
++
++	buf_printf(buf, "\t.section \"___ksymtab+%s\", \"a\"\n", name);
++	buf_printf(buf, "\t.balign %d\n", KSYM_ALIGN);
++	buf_printf(buf, "__ksymtab_%s:\n", name);
++	add_asm_ksym_ref(buf, sym->is_func ? MOD_FUNC_PREFIX : "", name);
++	add_asm_ksym_ref(buf, "__kstrtab_", name);
++	add_asm_ksym_ref(buf, "__kstrtabns_", name);
++	buf_printf(buf, "\t.previous\n");
++
++	add_asm_kflagstab(buf, sym);
++}
++
++/* The equivalent of SYMBOL_CRC(). */
++static void add_asm_crc(struct buffer *buf, const struct symbol *sym)
++{
++	buf_printf(buf, "\t.section \"___kcrctab+%s\",\"a\"\n", sym->name);
++	buf_printf(buf, "\t.balign 4\n");
++	buf_printf(buf, "__crc_%s:\n", sym->name);
++	buf_printf(buf, "\t.long 0x%08x\n", sym->crc);
++	buf_printf(buf, "\t.previous\n");
++}
++
++static bool export_is_kept(const struct symbol *sym)
++{
++	return !trim_unused_exports || sym->used;
++}
++
++/* Record the CRCs of the exported symbols. */
++static void add_asm_crcs(struct buffer *buf, struct module *mod)
++{
++	struct symbol *sym;
++
++	list_for_each_entry(sym, &mod->exported_symbols, list) {
++		if (!export_is_kept(sym))
++			continue;
++
++		if (!sym->crc_valid)
++			mod_warn(mod, "EXPORT symbol '%s' version generation failed, symbol will not be versioned.\n"
++				 "Is '%s' prototyped in <asm/asm-prototypes.h>?\n",
++				 sym->name, sym->name);
++		add_asm_crc(buf, sym);
++	}
++}
++
++static void add_asm_exported_symbols(struct buffer *buf, struct module *mod)
++{
++	struct symbol *sym;
++
++	list_for_each_entry(sym, &mod->exported_symbols, list) {
++		if (export_is_kept(sym))
++			add_asm_ksymtab(buf, sym);
++	}
++
++	if (modversions)
++		add_asm_crcs(buf, mod);
++}
++
++/* Zero fill up to the offset. */
++static void asm_skip_to(struct buffer *buf, unsigned int *pos,
++			unsigned int offset)
++{
++	if (offset > *pos)
++		buf_printf(buf, "\t.skip %u\n", offset - *pos);
++
++	*pos = offset;
++}
++
++/* A pointer field of __this_module: its offset and an assembler expression. */
++struct this_module_field {
++	unsigned int offset;
++	const char *value;
++};
++
++#define THIS_MODULE_MAX_FIELDS	4
++
++static int compare_field_offsets(const void *ptr_a, const void *ptr_b)
++{
++	const struct this_module_field *field_a = ptr_a, *field_b = ptr_b;
++
++	if (field_a->offset != field_b->offset)
++		return field_a->offset < field_b->offset ? -1 : 1;
++
++	return 0;
++}
++
++/* The fields of __this_module which are not zero, in offset order. */
++static unsigned int get_this_module_fields(const struct module *mod,
++					   struct this_module_field *fields)
++{
++	unsigned int nr_fields = 0;
++
++	if (mod->has_init)
++		fields[nr_fields++] = (struct this_module_field)
++			{ MOD_OFF_module_init, MOD_FUNC_PREFIX "init_module" };
++#ifdef MOD_OFF_module_exit
++	if (mod->has_cleanup)
++		fields[nr_fields++] = (struct this_module_field)
++			{ MOD_OFF_module_exit, MOD_FUNC_PREFIX "cleanup_module" };
++#endif
++#ifdef MOD_OFF_module_arch_fixup_start
++	fields[nr_fields++] = (struct this_module_field)
++		{ MOD_OFF_module_arch_fixup_start, "__start_fixup" };
++	fields[nr_fields++] = (struct this_module_field)
++		{ MOD_OFF_module_arch_fixup_end, "__stop_fixup" };
++#endif
++	qsort(fields, nr_fields, sizeof(*fields), compare_field_offsets);
++
++	return nr_fields;
++}
++
++/*
++ * The equivalent of:
++ *
++ *	__visible struct module __this_module __section(".gnu.linkonce.this_module")
++ *		= { .name = KBUILD_MODNAME, .init = init_module, .exit = cleanup_module,
++ *		    .arch = MODULE_ARCH_INIT };
++ *
++ * Everything not listed is zero, MODULE_ARCH_INIT included, except on m68k.
++ */
++static void add_asm_this_module(struct buffer *buf, const struct module *mod,
++				const char *modname)
++{
++	struct this_module_field fields[THIS_MODULE_MAX_FIELDS];
++	const unsigned int nr_fields = get_this_module_fields(mod, fields);
++	unsigned int pos = 0, i;
++
++	buf_printf(buf, "\n\t.section .gnu.linkonce.this_module,\"aw\",%%progbits\n");
++	buf_printf(buf, "\t.balign %d\n", MOD_ALIGNOF_struct_module);
++	buf_printf(buf, "\t.globl __this_module\n");
++	buf_printf(buf, "\t.type __this_module, %%object\n");
++	buf_printf(buf, "\t.size __this_module, %d\n", MOD_SIZEOF_struct_module);
++	buf_printf(buf, "__this_module:\n");
++
++	asm_skip_to(buf, &pos, MOD_OFF_module_name);
++	buf_printf(buf, "\t.ascii \"%s\"\n", modname);
++	pos += strlen(modname);
++
++	for (i = 0; i < nr_fields; i++) {
++		asm_skip_to(buf, &pos, fields[i].offset);
++		buf_printf(buf, "\t" MOD_PTR_DIRECTIVE " %s\n", fields[i].value);
++		pos += MOD_SIZEOF_LONG;
++	}
++
++	asm_skip_to(buf, &pos, MOD_SIZEOF_struct_module);
++}
++
++/*
++ * An unresolved symbol without a module is not versioned; one without a CRC
++ * cannot be, so warn about it.
++ */
++static bool skip_unversioned(struct module *mod, const struct symbol *sym)
++{
++	if (!sym->module)
++		return true;
++	if (sym->crc_valid)
++		return false;
++
++	mod_warn(mod, "symbol '%s' has no CRC!\n", sym->name);
++	return true;
++}
++
++/* One struct modversion_info: the CRC, then the name padded to the end. */
++static void add_asm_version(struct buffer *buf, const struct symbol *sym)
++{
++	buf_printf(buf, "\t" MOD_PTR_DIRECTIVE " 0x%08x\n", sym->crc);
++	buf_printf(buf, "\t.ascii \"%s\"\n", sym->name);
++	buf_printf(buf, "\t.skip %zu\n", MOD_SIZEOF_struct_modversion_info -
++		   MOD_OFF_modversion_info_name - strlen(sym->name));
++}
++
++/*
++ * The equivalent of:
++ *
++ *	static const struct modversion_info ____versions[]
++ *	__used __section("__versions") = { { crc, "name" }, ... };
++ *
++ * for unresolved symbols.
++ */
++static void add_asm_versions(struct buffer *buf, struct module *mod)
++{
++	struct symbol *sym;
++
++	if (!basic_modversions)
++		return;
++
++	buf_printf(buf, "\n\t.section __versions,\"a\",%%progbits\n");
++	buf_printf(buf, "\t.balign %d\n", MOD_ALIGNOF_struct_modversion_info);
++	list_for_each_entry(sym, &mod->unresolved_symbols, list) {
++		if (skip_unversioned(mod, sym))
++			continue;
++
++		if (strlen(sym->name) >= MOD_NAME_LEN) {
++			/* Only the extended table can hold it. */
++			if (extended_modversions)
++				continue;
++
++			mod_error(mod, "too long symbol '%s'\n", sym->name);
++			break;
++		}
++
++		add_asm_version(buf, sym);
++	}
++}
++
++static void add_asm_version_ext_crcs(struct buffer *buf, struct module *mod)
++{
++	struct symbol *sym;
++
++	buf_printf(buf, "\n\t.section __version_ext_crcs,\"a\",%%progbits\n");
++	buf_printf(buf, "\t.balign 4\n");
++	list_for_each_entry(sym, &mod->unresolved_symbols, list) {
++		if (skip_unversioned(mod, sym))
++			continue;
++
++		buf_printf(buf, "\t.long 0x%08x\n", sym->crc);
++	}
++}
++
++/*
++ * A symbol without a CRC was warned about with the CRCs, and is skipped here
++ * too so that the names line up with them.
++ */
++static void add_asm_version_ext_names(struct buffer *buf, struct module *mod)
++{
++	struct symbol *sym;
++
++	buf_printf(buf, "\t.section __version_ext_names,\"a\",%%progbits\n");
++	list_for_each_entry(sym, &mod->unresolved_symbols, list) {
++		if (!sym->module || !sym->crc_valid)
++			continue;
++
++		buf_asciz(buf, sym->name);
++	}
++	/* The terminator of the string literal this used to be. */
++	buf_printf(buf, "\t.byte 0\n");
++}
++
++/*
++ * The equivalent of:
++ *	static const u32 ____version_ext_crcs[] __section("__version_ext_crcs") = { crc, ... };
++ *	static const char ____version_ext_names[] __section("__version_ext_names") = "name\0" ...;
++ *
++ * for unresolved symbols.
++ */
++static void add_asm_extended_versions(struct buffer *buf, struct module *mod)
++{
++	if (!extended_modversions)
++		return;
++
++	add_asm_version_ext_crcs(buf, mod);
++	add_asm_version_ext_names(buf, mod);
++}
++
++/* Clear ->seen of the modules that own symbols this one needs. */
++static void clear_seen_dependencies(struct module *mod)
++{
++	struct symbol *sym;
++
++	list_for_each_entry(sym, &mod->unresolved_symbols, list) {
++		if (sym->module)
++			sym->module->seen = sym->module->is_vmlinux;
++	}
++}
++
++/* The modules this one depends on, each once, comma separated. */
++static void collect_dependencies(struct module *mod, struct buffer *deps)
++{
++	struct symbol *sym;
++	bool first = true;
++
++	clear_seen_dependencies(mod);
++
++	list_for_each_entry(sym, &mod->unresolved_symbols, list) {
++		struct module *owner = sym->module;
++
++		if (!owner || owner->seen)
++			continue;
++
++		owner->seen = true;
++		buf_printf(deps, "%s%s", first ? "" : ",",
++			   get_basename(owner->name));
++		first = false;
++	}
++	buf_write(deps, "", 1);
++}
++
++static void add_asm_depends(struct buffer *buf, struct module *mod)
++{
++	struct buffer deps = { };
++
++	collect_dependencies(mod, &deps);
++	buf_printf(buf, "\n");
++	add_asm_modinfo(buf, "depends", deps.p);
++	free(deps.p);
++}
++
++/*
++ * KBUILD_MODNAME: the basename of the module with '-' and ',' replaced by
++ * '_' (see name-fix in scripts/Makefile.lib).
++ */
++static char *get_kbuild_modname(const struct module *mod)
++{
++	char *name = xstrdup(get_basename(mod->name));
++	char *curr;
++
++	for (curr = name; *curr; curr++) {
++		if (*curr == '-' || *curr == ',')
++			*curr = '_';
++	}
++
++	return name;
++}
++
++/* The module's name, its descriptor, and where it comes from. */
++static void add_asm_header(struct buffer *buf, const struct module *mod,
++			   const char *modname)
++{
++	buf_printf(buf, "/* Generated by modpost, see scripts/Makefile.modfinal */\n\n");
++
++	add_asm_modinfo(buf, "name", modname);
++	add_asm_this_module(buf, mod, modname);
++	buf_printf(buf, "\n");
++
++	if (!external_module)
++		add_asm_modinfo(buf, "intree", "Y");
++	if (strstarts(mod->name, "drivers/staging"))
++		add_asm_modinfo(buf, "staging", "Y");
++	if (strstarts(mod->name, "tools/testing"))
++		add_asm_modinfo(buf, "test", "Y");
++}
++
++static void add_asm_aliases(struct buffer *buf, struct module *mod)
+ {
+-	struct buffer buf = { };
+ 	struct module_alias *alias, *next;
+-	char fname[PATH_MAX];
+-	int ret;
+ 
+-	add_header(&buf, mod);
+-	add_exported_symbols(&buf, mod);
+-	add_versions(&buf, mod);
+-	add_extended_versions(&buf, mod);
+-	add_depends(&buf, mod);
+-
+-	buf_printf(&buf, "\n");
++	buf_printf(buf, "\n");
+ 	list_for_each_entry_safe(alias, next, &mod->aliases, node) {
+-		buf_printf(&buf, "MODULE_ALIAS(\"%s\");\n", alias->str);
++		add_asm_modinfo(buf, "alias", alias->str);
+ 		list_del(&alias->node);
+ 		free(alias);
+ 	}
++}
+ 
+-	add_srcversion(&buf, mod);
++static void add_asm_srcversion(struct buffer *buf, const struct module *mod)
++{
++	if (!mod->srcversion[0])
++		return;
+ 
+-	ret = snprintf(fname, sizeof(fname), "%s.mod.c", mod->name);
++	buf_printf(buf, "\n");
++	add_asm_modinfo(buf, "srcversion", mod->srcversion);
++}
++
++static void write_mod_S_file(struct module *mod)
++{
++	struct buffer buf = { };
++	char fname[PATH_MAX];
++	char *modname = get_kbuild_modname(mod);
++	int ret;
++
++	add_asm_header(&buf, mod, modname);
++	buf_printf(&buf, "\n");
++	add_asm_exported_symbols(&buf, mod);
++	add_asm_versions(&buf, mod);
++	add_asm_extended_versions(&buf, mod);
++	add_asm_depends(&buf, mod);
++	add_asm_aliases(&buf, mod);
++	add_asm_srcversion(&buf, mod);
++	buf_printf(&buf, "\n\t.section .note.GNU-stack,\"\",%%progbits\n");
++
++	ret = snprintf(fname, sizeof(fname), "%s.mod.S", mod->name);
+ 	if (ret >= sizeof(fname)) {
+ 		error("%s: too long path was truncated\n", fname);
+ 		goto free;
+@@ -2161,6 +2575,7 @@ static void write_mod_c_file(struct module *mod)
+ 	write_if_changed(&buf, fname);
+ 
+ free:
++	free(modname);
+ 	free(buf.p);
+ }
+ 
+@@ -2380,6 +2795,8 @@ int main(int argc, char **argv)
+ 	if (files_source)
+ 		read_symbols_from_files(files_source);
+ 
++	hash_srcversions();
++
+ 	list_for_each_entry(mod, &modules, list) {
+ 		keep_no_trim_symbols(mod);
+ 
+@@ -2400,7 +2817,7 @@ int main(int argc, char **argv)
+ 		if (mod->is_vmlinux)
+ 			write_vmlinux_export_c_file(mod);
+ 		else
+-			write_mod_c_file(mod);
++			write_mod_S_file(mod);
+ 	}
+ 
+ 	if (missing_namespace_deps)
+diff --git a/scripts/mod/modpost.h b/scripts/mod/modpost.h
+index d5f6d82..10d5f8f 100644
+--- a/scripts/mod/modpost.h
++++ b/scripts/mod/modpost.h
+@@ -127,6 +127,7 @@ struct module {
+ 	bool has_init;
+ 	bool has_cleanup;
+ 	char	     srcversion[25];
++	bool need_srcversion;
+ 	// Missing namespace dependencies
+ 	struct list_head missing_namespaces;
+ 	// Actual imported namespaces
+@@ -213,6 +214,7 @@ void handle_moddevtable(struct module *mod, struct elf_info *info,
+ 			Elf_Sym *sym, const char *symname);
+ 
+ /* sumversion.c */
++void sumversion_init(void);
+ void get_src_version(const char *modname, char sum[], unsigned sumlen);
+ 
+ /* from modpost.c */
+diff --git b/scripts/mod/module-offsets.c b/scripts/mod/module-offsets.c
+new file mode 100644
+index 0000000..a336dd4
+--- /dev/null
++++ b/scripts/mod/module-offsets.c
+@@ -0,0 +1,35 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Layout of the structures modpost emits into *.mod.S, extracted from the
++ * target headers as devicetable-offsets.c does for the device tables.
++ */
++#define COMPILE_OFFSETS
++#include <linux/kbuild.h>
++#include <linux/module.h>
++
++int main(void)
++{
++	DEFINE(MOD_SIZEOF_LONG, sizeof(long));
++	DEFINE(MOD_PREL32_RELOCATIONS, IS_ENABLED(CONFIG_HAVE_ARCH_PREL32_RELOCATIONS));
++	DEFINE(MOD_FUNC_PLABEL, IS_ENABLED(CONFIG_PARISC) && IS_ENABLED(CONFIG_64BIT));
++
++	DEFINE(MOD_SIZEOF_struct_module, sizeof(struct module));
++	DEFINE(MOD_ALIGNOF_struct_module, __alignof__(struct module));
++	OFFSET(MOD_OFF_module_name, module, name);
++	OFFSET(MOD_OFF_module_init, module, init);
++#ifdef CONFIG_MODULE_UNLOAD
++	OFFSET(MOD_OFF_module_exit, module, exit);
++#endif
++#if defined(CONFIG_M68K) && defined(CONFIG_MMU)
++	/* MODULE_ARCH_INIT: the only architecture where it is not all zeroes. */
++	OFFSET(MOD_OFF_module_arch_fixup_start, module, arch.fixup_start);
++	OFFSET(MOD_OFF_module_arch_fixup_end, module, arch.fixup_end);
++#endif
++	DEFINE(MOD_NAME_LEN, MODULE_NAME_LEN);
++
++	DEFINE(MOD_SIZEOF_struct_modversion_info, sizeof(struct modversion_info));
++	DEFINE(MOD_ALIGNOF_struct_modversion_info, __alignof__(struct modversion_info));
++	OFFSET(MOD_OFF_modversion_info_name, modversion_info, name);
++
++	return 0;
++}
+diff --git a/scripts/mod/sumversion.c b/scripts/mod/sumversion.c
+index 3dd28b4..4521b92 100644
+--- a/scripts/mod/sumversion.c
++++ b/scripts/mod/sumversion.c
+@@ -224,19 +224,11 @@ static void md4_final_ascii(struct md4_ctx *mctx, char *out, unsigned int len)
+ 		 mctx->hash[0], mctx->hash[1], mctx->hash[2], mctx->hash[3]);
+ }
+ 
+-static inline void add_char(unsigned char c, struct md4_ctx *md)
+-{
+-	md4_update(md, &c, 1);
+-}
+-
+-static int parse_string(const char *file, unsigned long len,
+-			struct md4_ctx *md)
++static int parse_string(const char *file, unsigned long len)
+ {
+ 	unsigned long i;
+ 
+-	add_char(file[0], md);
+ 	for (i = 1; i < len; i++) {
+-		add_char(file[i], md);
+ 		if (file[i] == '"' && file[i-1] != '\\')
+ 			break;
+ 	}
+@@ -255,15 +247,44 @@ static int parse_comment(const char *file, unsigned long len)
+ }
+ 
+ /* FIXME: Handle .s files differently (eg. # starts comments) --RR */
++static bool stop_char[256];
++
++void sumversion_init(void)
++{
++	static bool done;
++	int chr;
++
++	if (done)
++		return;
++
++	for (chr = 0; chr < 256; chr++)
++		if (chr == '\\' || chr == '"' || chr == '/' || isspace(chr))
++			stop_char[chr] = true;
++
++	done = true;
++}
++
+ static int parse_file(const char *fname, struct md4_ctx *md)
+ {
++	unsigned long i, len, n = 0;
++	unsigned char *buf;
+ 	char *file;
+-	unsigned long i, len;
+ 
+ 	file = read_text_file(fname);
+ 	len = strlen(file);
++	if (!len)
++		goto out_file;
++	sumversion_init();
++	buf = xmalloc(len); /* File output buffer. */
+ 
+ 	for (i = 0; i < len; i++) {
++		const unsigned char chr = file[i];
++
++		if (!stop_char[chr]) {
++			buf[n++] = file[i];
++			continue;
++		}
++
+ 		/* Collapse and ignore \ and CR. */
+ 		if (file[i] == '\\' && (i+1 < len) && file[i+1] == '\n') {
+ 			i++;
+@@ -276,7 +297,14 @@ static int parse_file(const char *fname, struct md4_ctx *md)
+ 
+ 		/* Handle strings as whole units */
+ 		if (file[i] == '"') {
+-			i += parse_string(file+i, len - i, md);
++			unsigned long slen = parse_string(file+i, len - i);
++
++			/* Closing quote is included if there is one. */
++			if (slen < len - i)
++				slen++;
++			memcpy(buf + n, file + i, slen);
++			n += slen;
++			i += slen - 1;
+ 			continue;
+ 		}
+ 
+@@ -286,11 +314,15 @@ static int parse_file(const char *fname, struct md4_ctx *md)
+ 			continue;
+ 		}
+ 
+-		add_char(file[i], md);
++		buf[n++] = file[i];
+ 	}
++	md4_update(md, buf, n);
++	free(buf);
++out_file:
+ 	free(file);
+ 	return 1;
+ }
++
+ /* Check whether the file is a static library or not */
+ static bool is_static_library(const char *objfile)
+ {
+@@ -370,7 +402,6 @@ static int parse_source_files(const char *objfile, struct md4_ctx *md)
+ 				     line, strerror(errno));
+ 				goto out_file;
+ 			}
+-
+ 		}
+ 
+ 	}
+diff --git a/scripts/tags.sh b/scripts/tags.sh
+index 41e38df..c33d0f5 100755
+--- a/scripts/tags.sh
++++ b/scripts/tags.sh
+@@ -14,8 +14,9 @@ fi
+ 
+ # RCS_FIND_IGNORE has escaped ()s -- remove them.
+ ignore="$(echo "$RCS_FIND_IGNORE" | sed 's|\\||g' )"
+-# tags and cscope files should also ignore MODVERSION *.mod.c files
+-ignore="$ignore ( -name *.mod.c ) -prune -o"
++# tags and cscope files should also ignore the modpost-generated *.mod.S files
++# and any *.mod.c left behind from before they were assembly
++ignore="$ignore ( -name *.mod.c -o -name *.mod.S ) -prune -o"
+ 
+ # ignore arbitrary directories
+ if [ -n "${IGNORE_DIRS}" ]; then
+diff --git a/tools/objtool/Makefile b/tools/objtool/Makefile
+index 5424e93..bdf1cad 100644
+--- a/tools/objtool/Makefile
++++ b/tools/objtool/Makefile
+@@ -63,7 +63,7 @@ INCLUDES := -I$(srctree)/tools/include \
+ OBJTOOL_CFLAGS  := -std=gnu11 -fomit-frame-pointer -O2 -g $(WARNINGS)	\
+ 		   $(INCLUDES) $(LIBELF_FLAGS) $(LIBXXHASH_CFLAGS) $(HOSTCFLAGS)
+ 
+-OBJTOOL_LDFLAGS := $(LIBSUBCMD) $(LIBELF_LIBS) $(LIBXXHASH_LIBS) $(HOSTLDFLAGS)
++OBJTOOL_LDFLAGS := $(LIBSUBCMD) $(LIBELF_LIBS) $(LIBXXHASH_LIBS) -lpthread $(HOSTLDFLAGS)
+ 
+ # Allow old libelf to be used:
+ elfshdr := $(shell echo '$(pound)include <libelf.h>' | $(HOSTCC) $(OBJTOOL_CFLAGS) -x c -E - 2>/dev/null | grep elf_getshdr)
+diff --git a/tools/objtool/check.c b/tools/objtool/check.c
+index 464f6c9..b092cf8 100644
+--- a/tools/objtool/check.c
++++ b/tools/objtool/check.c
+@@ -7,6 +7,9 @@
+ #include <fnmatch.h>
+ #include <string.h>
+ #include <stdlib.h>
++#include <pthread.h>
++#include <stddef.h>
++#include <unistd.h>
+ #include <inttypes.h>
+ #include <sys/mman.h>
+ 
+@@ -24,6 +27,7 @@
+ #include <linux/objtool_types.h>
+ #include <linux/hashtable.h>
+ #include <linux/kernel.h>
++#include <linux/sizes.h>
+ #include <linux/static_call_types.h>
+ #include <linux/string.h>
+ 
+@@ -38,12 +42,22 @@ struct disas_context *objtool_disas_ctx;
+ 
+ size_t sym_name_max_len;
+ 
++static struct hlist_head *insn_hash_head(struct objtool_file *file,
++					 struct section *sec, unsigned long offset)
++{
++	/* Determine instruction hash based on section index and offset. */
++	const u32 sec_hash = sec_offset_hash(sec, offset);
++	const u32 hash = hash_min(sec_hash, file->insn_hash_bits);
++
++	return &file->insn_hash[hash];
++}
++
+ struct instruction *find_insn(struct objtool_file *file,
+ 			      struct section *sec, unsigned long offset)
+ {
+ 	struct instruction *insn;
+ 
+-	hash_for_each_possible(file->insn_hash, insn, hash, sec_offset_hash(sec, offset)) {
++	hlist_for_each_entry(insn, insn_hash_head(file, sec, offset), hash) {
+ 		if (insn->sec == sec && insn->offset == offset)
+ 			return insn;
+ 	}
+@@ -54,14 +68,13 @@ struct instruction *find_insn(struct objtool_file *file,
+ struct instruction *next_insn_same_sec(struct objtool_file *file,
+ 				       struct instruction *insn)
+ {
+-	if (insn->idx == INSN_CHUNK_MAX)
+-		return find_insn(file, insn->sec, insn->offset + insn->len);
++	const unsigned long next_offset = insn->offset + insn->len;
+ 
+-	insn++;
+-	if (!insn->len)
+-		return NULL;
++	/* A chunk ends at its last slot or an empty one, so look the next up. */
++	if (insn->idx == INSN_CHUNK_MAX || !insn[1].len)
++		return find_insn(file, insn->sec, next_offset);
+ 
+-	return insn;
++	return insn + 1;
+ }
+ 
+ struct instruction *next_insn_same_func(struct objtool_file *file,
+@@ -305,7 +318,15 @@ static bool __dead_end_function(struct objtool_file *file, struct symbol *func,
+ 
+ static bool dead_end_function(struct objtool_file *file, struct symbol *func)
+ {
+-	return __dead_end_function(file, func, 0);
++	if (!func)
++		return false;
++
++	if (!func->dead_end_known) {
++		func->dead_end = __dead_end_function(file, func, 0);
++		func->dead_end_known = 1;
++	}
++
++	return func->dead_end;
+ }
+ 
+ static void init_cfi_state(struct cfi_state *cfi)
+@@ -403,21 +424,391 @@ static void *cfi_hash_alloc(unsigned long size)
+ static unsigned long nr_insns;
+ static unsigned long nr_insns_visited;
+ 
++/* Only an object this large, e.g. vmlinux.o, is decoded on several threads. */
++#define DECODE_THREADED_MIN_TEXT	SZ_8M
++/* Only decoding and the branch passes are threaded, so more gains nothing. */
++#define DECODE_MAX_THREADS		16
++#define DECODE_RANGES_PER_THREAD	4
++
++/*
++ * sec_offset_hash() keys on OFFSET_STRIDE windows, so the instructions of a
++ * window share a chain and buckets beyond one per window would sit empty.
++ */
++#define INSN_HASH_BYTES_PER_BUCKET	OFFSET_STRIDE
++#define INSN_HASH_MIN_BITS		10
++
++static unsigned long total_text_size(struct objtool_file *file)
++{
++	unsigned long size = 0;
++	struct section *sec;
++
++	for_each_sec(file->elf, sec)
++		if (is_text_sec(sec))
++			size += sec_size(sec);
++
++	return size;
++}
++
++static int alloc_insn_hash(struct objtool_file *file, unsigned long text_size)
++{
++	const unsigned long nr_buckets = text_size / INSN_HASH_BYTES_PER_BUCKET;
++	const int bits = ilog2(nr_buckets);
++
++	file->insn_hash_bits = max(INSN_HASH_MIN_BITS, bits);
++	file->insn_hash = calloc(1UL << file->insn_hash_bits,
++				 sizeof(*file->insn_hash));
++	if (!file->insn_hash) {
++		ERROR_GLIBC("calloc");
++		return -1;
++	}
++
++	if (opts.stats)
++		printf("insn_hash_bits: %d\n", file->insn_hash_bits);
++
++	return 0;
++}
++
++/* Per-thread state, only instruction hash is shared. */
++struct insn_range {
++	struct section *sec;
++	unsigned long start, end;
++	struct instruction *first, *last;
++	unsigned long nr_insns;
++	int ret;
++
++	/*
++	 * Each thread writes to its own copy of an objtool file, which are
++	 * combined upon completion.
++	 */
++	struct objtool_file shadow;
++};
++
++#define range_for_each_insn(file, range, insn)				\
++	for (insn = (range)->first;					\
++	     insn && insn->offset < (range)->end;			\
++	     insn = next_insn_same_sec(file, insn))
++
++typedef int (*range_fn_t)(struct objtool_file *file, struct insn_range *range);
++
++struct range_work {
++	range_fn_t fn;
++};
++
++static struct insn_range *decode_ranges;
++static unsigned int nr_decode_ranges, next_decode_range, nr_decode_threads;
++
++/* The kernel's try_cmpxchg(); the tools' cmpxchg() is host-arch only. */
++static bool hlist_try_cmpxchg(struct hlist_node **ptr, struct hlist_node **old,
++			      struct hlist_node *new)
++{
++	struct hlist_node *seen = __sync_val_compare_and_swap(ptr, *old, new);
++
++	if (seen == *old)
++		return true;
++
++	*old = seen;
++	return false;
++}
++
++/* Nothing is ever removed, so push onto the bucket as llist_add() does. */
++static void insn_hash_add(struct objtool_file *file, struct instruction *insn)
++{
++	struct hlist_head *head = insn_hash_head(file, insn->sec, insn->offset);
++	struct hlist_node *first = head->first;
++
++	insn->hash.pprev = &head->first;
++	do {
++		insn->hash.next = first;
++	} while (!hlist_try_cmpxchg(&head->first, &first, &insn->hash));
++}
++
++/* The slot after prev in its chunk, or the first of a new chunk. */
++static struct instruction *next_insn_slot(struct instruction *prev)
++{
++	struct instruction *insn;
++
++	if (prev && prev->idx < INSN_CHUNK_MAX) {
++		insn = prev + 1;
++		insn->idx = prev->idx + 1;
++		return insn;
++	}
++
++	insn = calloc(INSN_CHUNK_SIZE, sizeof(*insn));
++	if (!insn)
++		ERROR_GLIBC("calloc");
++
++	return insn;
++}
++
++static int decode_range(struct objtool_file *file, struct insn_range *range)
++{
++	struct instruction *insn = NULL;
++	struct section *sec = range->sec;
++	unsigned long offset;
++	u8 prev_len = 0;
++
++	for (offset = range->start; offset < range->end; offset += insn->len) {
++		const unsigned long remaining = sec_size(sec) - offset;
++
++		insn = next_insn_slot(insn);
++		if (!insn)
++			return -1;
++
++		INIT_LIST_HEAD(&insn->call_node);
++		insn->sec = sec;
++		insn->offset = offset;
++		insn->prev_len = prev_len;
++
++		if (arch_decode_instruction(file, sec, offset, remaining, insn))
++			return -1;
++
++		prev_len = insn->len;
++
++		if (insn->type == INSN_BUG)
++			insn->dead_end = true;
++
++		insn_hash_add(file, insn);
++		if (!range->first)
++			range->first = insn;
++		range->nr_insns++;
++	}
++	range->last = insn;
++
++	/* The range ends at a function symbol, so decoding must land on it. */
++	if (offset != range->end) {
++		ERROR("%s: no instruction boundary at %s", sec->name,
++		      offstr(sec, range->end));
++		return -1;
++	}
++
++	return 0;
++}
++
++static int run_threads(void *(*fn)(void *), void *arg, unsigned int nr_threads)
++{
++	unsigned int nr_started, i;
++	pthread_t *threads;
++	int ret = 0;
++
++	if (nr_threads <= 1) {
++		fn(arg);
++		return 0;
++	}
++
++	threads = calloc(nr_threads, sizeof(*threads));
++	if (!threads) {
++		ERROR_GLIBC("calloc");
++		return -1;
++	}
++
++	for (nr_started = 0; nr_started < nr_threads; nr_started++) {
++		if (pthread_create(&threads[nr_started], NULL, fn, arg)) {
++			ERROR_GLIBC("pthread_create");
++			ret = -1;
++			break;
++		}
++	}
++
++	for (i = 0; i < nr_started; i++)
++		pthread_join(threads[i], NULL);
++
++	free(threads);
++	return ret;
++}
++
++/* Hand out the ranges one at a time, or NULL once they are all taken. */
++static struct insn_range *claim_decode_range(void)
++{
++	const unsigned int idx = __sync_fetch_and_add(&next_decode_range, 1);
++
++	return idx < nr_decode_ranges ? &decode_ranges[idx] : NULL;
++}
++
++static void *range_worker(void *arg)
++{
++	const struct range_work *work = arg;
++	struct insn_range *range;
++
++	while ((range = claim_decode_range()))
++		range->ret = work->fn(&range->shadow, range);
++
++	return NULL;
++}
++
++/* The lists in the objtool_file that the passes add instructions to. */
++static const size_t shadow_list_offsets[] = {
++	offsetof(struct objtool_file, retpoline_call_list),
++	offsetof(struct objtool_file, return_thunk_list),
++	offsetof(struct objtool_file, static_call_list),
++	offsetof(struct objtool_file, mcount_loc_list),
++	offsetof(struct objtool_file, endbr_list),
++	offsetof(struct objtool_file, call_list),
++};
++
++static struct list_head *shadow_list(struct objtool_file *file,
++				     unsigned int idx)
++{
++	return (void *)file + shadow_list_offsets[idx];
++}
++
++static void init_range_shadow(struct objtool_file *file,
++			      struct insn_range *range)
++{
++	unsigned int i;
++
++	range->shadow = *file;
++	range->ret = 0;
++	for (i = 0; i < ARRAY_SIZE(shadow_list_offsets); i++)
++		INIT_LIST_HEAD(shadow_list(&range->shadow, i));
++}
++
++/* Joined in range order, which is the order a single walk would produce. */
++static int join_range_shadow(struct objtool_file *file,
++			     struct insn_range *range)
++{
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(shadow_list_offsets); i++)
++		list_splice_tail(shadow_list(&range->shadow, i),
++				 shadow_list(file, i));
++
++	return range->ret;
++}
++
++/* Run a pass over the instructions, one range per thread at a time. */
++static int run_insn_ranges(struct objtool_file *file, range_fn_t fn)
++{
++	struct range_work work = { .fn = fn };
++	unsigned int i;
++	int ret = 0;
++
++	for (i = 0; i < nr_decode_ranges; i++)
++		init_range_shadow(file, &decode_ranges[i]);
++	next_decode_range = 0;
++
++	if (run_threads(range_worker, &work, nr_decode_threads))
++		return -1;
++
++	for (i = 0; i < nr_decode_ranges; i++) {
++		if (join_range_shadow(file, &decode_ranges[i]))
++			ret = -1;
++	}
++
++	return ret;
++}
++
++static int add_decode_range(struct section *sec, unsigned long start,
++			    unsigned long end)
++{
++	const size_t size = (nr_decode_ranges + 1) * sizeof(*decode_ranges);
++	struct insn_range *range;
++
++	decode_ranges = realloc(decode_ranges, size);
++	if (!decode_ranges) {
++		ERROR_GLIBC("realloc");
++		return -1;
++	}
++
++	range = &decode_ranges[nr_decode_ranges++];
++	memset(range, 0, sizeof(*range));
++	range->sec = sec;
++	range->start = start;
++	range->end = end;
++
++	return 0;
++}
++
++/* Split a section into ranges of roughly range_size, at function starts. */
++static int add_decode_ranges(struct section *sec, unsigned long range_size)
++{
++	const unsigned long size = sec_size(sec);
++	unsigned long start = 0;
++	struct symbol *sym;
++
++	if (!range_size)
++		return add_decode_range(sec, 0, size);
++
++	sec_for_each_sym(sec, sym) {
++		if (!is_func_sym(sym) || sym->offset <= start ||
++		    sym->offset >= size)
++			continue;
++		if (sym->offset - start < range_size)
++			continue;
++
++		if (add_decode_range(sec, start, sym->offset))
++			return -1;
++		start = sym->offset;
++	}
++
++	return add_decode_range(sec, start, size);
++}
++
++static void free_decode_ranges(void)
++{
++	free(decode_ranges);
++	decode_ranges = NULL;
++	nr_decode_ranges = 0;
++	next_decode_range = 0;
++}
++
++/* A range's first instruction follows the last of the range before it. */
++static void link_decode_ranges(void)
++{
++	unsigned int i;
++
++	for (i = 1; i < nr_decode_ranges; i++) {
++		const struct insn_range *prev = &decode_ranges[i - 1];
++		struct insn_range *range = &decode_ranges[i];
++
++		if (prev->sec != range->sec || !prev->last || !range->first)
++			continue;
++
++		range->first->prev_len = prev->last->len;
++	}
++}
++
++static unsigned int decode_threads(unsigned long text_size)
++{
++	const long nr_cpus = sysconf(_SC_NPROCESSORS_ONLN);
++
++	if (text_size < DECODE_THREADED_MIN_TEXT || nr_cpus < 2)
++		return 1;
++
++	return min_t(unsigned int, nr_cpus, DECODE_MAX_THREADS);
++}
++
++/* Several ranges per thread so uneven ones balance out; 0 means per section. */
++static unsigned long decode_range_size(unsigned long text_size,
++				       unsigned int nr_threads)
++{
++	const unsigned int nr_ranges = nr_threads * DECODE_RANGES_PER_THREAD;
++
++	if (nr_threads <= 1)
++		return 0;
++
++	return text_size / nr_ranges;
++}
++
+ /*
+  * Call the arch-specific instruction decoder for all the instructions and add
+  * them to the global instruction list.
+  */
+ static int decode_instructions(struct objtool_file *file)
+ {
++	const unsigned long text_size = total_text_size(file);
++	unsigned long range_size;
++	struct instruction *insn;
+ 	struct section *sec;
+ 	struct symbol *func;
+-	unsigned long offset;
+-	struct instruction *insn;
++	unsigned int i;
++
++	if (alloc_insn_hash(file, text_size))
++		return -1;
++
++	nr_decode_threads = decode_threads(text_size);
++	range_size = decode_range_size(text_size, nr_decode_threads);
+ 
+ 	for_each_sec(file->elf, sec) {
+-		struct instruction *insns = NULL;
+-		u8 prev_len = 0;
+-		u8 idx = 0;
+ 
+ 		if (!is_text_sec(sec))
+ 			continue;
+@@ -442,41 +833,20 @@ static int decode_instructions(struct objtool_file *file)
+ 		if (!strcmp(sec->name, ".init.text") && !opts.module)
+ 			sec->init = true;
+ 
+-		for (offset = 0; offset < sec_size(sec); offset += insn->len) {
+-			if (!insns || idx == INSN_CHUNK_MAX) {
+-				insns = calloc(INSN_CHUNK_SIZE, sizeof(*insn));
+-				if (!insns) {
+-					ERROR_GLIBC("calloc");
+-					return -1;
+-				}
+-				idx = 0;
+-			} else {
+-				idx++;
+-			}
+-			insn = &insns[idx];
+-			insn->idx = idx;
++		if (add_decode_ranges(sec, range_size))
++			return -1;
++	}
+ 
+-			INIT_LIST_HEAD(&insn->call_node);
+-			insn->sec = sec;
+-			insn->offset = offset;
+-			insn->prev_len = prev_len;
++	if (run_insn_ranges(file, decode_range))
++		return -1;
+ 
+-			if (arch_decode_instruction(file, sec, offset, sec_size(sec) - offset, insn))
+-				return -1;
++	for (i = 0; i < nr_decode_ranges; i++)
++		nr_insns += decode_ranges[i].nr_insns;
++	link_decode_ranges();
+ 
+-			prev_len = insn->len;
+-
+-			/*
+-			 * By default, "ud2" is a dead end unless otherwise
+-			 * annotated, because GCC 7 inserts it for certain
+-			 * divide-by-zero cases.
+-			 */
+-			if (insn->type == INSN_BUG)
+-				insn->dead_end = true;
+-
+-			hash_add(file->insn_hash, &insn->hash, sec_offset_hash(sec, insn->offset));
+-			nr_insns++;
+-		}
++	for_each_sec(file->elf, sec) {
++		if (!is_text_sec(sec))
++			continue;
+ 
+ 		sec_for_each_sym(sec, func) {
+ 			if (!is_notype_sym(func) && !is_func_sym(func))
+@@ -1519,133 +1889,147 @@ static bool is_first_func_insn(struct objtool_file *file,
+ /*
+  * Find the destination instructions for all jumps.
+  */
+-static int add_jump_destinations(struct objtool_file *file)
++static int add_jump_destination(struct objtool_file *file, struct instruction *insn)
+ {
+-	struct instruction *insn;
+ 	struct reloc *reloc;
++	struct symbol *func = insn_func(insn);
++	struct instruction *dest_insn;
++	struct section *dest_sec;
++	struct symbol *dest_sym;
++	unsigned long dest_off;
+ 
+-	for_each_insn(file, insn) {
+-		struct symbol *func = insn_func(insn);
+-		struct instruction *dest_insn;
+-		struct section *dest_sec;
+-		struct symbol *dest_sym;
+-		unsigned long dest_off;
++	if (!is_static_jump(insn))
++		return 0;
+ 
+-		if (!is_static_jump(insn))
+-			continue;
++	if (insn->jump_dest) {
++		/*
++		 * handle_group_alt() may have previously set
++		 * 'jump_dest' for some alternatives.
++		 */
++		return 0;
++	}
+ 
+-		if (insn->jump_dest) {
+-			/*
+-			 * handle_group_alt() may have previously set
+-			 * 'jump_dest' for some alternatives.
+-			 */
+-			continue;
+-		}
+-
+-		reloc = insn_reloc(file, insn);
+-		if (!reloc) {
+-			dest_sec = insn->sec;
+-			dest_off = arch_jump_destination(insn);
+-			dest_sym = dest_sec->sym;
+-		} else {
+-			dest_sym = reloc->sym;
+-			if (is_undef_sym(dest_sym)) {
+-				if (dest_sym->retpoline_thunk) {
+-					if (add_retpoline_call(file, insn))
+-						return -1;
+-					continue;
+-				}
+-
+-				if (dest_sym->return_thunk) {
+-					add_return_call(file, insn, true);
+-					continue;
+-				}
+-
+-				/* External symbol */
+-				if (func) {
+-					/* External sibling call */
+-					if (add_call_dest(file, insn, dest_sym, true))
+-						return -1;
+-					continue;
+-				}
+-
+-				/* Non-func asm code jumping to external symbol */
+-				continue;
++	reloc = insn_reloc(file, insn);
++	if (!reloc) {
++		dest_sec = insn->sec;
++		dest_off = arch_jump_destination(insn);
++		dest_sym = dest_sec->sym;
++	} else {
++		dest_sym = reloc->sym;
++		if (is_undef_sym(dest_sym)) {
++			if (dest_sym->retpoline_thunk) {
++				if (add_retpoline_call(file, insn))
++					return -1;
++				return 0;
+ 			}
+ 
+-			dest_sec = dest_sym->sec;
+-			dest_off = dest_sym->offset + arch_insn_adjusted_addend(insn, reloc);
+-		}
+-
+-		dest_insn = find_insn(file, dest_sec, dest_off);
+-		if (!dest_insn) {
+-			struct symbol *sym = find_symbol_by_offset(dest_sec, dest_off);
+-
+-			/*
+-			 * retbleed_untrain_ret() jumps to
+-			 * __x86_return_thunk(), but objtool can't find
+-			 * the thunk's starting RET instruction,
+-			 * because the RET is also in the middle of
+-			 * another instruction.  Objtool only knows
+-			 * about the outer instruction.
+-			 */
+-			if (sym && sym->embedded_insn) {
+-				add_return_call(file, insn, false);
+-				continue;
++			if (dest_sym->return_thunk) {
++				add_return_call(file, insn, true);
++				return 0;
+ 			}
+ 
+-			/*
+-			 * GCOV/KCOV dead code can jump to the end of
+-			 * the function/section.
+-			 */
+-			if (file->ignore_unreachables && func &&
+-			    dest_sec == insn->sec &&
+-			    dest_off == func->offset + func->len)
+-				continue;
++			/* External symbol */
++			if (func) {
++				/* External sibling call */
++				if (add_call_dest(file, insn, dest_sym, true))
++					return -1;
++				return 0;
++			}
+ 
+-			ERROR_INSN(insn, "can't find jump dest instruction at %s",
+-				   offstr(dest_sec, dest_off));
+-			return -1;
++			/* Non-func asm code jumping to external symbol */
++			return 0;
+ 		}
+ 
+-		if (!dest_sym || is_sec_sym(dest_sym)) {
+-			dest_sym = insn_sym(dest_insn);
+-			if (!dest_sym)
+-				goto set_jump_dest;
+-		}
++		dest_sec = dest_sym->sec;
++		dest_off = dest_sym->offset + arch_insn_adjusted_addend(insn, reloc);
++	}
+ 
+-		if (dest_sym->retpoline_thunk && dest_insn->offset == dest_sym->offset) {
+-			if (add_retpoline_call(file, insn))
+-				return -1;
+-			continue;
+-		}
+-
+-		if (dest_sym->return_thunk && dest_insn->offset == dest_sym->offset) {
+-			add_return_call(file, insn, true);
+-			continue;
+-		}
+-
+-		if (!insn_sym(insn) || insn_sym(insn)->pfunc == dest_sym->pfunc)
+-			goto set_jump_dest;
++	dest_insn = find_insn(file, dest_sec, dest_off);
++	if (!dest_insn) {
++		struct symbol *sym = find_symbol_by_offset(dest_sec, dest_off);
+ 
+ 		/*
+-		 * Internal cross-function jump.
++		 * retbleed_untrain_ret() jumps to
++		 * __x86_return_thunk(), but objtool can't find
++		 * the thunk's starting RET instruction,
++		 * because the RET is also in the middle of
++		 * another instruction.  Objtool only knows
++		 * about the outer instruction.
+ 		 */
+-
+-		if (is_first_func_insn(file, dest_insn)) {
+-			/* Internal sibling call */
+-			if (add_call_dest(file, insn, dest_sym, true))
+-				return -1;
+-			continue;
++		if (sym && sym->embedded_insn) {
++			add_return_call(file, insn, false);
++			return 0;
+ 		}
+ 
++		/*
++		 * GCOV/KCOV dead code can jump to the end of
++		 * the function/section.
++		 */
++		if (file->ignore_unreachables && func &&
++		    dest_sec == insn->sec &&
++		    dest_off == func->offset + func->len)
++			return 0;
++
++		ERROR_INSN(insn, "can't find jump dest instruction at %s",
++			   offstr(dest_sec, dest_off));
++		return -1;
++	}
++
++	if (!dest_sym || is_sec_sym(dest_sym)) {
++		dest_sym = insn_sym(dest_insn);
++		if (!dest_sym)
++			goto set_jump_dest;
++	}
++
++	if (dest_sym->retpoline_thunk && dest_insn->offset == dest_sym->offset) {
++		if (add_retpoline_call(file, insn))
++			return -1;
++		return 0;
++	}
++
++	if (dest_sym->return_thunk && dest_insn->offset == dest_sym->offset) {
++		add_return_call(file, insn, true);
++		return 0;
++	}
++
++	if (!insn_sym(insn) || insn_sym(insn)->pfunc == dest_sym->pfunc)
++		goto set_jump_dest;
++
++	/*
++	 * Internal cross-function jump.
++	 */
++
++	if (is_first_func_insn(file, dest_insn)) {
++		/* Internal sibling call */
++		if (add_call_dest(file, insn, dest_sym, true))
++			return -1;
++		return 0;
++	}
++
+ set_jump_dest:
+-		insn->jump_dest = dest_insn;
++	insn->jump_dest = dest_insn;
++
++	return 0;
++}
++
++static int add_jump_destinations_range(struct objtool_file *file,
++				       struct insn_range *range)
++{
++	struct instruction *insn;
++
++	range_for_each_insn(file, range, insn) {
++		if (add_jump_destination(file, insn))
++			return -1;
+ 	}
+ 
+ 	return 0;
+ }
+ 
++static int add_jump_destinations(struct objtool_file *file)
++{
++	return run_insn_ranges(file, add_jump_destinations_range);
++}
++
+ static struct symbol *find_call_destination(struct section *sec, unsigned long offset)
+ {
+ 	struct symbol *call_dest;
+@@ -1660,64 +2044,79 @@ static struct symbol *find_call_destination(struct section *sec, unsigned long o
+ /*
+  * Find the destination instructions for all calls.
+  */
+-static int add_call_destinations(struct objtool_file *file)
++static int add_call_destination(struct objtool_file *file, struct instruction *insn)
+ {
+-	struct instruction *insn;
+ 	unsigned long dest_off;
+ 	struct symbol *dest;
+ 	struct reloc *reloc;
++	struct symbol *func = insn_func(insn);
+ 
+-	for_each_insn(file, insn) {
+-		struct symbol *func = insn_func(insn);
+-		if (insn->type != INSN_CALL)
+-			continue;
++	if (insn->type != INSN_CALL)
++		return 0;
+ 
+-		reloc = insn_reloc(file, insn);
+-		if (!reloc) {
+-			dest_off = arch_jump_destination(insn);
+-			dest = find_call_destination(insn->sec, dest_off);
++	reloc = insn_reloc(file, insn);
++	if (!reloc) {
++		dest_off = arch_jump_destination(insn);
++		dest = find_call_destination(insn->sec, dest_off);
+ 
+-			if (add_call_dest(file, insn, dest, false))
+-				return -1;
++		if (add_call_dest(file, insn, dest, false))
++			return -1;
+ 
+-			if (func && func->ignore)
+-				continue;
++		if (func && func->ignore)
++			return 0;
+ 
+-			if (!insn_call_dest(insn)) {
+-				ERROR_INSN(insn, "unannotated intra-function call");
+-				return -1;
+-			}
+-
+-			if (func && !is_func_sym(insn_call_dest(insn))) {
+-				ERROR_INSN(insn, "unsupported call to non-function");
+-				return -1;
+-			}
+-
+-		} else if (is_sec_sym(reloc->sym)) {
+-			dest_off = arch_insn_adjusted_addend(insn, reloc);
+-			dest = find_call_destination(reloc->sym->sec, dest_off);
+-			if (!dest) {
+-				ERROR_INSN(insn, "can't find call dest symbol at %s+0x%lx",
+-					   reloc->sym->sec->name, dest_off);
+-				return -1;
+-			}
+-
+-			if (add_call_dest(file, insn, dest, false))
+-				return -1;
+-
+-		} else if (reloc->sym->retpoline_thunk) {
+-			if (add_retpoline_call(file, insn))
+-				return -1;
+-
+-		} else {
+-			if (add_call_dest(file, insn, reloc->sym, false))
+-				return -1;
++		if (!insn_call_dest(insn)) {
++			ERROR_INSN(insn, "unannotated intra-function call");
++			return -1;
+ 		}
++
++		if (func && !is_func_sym(insn_call_dest(insn))) {
++			ERROR_INSN(insn, "unsupported call to non-function");
++			return -1;
++		}
++
++	} else if (is_sec_sym(reloc->sym)) {
++		dest_off = arch_insn_adjusted_addend(insn, reloc);
++		dest = find_call_destination(reloc->sym->sec, dest_off);
++		if (!dest) {
++			ERROR_INSN(insn, "can't find call dest symbol at %s+0x%lx",
++				   reloc->sym->sec->name, dest_off);
++			return -1;
++		}
++
++		if (add_call_dest(file, insn, dest, false))
++			return -1;
++
++	} else if (reloc->sym->retpoline_thunk) {
++		if (add_retpoline_call(file, insn))
++			return -1;
++
++	} else {
++		if (add_call_dest(file, insn, reloc->sym, false))
++			return -1;
+ 	}
+ 
+ 	return 0;
+ }
+ 
++static int add_call_destinations_range(struct objtool_file *file,
++				       struct insn_range *range)
++{
++	struct instruction *insn;
++
++	range_for_each_insn(file, range, insn) {
++		if (add_call_destination(file, insn))
++			return -1;
++	}
++
++	return 0;
++}
++
++static int add_call_destinations(struct objtool_file *file)
++{
++	return run_insn_ranges(file, add_call_destinations_range);
++}
++
+ /*
+  * The .alternatives section requires some extra special care over and above
+  * other special sections because alternatives are patched in place.
+@@ -2681,6 +3080,8 @@ int decode_file(struct objtool_file *file)
+ 	if (read_annotate(file, __annotate_late))
+ 		return -1;
+ 
++	free_decode_ranges();
++
+ 	return 0;
+ }
+ 
+diff --git a/tools/objtool/elf.c b/tools/objtool/elf.c
+index a791f4e..13073dc 100644
+--- a/tools/objtool/elf.c
++++ b/tools/objtool/elf.c
+@@ -316,18 +316,117 @@ struct symbol *find_global_symbol_by_name(const struct elf *elf, const char *nam
+ 	return NULL;
+ }
+ 
+-/* If there are multiple matches, return the first one in the range */
+-struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *sec,
++static bool is_dwarf_section(struct section *sec)
++{
++	return !strncmp(sec->name, ".debug_", 7);
++}
++
++/* Cache relocations at a 64 byte granularity. */
++#define RELOC_CACHE_INDEX_SHIFT	6
++
++static unsigned long reloc_cache_index(unsigned long offset)
++{
++	return offset >> RELOC_CACHE_INDEX_SHIFT;
++}
++
++static unsigned int reloc_cache_nr_windows(const struct section *rsec)
++{
++	const unsigned long size = sec_size(rsec->base);
++
++	return (size >> RELOC_CACHE_INDEX_SHIFT) + 1;
++}
++
++static int init_reloc_cache(struct section *rsec)
++{
++	const unsigned int nr_relocs = sec_num_entries(rsec);
++	const unsigned int nr_windows = reloc_cache_nr_windows(rsec);
++	unsigned int reloc_idx, next_cache_idx = 0;
++
++	rsec->reloc_cache = malloc(nr_windows * sizeof(unsigned int));
++	if (!rsec->reloc_cache) {
++		ERROR_GLIBC("malloc");
++		return -1;
++	}
++
++	/* Populate relocation indexes reloc cache index -> reloc index. */
++	for (reloc_idx = 0; reloc_idx < nr_relocs; reloc_idx++) {
++		struct reloc *reloc = &rsec->relocs[reloc_idx];
++		const unsigned long offset = reloc_offset(reloc);
++		const unsigned long cache_idx = reloc_cache_index(offset);
++
++		if (cache_idx >= nr_windows)
++			break;
++
++		while (next_cache_idx <= cache_idx)
++			rsec->reloc_cache[next_cache_idx++] = reloc_idx;
++	}
++
++	while (next_cache_idx < nr_windows)
++		rsec->reloc_cache[next_cache_idx++] = nr_relocs;
++
++	rsec->sorted = true;
++	return 0;
++}
++
++static void free_reloc_cache(struct section *rsec)
++{
++	free(rsec->reloc_cache);
++	rsec->reloc_cache = NULL;
++	rsec->sorted = false;
++}
++
++static struct reloc *find_reloc_sorted(struct section *rsec,
+ 				       unsigned long offset, unsigned int len)
+ {
+-	struct reloc *reloc, *r = NULL;
+-	struct section *rsec;
+-	unsigned long o;
++	struct reloc *relocs = rsec->relocs;
++	const unsigned int nr_relocs = sec_num_entries(rsec);
++	const unsigned long cache_idx = reloc_cache_index(offset);
++	unsigned int reloc_idx, i;
+ 
+-	rsec = sec->rsec;
+-	if (!rsec)
++	if (cache_idx >= reloc_cache_nr_windows(rsec))
+ 		return NULL;
+ 
++	reloc_idx = rsec->reloc_cache[cache_idx];
++
++	/*
++	 * Scan through all relocations covered by cache entry to find the
++	 * first at or after offset. Relocations are sorted by offset.
++	 */
++	for (i = reloc_idx; i < nr_relocs; i++) {
++		struct reloc *reloc = &relocs[i];
++		const unsigned long curr_offset = reloc_offset(reloc);
++
++		if (curr_offset >= offset)
++			break;
++
++		reloc_idx++;
++	}
++
++	/* Nothing found, or the first candidate lies beyond the range. */
++	if (reloc_idx >= nr_relocs ||
++	    reloc_offset(&relocs[reloc_idx]) >= offset + len)
++		return NULL;
++
++	/* If there are duplicate entries, return the last. */
++	for (i = reloc_idx; i < nr_relocs - 1; i++) {
++		struct reloc *reloc = &relocs[i];
++		struct reloc *next_reloc = &relocs[i + 1];
++
++		if (reloc_offset(next_reloc) != reloc_offset(reloc))
++			break;
++		reloc_idx++;
++	}
++
++	return &relocs[reloc_idx];
++}
++
++/* Not indexed, so look it up in the hash. */
++static struct reloc *find_reloc_hash(const struct elf *elf, struct section *rsec,
++				     unsigned long offset, unsigned int len)
++{
++	unsigned long o;
++	struct reloc *reloc, *r = NULL;
++
+ 	for_offset_range(o, offset, offset + len) {
+ 		elf_hash_for_each_possible(elf, reloc, reloc, hash,
+ 					   sec_offset_hash(rsec, o)) {
+@@ -347,16 +446,50 @@ struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *se
+ 	return r;
+ }
+ 
++/* Should never be invoked, provided as a backstop. */
++static struct reloc *find_reloc_linear(struct section *rsec,
++				       unsigned long offset, unsigned int len)
++{
++	struct reloc *reloc, *first = NULL;
++
++	WARN("%s: linear scan for sec %s with %u relocs at offset %lu len %u",
++	     __func__, rsec->name, sec_num_entries(rsec), offset, len);
++
++	for_each_reloc(rsec, reloc) {
++		if (reloc_offset(reloc) < offset ||
++		    reloc_offset(reloc) >= offset + len)
++			continue;
++
++		if (!first || reloc_offset(reloc) < reloc_offset(first))
++			first = reloc;
++	}
++
++	return first;
++}
++
++/* If there are multiple matches, return the first one in the range. */
++struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *sec,
++				       unsigned long offset, unsigned int len)
++{
++	struct section *rsec = sec->rsec;
++
++	if (!rsec)
++		return NULL;
++
++	if (rsec->sorted)
++		return find_reloc_sorted(rsec, offset, len);
++
++	if (rsec->hashed)
++		return find_reloc_hash(elf, rsec, offset, len);
++
++	return find_reloc_linear(rsec, offset, len);
++}
++
+ struct reloc *find_reloc_by_dest(const struct elf *elf, struct section *sec, unsigned long offset)
+ {
+ 	return find_reloc_by_dest_range(elf, sec, offset, 1);
+ }
+ 
+-static bool is_dwarf_section(struct section *sec)
+-{
+-	return !strncmp(sec->name, ".debug_", 7);
+-}
+-
+ static int read_sections(struct elf *elf)
+ {
+ 	Elf_Scn *s = NULL;
+@@ -1071,7 +1204,8 @@ struct reloc *elf_init_reloc(struct elf *elf, struct section *rsec,
+ 	set_reloc_type(elf, reloc, type);
+ 	set_reloc_addend(elf, reloc, addend);
+ 
+-	elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
++	if (rsec->hashed)
++		elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
+ 	set_sym_next_reloc(reloc, sym->relocs);
+ 	sym->relocs = reloc;
+ 
+@@ -1123,18 +1257,44 @@ struct reloc *elf_init_reloc_data_sym(struct elf *elf, struct section *sec,
+ 			      elf_data_rela_type(elf));
+ }
+ 
++static u64 raw_reloc_offset(const struct section *rsec, unsigned int idx)
++{
++	const void *entry = rsec->data->d_buf + idx * rsec->sh.sh_entsize;
++
++	if (rsec->sh.sh_entsize < sizeof(Elf64_Rel))
++		return ((const Elf32_Rela *)entry)->r_offset;
++
++	return ((const Elf64_Rela *)entry)->r_offset;
++}
++
++static bool reloc_sec_in_order(struct section *rsec)
++{
++	const unsigned int nr_relocs = sec_num_entries(rsec);
++	u64 prev_offset = 0;
++	unsigned int i;
++
++	for (i = 0; i < nr_relocs; i++) {
++		/* Called before relocs exist, so look at raw entry. */
++		const u64 offset = raw_reloc_offset(rsec, i);
++
++		if (offset < prev_offset)
++			return false;
++		prev_offset = offset;
++	}
++
++	return true;
++}
++
+ static int read_relocs(struct elf *elf)
+ {
+-	unsigned long nr_reloc, max_reloc = 0;
++	unsigned long nr_reloc, max_reloc = 0, nr_hashed = 0;
+ 	struct section *rsec;
+ 	struct reloc *reloc;
+ 	unsigned int symndx;
+ 	struct symbol *sym;
++	bool hashed;
+ 	int i;
+ 
+-	if (!elf_alloc_hash(reloc, elf->num_relocs))
+-		return -1;
+-
+ 	list_for_each_entry(rsec, &elf->sections, list) {
+ 		if (!is_reloc_sec(rsec))
+ 			continue;
+@@ -1147,6 +1307,28 @@ static int read_relocs(struct elf *elf)
+ 
+ 		rsec->base->rsec = rsec;
+ 
++		/* DWARF relocs are never looked up. */
++		if (is_dwarf_section(rsec->base))
++			continue;
++		if (reloc_sec_in_order(rsec)) {
++			rsec->sorted = true;
++			continue;
++		}
++
++		rsec->hashed = true;
++		nr_hashed += sec_num_entries(rsec);
++	}
++
++	/* Read mostly, so avoid collisions and keep the hash sparse. */
++	if (!elf_alloc_hash(reloc, nr_hashed * OFFSET_STRIDE))
++		return -1;
++
++	list_for_each_entry(rsec, &elf->sections, list) {
++		if (!is_reloc_sec(rsec))
++			continue;
++
++		hashed = rsec->hashed;
++
+ 		/* nr_alloc_relocs=0: libelf owns d_buf */
+ 		rsec->nr_alloc_relocs = 0;
+ 
+@@ -1168,18 +1350,23 @@ static int read_relocs(struct elf *elf)
+ 				return -1;
+ 			}
+ 
+-			elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
++			if (hashed)
++				elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
+ 			set_sym_next_reloc(reloc, sym->relocs);
+ 			sym->relocs = reloc;
+ 
+ 			nr_reloc++;
+ 		}
+ 		max_reloc = max(max_reloc, nr_reloc);
++
++		if (rsec->sorted && init_reloc_cache(rsec))
++			return -1;
+ 	}
+ 
+ 	if (opts.stats) {
+ 		printf("max_reloc: %lu\n", max_reloc);
+ 		printf("num_relocs: %lu\n", elf->num_relocs);
++		printf("num_relocs_hashed: %lu\n", nr_hashed);
+ 		printf("reloc_bits: %d\n", elf->reloc_bits);
+ 	}
+ 
+@@ -1541,6 +1728,26 @@ add:
+ 	return sec;
+ }
+ 
++/* A relocation was appended, abandon relocation cache and use hash instead. */
++static void copy_reloc_cache_to_hash(struct elf *elf, struct section *rsec,
++				     unsigned int nr_relocs)
++{
++	unsigned int i;
++
++	if (rsec->hashed)
++		return;
++
++	if (rsec->sorted)
++		free_reloc_cache(rsec);
++
++	for (i = 0; i < nr_relocs; i++) {
++		struct reloc *reloc = &rsec->relocs[i];
++
++		elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
++	}
++	rsec->hashed = true;
++}
++
+ static int elf_alloc_reloc(struct elf *elf, struct section *rsec)
+ {
+ 	struct reloc *old_relocs, *old_relocs_end, *new_relocs;
+@@ -1592,6 +1799,7 @@ static int elf_alloc_reloc(struct elf *elf, struct section *rsec)
+ 	}
+ 
+ 	rsec->nr_alloc_relocs = nr_alloc;
++	copy_reloc_cache_to_hash(elf, rsec, nr_relocs_old);
+ 
+ 	old_relocs = rsec->relocs;
+ 	new_relocs = calloc(nr_alloc, sizeof(struct reloc));
+diff --git a/tools/objtool/include/objtool/elf.h b/tools/objtool/include/objtool/elf.h
+index a82517a..0d61ddf 100644
+--- a/tools/objtool/include/objtool/elf.h
++++ b/tools/objtool/include/objtool/elf.h
+@@ -59,6 +59,8 @@ struct section {
+ 	const char *name;
+ 	int idx;
+ 	bool _changed, text, rodata, noinstr, init, truncate;
++	bool hashed, sorted;
++	unsigned int *reloc_cache;
+ 	struct reloc *relocs;
+ 	unsigned long nr_alloc_relocs;
+ 	struct section *twin;
+@@ -98,6 +100,8 @@ struct symbol {
+ 	u8 klp		     : 1;
+ 	u8 dont_correlate    : 1;
+ 	u8 fake		     : 1;
++	u8 dead_end_known    : 1;
++	u8 dead_end	     : 1;
+ 	struct list_head pv_target;
+ 	struct reloc *relocs;
+ 	struct section *group_sec;
+diff --git a/tools/objtool/include/objtool/objtool.h b/tools/objtool/include/objtool/objtool.h
+index 6dc12a5..79fe82b 100644
+--- a/tools/objtool/include/objtool/objtool.h
++++ b/tools/objtool/include/objtool/objtool.h
+@@ -21,7 +21,8 @@ struct pv_state {
+ 
+ struct objtool_file {
+ 	struct elf *elf;
+-	DECLARE_HASHTABLE(insn_hash, 20);
++	struct hlist_head *insn_hash;
++	int insn_hash_bits;
+ 	struct list_head retpoline_call_list;
+ 	struct list_head return_thunk_list;
+ 	struct list_head static_call_list;
+diff --git a/tools/objtool/objtool.c b/tools/objtool/objtool.c
+index a4e139d..71e048f 100644
+--- a/tools/objtool/objtool.c
++++ b/tools/objtool/objtool.c
+@@ -29,7 +29,6 @@ struct objtool_file *objtool_open_read(const char *filename)
+ 	if (!file.elf)
+ 		return NULL;
+ 
+-	hash_init(file.insn_hash);
+ 	INIT_LIST_HEAD(&file.retpoline_call_list);
+ 	INIT_LIST_HEAD(&file.return_thunk_list);
+ 	INIT_LIST_HEAD(&file.static_call_list);

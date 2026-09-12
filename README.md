@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-12
+- TIP: update patches
+
 ## 2026-09-07
 - split NEXT and TIP patches
 

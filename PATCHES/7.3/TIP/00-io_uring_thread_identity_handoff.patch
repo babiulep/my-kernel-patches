@@ -1,0 +1,3271 @@
+diff --git a/arch/Kconfig b/arch/Kconfig
+index c0a6a13..b6631a7 100644
+--- a/arch/Kconfig
++++ b/arch/Kconfig
+@@ -604,6 +604,13 @@ config ARCH_HAVE_EXTRA_ELF_NOTES
+ config ARCH_HAS_NMI_SAFE_THIS_CPU_OPS
+ 	bool
+ 
++config ARCH_HAS_THREAD_HANDOFF
++	bool
++	help
++	  Architecture provides the arch_thread_handoff_*() hooks for moving
++	  the user visible register state of a thread that is blocked in the
++	  kernel to another thread of the same process.
++
+ config HAVE_ALIGNED_STRUCT_PAGE
+ 	bool
+ 	help
+diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
+index bf8c3f5..3570934 100644
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -46,6 +46,7 @@ config ARM64
+ 	select ARCH_HAS_PTE_SPECIAL
+ 	select ARCH_HAS_HW_PTE_YOUNG
+ 	select ARCH_HAS_SETUP_DMA_OPS
++	select ARCH_HAS_THREAD_HANDOFF
+ 	select ARCH_HAS_SET_DIRECT_MAP
+ 	select ARCH_HAS_SET_MEMORY
+ 	select ARCH_HAS_FORCE_DMA_UNENCRYPTED
+diff --git a/arch/arm64/kernel/process.c b/arch/arm64/kernel/process.c
+index 581f80e..e669a27 100644
+--- a/arch/arm64/kernel/process.c
++++ b/arch/arm64/kernel/process.c
+@@ -11,6 +11,7 @@
+ #include <linux/elf.h>
+ #include <linux/export.h>
+ #include <linux/sched.h>
++#include <linux/thread_handoff.h>
+ #include <linux/sched/debug.h>
+ #include <linux/sched/task.h>
+ #include <linux/sched/task_stack.h>
+@@ -1003,3 +1004,111 @@ int set_tsc_mode(unsigned int val)
+ 
+ 	return do_set_tsc_mode(val);
+ }
++
++#ifdef CONFIG_THREAD_HANDOFF
++/*
++ * Thread identity handoff. The source is inside a syscall, so only the FPSIMD
++ * view of the vector registers needs to move. SME state is refused.
++ */
++static bool thread_handoff_task_ok(struct task_struct *tsk)
++{
++	if (is_compat_thread(task_thread_info(tsk)))
++		return false;
++	/* the GCS is per-thread and would have to move along */
++	if (task_gcs_el0_enabled(tsk))
++		return false;
++	/* counter-timer trapping doesn't move, see update_cntkctl_el1() */
++	if (test_tsk_thread_flag(tsk, TIF_TSC_SIGSEGV))
++		return false;
++	return true;
++}
++
++bool arch_thread_handoff_allowed(struct task_struct *tsk)
++{
++	return thread_handoff_task_ok(tsk);
++}
++
++bool arch_thread_handoff_compatible(struct task_struct *src,
++				    struct task_struct *dst)
++{
++	return thread_handoff_task_ok(dst);
++}
++
++/* sync the live user state, fpsimd_syscall_enter() guarantees FPSIMD format */
++bool arch_thread_handoff_prepare(void)
++{
++	struct thread_struct *thread = &current->thread;
++
++	fpsimd_preserve_current_state();
++	tls_preserve_current_state();
++	if (system_supports_poe())
++		thread->por_el0 = read_sysreg_s(SYS_POR_EL0);
++
++	if (WARN_ON_ONCE(thread->fp_type != FP_STATE_FPSIMD))
++		return false;
++	/* ZA and streaming mode state doesn't move, for now */
++	if (thread_sm_enabled(thread) || thread_za_enabled(thread))
++		return false;
++	return true;
++}
++
++/* copy the user register state over, load what the return to user won't */
++int arch_thread_handoff_finish(struct task_struct *src, bool leader)
++{
++	struct task_struct *dst = current;
++	struct pt_regs *regs = task_pt_regs(dst);
++	struct frame_record_meta stackframe = regs->stackframe;
++
++	/* the syscall frame, this is what the return to userspace restores */
++	*regs = *task_pt_regs(src);
++	regs->stackframe = stackframe;
++
++	/*
++	 * Marks our FP state foreign so nothing saves over what's copied in
++	 * below, and frees the SVE/SME buffers, the vector lengths may differ.
++	 */
++	fpsimd_flush_thread();
++
++	preempt_disable();
++
++	dst->thread.uw = src->thread.uw;
++	dst->thread.fp_type = FP_STATE_FPSIMD;
++	memcpy(dst->thread.vl, src->thread.vl, sizeof(dst->thread.vl));
++	memcpy(dst->thread.vl_onexec, src->thread.vl_onexec,
++	       sizeof(dst->thread.vl_onexec));
++	dst->thread.svcr = src->thread.svcr;
++	dst->thread.tpidr2_el0 = src->thread.tpidr2_el0;
++	dst->thread.por_el0 = src->thread.por_el0;
++	dst->thread.sctlr_user = src->thread.sctlr_user;
++#ifdef CONFIG_ARM64_MTE
++	dst->thread.mte_ctrl = src->thread.mte_ctrl;
++#endif
++#ifdef CONFIG_ARM64_PTR_AUTH
++	dst->thread.keys_user = src->thread.keys_user;
++#endif
++	update_tsk_thread_flag(dst, TIF_SVE_VL_INHERIT,
++			       test_tsk_thread_flag(src, TIF_SVE_VL_INHERIT));
++	update_tsk_thread_flag(dst, TIF_SME_VL_INHERIT,
++			       test_tsk_thread_flag(src, TIF_SME_VL_INHERIT));
++	update_tsk_thread_flag(dst, TIF_TAGGED_ADDR,
++			       test_tsk_thread_flag(src, TIF_TAGGED_ADDR));
++	update_tsk_thread_flag(dst, TIF_SSBD,
++			       test_tsk_thread_flag(src, TIF_SSBD));
++	if (test_and_clear_tsk_thread_flag(src, TIF_MTE_ASYNC_FAULT))
++		set_tsk_thread_flag(dst, TIF_MTE_ASYNC_FAULT);
++
++	/* load what __switch_to() would have, FPSIMD gets restored on exit */
++	write_sysreg(dst->thread.uw.tp_value, tpidr_el0);
++	if (system_supports_tpidr2())
++		write_sysreg_s(dst->thread.tpidr2_el0, SYS_TPIDR2_EL0);
++	if (system_supports_poe())
++		write_sysreg_s(dst->thread.por_el0, SYS_POR_EL0);
++	contextidr_thread_switch(dst);
++	ptrauth_thread_switch_user(dst);
++	mte_thread_switch(dst);
++	update_sctlr_el1(dst->thread.sctlr_user);
++
++	preempt_enable();
++	return 0;
++}
++#endif
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index 5a84998..b153659 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -109,6 +109,7 @@ config X86
+ 	select ARCH_HAS_STRICT_MODULE_RWX
+ 	select ARCH_HAS_SYNC_CORE_BEFORE_USERMODE
+ 	select ARCH_HAS_SYSCALL_WRAPPER
++	select ARCH_HAS_THREAD_HANDOFF		if X86_64
+ 	select ARCH_HAS_UBSAN
+ 	select ARCH_HAS_DEBUG_WX
+ 	select ARCH_HAS_ZONE_DMA_SET if EXPERT
+diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
+index 346c438..ed52af8 100644
+--- a/arch/x86/kernel/process.c
++++ b/arch/x86/kernel/process.c
+@@ -155,13 +155,13 @@ __visible void ret_from_fork(struct task_struct *prev, struct pt_regs *regs,
+ 
+ 	/* Is this a kernel thread? */
+ 	if (unlikely(fn)) {
+-		fn(fn_arg);
++		long ret = fn(fn_arg);
++
+ 		/*
+-		 * A kernel thread is allowed to return here after successfully
+-		 * calling kernel_execve().  Exit to userspace to complete the
+-		 * execve() syscall.
++		 * A kernel thread returning from kernel_execve(), or an io-wq
++		 * worker returning the result of a syscall it took over.
+ 		 */
+-		regs->ax = 0;
++		regs->ax = ret;
+ 	}
+ 
+ 	syscall_exit_to_user_mode(regs);
+diff --git a/arch/x86/kernel/process_64.c b/arch/x86/kernel/process_64.c
+index 2bce7b3..0f07e9a 100644
+--- a/arch/x86/kernel/process_64.c
++++ b/arch/x86/kernel/process_64.c
+@@ -41,10 +41,12 @@
+ #include <linux/ftrace.h>
+ #include <linux/syscalls.h>
+ #include <linux/iommu.h>
++#include <linux/thread_handoff.h>
+ 
+ #include <asm/processor.h>
+ #include <asm/pkru.h>
+ #include <asm/fpu/sched.h>
++#include <asm/fpu/xstate.h>
+ #include <asm/mmu_context.h>
+ #include <asm/prctl.h>
+ #include <asm/desc.h>
+@@ -980,3 +982,140 @@ long do_arch_prctl_64(struct task_struct *task, int option, unsigned long arg2)
+ 
+ 	return ret;
+ }
++
++#ifdef CONFIG_THREAD_HANDOFF
++/* Thread identity handoff, see include/linux/thread_handoff.h */
++
++/* prctl driven per-thread controls that __switch_to_xtra() applies */
++#define THREAD_HANDOFF_TIF_MATCH \
++	(_TIF_SSBD | _TIF_SPEC_IB | _TIF_NOCPUID | _TIF_NOTSC)
++
++/* state bound to the task that neither side may have */
++static bool thread_handoff_task_ok(struct task_struct *tsk)
++{
++	/* I/O permissions, the bitmap hangs off the task */
++	if (test_tsk_thread_flag(tsk, TIF_IO_BITMAP) || tsk->thread.iopl_emul)
++		return false;
++#ifdef CONFIG_X86_USER_SHADOW_STACK
++	/* the shadow stack is per-thread and would have to move along */
++	if (tsk->thread.features & ARCH_SHSTK_SHSTK)
++		return false;
++#endif
++	/* only the default sized FPU state gets copied over, no AMX */
++	if (x86_task_fpu(tsk)->fpstate->is_valloc)
++		return false;
++	return true;
++}
++
++bool arch_thread_handoff_allowed(struct task_struct *tsk)
++{
++	/* 64-bit tasks only */
++	if (test_tsk_thread_flag(tsk, TIF_ADDR32))
++		return false;
++	return thread_handoff_task_ok(tsk);
++}
++
++bool arch_thread_handoff_compatible(struct task_struct *src,
++				    struct task_struct *dst)
++{
++	/* these don't move, must match. They're usually applied process wide */
++	if ((read_task_thread_flags(src) ^ read_task_thread_flags(dst)) &
++	    THREAD_HANDOFF_TIF_MATCH)
++		return false;
++	return thread_handoff_task_ok(dst);
++}
++
++/*
++ * Sync the live user register state. TIF_NEED_FPU_LOAD makes the in-memory
++ * FPU image final, later context switches won't write it again.
++ */
++bool arch_thread_handoff_prepare(void)
++{
++	current_save_fsgs();
++	/* thread.pkru is only valid when scheduled out, make it so */
++	if (cpu_feature_enabled(X86_FEATURE_OSPKE))
++		current->thread.pkru = read_pkru();
++	fpregs_lock();
++	if (!test_thread_flag(TIF_NEED_FPU_LOAD)) {
++		save_fpregs_to_fpstate(x86_task_fpu(current));
++		set_thread_flag(TIF_NEED_FPU_LOAD);
++	}
++	fpregs_unlock();
++	return true;
++}
++
++/* copy the user register state over, load what __switch_to() would have */
++int arch_thread_handoff_finish(struct task_struct *src, bool leader)
++{
++	struct task_struct *dst = current;
++	struct thread_struct *t = &dst->thread, *s = &src->thread;
++	struct fpu *dst_fpu = x86_task_fpu(dst), *src_fpu = x86_task_fpu(src);
++	struct thread_struct prev;
++
++	/* the syscall frame, this is what the return to userspace restores */
++	*task_pt_regs(dst) = *task_pt_regs(src);
++
++	/* fault info, in case a signal for it is pending */
++	t->cr2 = s->cr2;
++	t->trap_nr = s->trap_nr;
++	t->error_code = s->error_code;
++
++	/*
++	 * Dynamic xstate permissions are a property of the process but live
++	 * in the group leader's struct fpu, see xstate_get_group_perm().
++	 */
++	if (leader && fpu_state_size_dynamic()) {
++		struct sighand_struct *sighand;
++
++		sighand = rcu_dereference_protected(dst->sighand, true);
++		spin_lock_irq(&sighand->siglock);
++		dst_fpu->perm = src_fpu->perm;
++		dst_fpu->guest_perm = src_fpu->guest_perm;
++		spin_unlock_irq(&sighand->siglock);
++	}
++
++	/* both sides have the default sized fpstate, reload on the way out */
++	fpregs_lock();
++	memcpy(&dst_fpu->fpstate->regs, &src_fpu->fpstate->regs,
++	       src_fpu->fpstate->size);
++	dst_fpu->last_cpu = -1;
++	set_thread_flag(TIF_NEED_FPU_LOAD);
++	fpregs_unlock();
++
++	preempt_disable();
++
++	memcpy(t->tls_array, s->tls_array, sizeof(t->tls_array));
++	load_TLS(t, smp_processor_id());
++
++	savesegment(es, t->es);
++	if (unlikely(t->es | s->es))
++		loadsegment(es, s->es);
++	t->es = s->es;
++	savesegment(ds, t->ds);
++	if (unlikely(t->ds | s->ds))
++		loadsegment(ds, s->ds);
++	t->ds = s->ds;
++
++	/* FS/GS, the legacy load path needs to know what the CPU holds now */
++	local_irq_disable();
++	save_fsgs(dst);
++	prev.fsindex = t->fsindex;
++	prev.fsbase = t->fsbase;
++	prev.gsindex = t->gsindex;
++	prev.gsbase = t->gsbase;
++	t->fsindex = s->fsindex;
++	t->fsbase = s->fsbase;
++	t->gsindex = s->gsindex;
++	t->gsbase = s->gsbase;
++	x86_fsgsbase_load(&prev, t);
++	local_irq_enable();
++
++	if (cpu_feature_enabled(X86_FEATURE_OSPKE)) {
++		t->pkru = s->pkru;
++		write_pkru(t->pkru);
++	}
++
++	preempt_enable();
++	return 0;
++}
++#endif
+diff --git a/include/linux/io_uring.h b/include/linux/io_uring.h
+index d1aa4ed..4137276 100644
+--- a/include/linux/io_uring.h
++++ b/include/linux/io_uring.h
+@@ -60,4 +60,13 @@ static inline int io_uring_fork(struct task_struct *tsk)
+ }
+ #endif
+ 
++/* called from sched_submit_work() when a PF_IO_HANDOFF task blocks */
++#if defined(CONFIG_IO_URING) && defined(CONFIG_THREAD_HANDOFF)
++void io_uring_task_sleeping(struct task_struct *tsk);
++#else
++static inline void io_uring_task_sleeping(struct task_struct *tsk)
++{
++}
++#endif
++
+ #endif
+diff --git a/include/linux/io_uring_types.h b/include/linux/io_uring_types.h
+index 39629ee..dadbe36 100644
+--- a/include/linux/io_uring_types.h
++++ b/include/linux/io_uring_types.h
+@@ -4,9 +4,11 @@
+ #include <linux/blk_plug.h>
+ #include <linux/hashtable.h>
+ #include <linux/task_work.h>
++#include <linux/thread_handoff.h>
+ #include <linux/bitmap.h>
+ #include <linux/llist.h>
+ #include <linux/uio.h>
++#include <linux/signal_types.h>
+ #include <uapi/linux/io_uring.h>
+ 
+ struct iou_loop_params;
+@@ -139,12 +141,43 @@ struct io_br_sel {
+  */
+ #define IO_RINGFD_REG_MAX 16
+ 
++/* handoff state of a submitter that blocked inline, see io_uring/handoff.c */
++struct io_handoff {
++	/* the request being issued, while a handoff is possible */
++	struct io_kiocb			*req;
++	/* its ring and io-wq pool, @req is the demoted task's after that */
++	struct io_ring_ctx		*ctx;
++	bool				bound;
++	/* the submitter's signal mask while blocking issues run without */
++	sigset_t			sigmask;
++	bool				sigsaved;
++	/* identity source, and the task this hop took the worker from */
++	struct task_struct		*src;
++	struct task_struct		*prev;
++	unsigned int			prev_refs;
++	struct thread_handoff_stats	stats;
++	/* io_uring_enter() arguments, to resume the syscall */
++	struct file			*file;
++	u32				to_submit;
++	/* SQEs consumed so far by this syscall, across handoffs */
++	u32				consumed;
++	u32				min_complete;
++	u32				flags;
++	const void __user		*argp;
++	size_t				argsz;
++};
++
+ struct io_uring_task {
+ 	/* submission side */
+ 	int				cached_refs;
+ 	const struct io_ring_ctx 	*last;
+ 	struct task_struct		*task;
++	/* serializes ->task changes against off-task reference puts */
++	raw_spinlock_t			task_ref_lock;
+ 	struct io_wq			*io_wq;
++#ifdef CONFIG_THREAD_HANDOFF
++	struct io_handoff		handoff;
++#endif
+ 	/*
+ 	 * Consumer cursor for ->task_list. Only popped by the task itself,
+ 	 * or by ->fallback_work once the task can no longer run task_work.
+@@ -153,6 +186,8 @@ struct io_uring_task {
+ 	struct file			*registered_rings[IO_RINGFD_REG_MAX];
+ 
+ 	struct xarray			xa;
++	/* the nodes in ->xa, for walking without the xarray lookup cost */
++	struct list_head		node_list;
+ 	struct wait_queue_head		wait;
+ 	atomic_t			in_cancel;
+ 	atomic_t			inflight_tracked;
+@@ -296,7 +331,10 @@ struct io_submit_state {
+ 	bool			need_plug;
+ 	bool			cq_flush;
+ 	unsigned short		submit_nr;
+-	struct blk_plug		plug;
++	/* cached SQ head at the start of the batch */
++	unsigned int		sq_head;
++	/* the submitting task's plug, lives on its stack */
++	struct blk_plug		*plug;
+ };
+ 
+ struct io_alloc_cache {
+@@ -350,6 +388,11 @@ struct io_ring_ctx {
+ 	/* submission data */
+ 	struct {
+ 		struct mutex		uring_lock;
++		/*
++		 * io_ring_submit_lock() nesting depth, non-zero means the
++		 * issue path relies on the lock being held.
++		 */
++		unsigned int		submit_lock_depth;
+ 
+ 		/*
+ 		 * Ring buffer of indices into array of io_uring_sqe, which is
+@@ -608,6 +651,7 @@ enum {
+ 	REQ_F_IMPORT_BUFFER_BIT,
+ 	REQ_F_SQE_COPIED_BIT,
+ 	REQ_F_IOPOLL_BIT,
++	REQ_F_HANDOFF_BIT,
+ 
+ 	/* not a real bit, just to check we're not overflowing the space */
+ 	__REQ_F_LAST_BIT,
+@@ -703,6 +747,8 @@ enum {
+ 	REQ_F_SQE_COPIED	= IO_REQ_FLAG(REQ_F_SQE_COPIED_BIT),
+ 	/* request must be iopolled to completion (set in ->issue()) */
+ 	REQ_F_IOPOLL		= IO_REQ_FLAG(REQ_F_IOPOLL_BIT),
++	/* vetted at submit for an inline blocking issue with a handoff */
++	REQ_F_HANDOFF		= IO_REQ_FLAG(REQ_F_HANDOFF_BIT),
+ };
+ 
+ struct io_tw_req {
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 59f6366..7fce35d 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1816,7 +1816,7 @@ extern struct pid __rcu *cad_pid;
+ 						 * I am cleaning dirty pages from some other bdi. */
+ #define PF_KTHREAD		0x00200000	/* I am a kernel thread */
+ #define PF_RANDOMIZE		0x00400000	/* Randomize virtual address space */
+-#define PF__HOLE__00800000	0x00800000
++#define PF_IO_HANDOFF		0x00800000	/* io_uring: hand identity off if the task blocks */
+ #define PF__HOLE__01000000	0x01000000
+ #define PF__HOLE__02000000	0x02000000
+ #define PF_NO_SETAFFINITY	0x04000000	/* Userland is not allowed to meddle with cpus_mask */
+diff --git b/include/linux/thread_handoff.h b/include/linux/thread_handoff.h
+new file mode 100644
+index 0000000..203ab6e
+--- /dev/null
++++ b/include/linux/thread_handoff.h
+@@ -0,0 +1,76 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _LINUX_THREAD_HANDOFF_H
++#define _LINUX_THREAD_HANDOFF_H
++
++#include <linux/sched.h>
++
++/* per-thread accounting that follows the identity */
++struct thread_handoff_stats {
++	u64				utime;
++	u64				stime;
++	u64				gtime;
++	u64				exec_runtime;
++	unsigned long			min_flt;
++	unsigned long			maj_flt;
++	unsigned long			nvcsw;
++	unsigned long			nivcsw;
++	struct task_io_accounting	ioac;
++};
++
++/*
++ * Move the user visible identity of a thread that is about to block in the
++ * kernel (tid, signals, registers, rseq, creds, sched attributes, ...) to
++ * another thread in the same group, which then returns to userspace on its
++ * behalf. The blocked thread keeps its task_struct and in-kernel state.
++ */
++#ifdef CONFIG_THREAD_HANDOFF
++bool thread_handoff_allowed(struct task_struct *tsk);
++bool thread_handoff_compatible(struct task_struct *src,
++			       struct task_struct *dst);
++bool thread_handoff_prepare(struct task_struct *tsk);
++void thread_handoff_stats_take(struct thread_handoff_stats *st);
++void thread_handoff_adopt_creds(struct task_struct *src);
++int thread_handoff_finish(struct task_struct *src,
++			  struct thread_handoff_stats *st);
++
++u64 sched_exec_runtime_take(struct task_struct *p);
++void sched_exec_runtime_add(struct task_struct *p, u64 ns);
++
++/*
++ * Arch hooks. _prepare() syncs the live user register state on the source
++ * before it blocks, _finish() copies it over and loads what the return to
++ * userspace won't. @leader tells it that thread group leadership moved.
++ */
++bool arch_thread_handoff_allowed(struct task_struct *tsk);
++bool arch_thread_handoff_compatible(struct task_struct *src,
++				    struct task_struct *dst);
++bool arch_thread_handoff_prepare(void);
++int arch_thread_handoff_finish(struct task_struct *src, bool leader);
++#else
++static inline bool thread_handoff_allowed(struct task_struct *tsk)
++{
++	return false;
++}
++static inline bool thread_handoff_compatible(struct task_struct *src,
++					     struct task_struct *dst)
++{
++	return false;
++}
++static inline bool thread_handoff_prepare(struct task_struct *tsk)
++{
++	return false;
++}
++static inline void thread_handoff_stats_take(struct thread_handoff_stats *st)
++{
++}
++static inline void thread_handoff_adopt_creds(struct task_struct *src)
++{
++}
++static inline int thread_handoff_finish(struct task_struct *src,
++					struct thread_handoff_stats *st)
++{
++	return -EOPNOTSUPP;
++}
++#endif
++
++#endif
+diff --git a/include/trace/events/io_uring.h b/include/trace/events/io_uring.h
+index 34b31a8..6043c5d 100644
+--- a/include/trace/events/io_uring.h
++++ b/include/trace/events/io_uring.h
+@@ -671,6 +671,120 @@ TRACE_EVENT(io_uring_local_work_run,
+ 	TP_printk("ring %p, count %d, loops %u", __entry->ctx, __entry->count, __entry->loops)
+ );
+ 
++/**
++ * io_uring_handoff - a blocked submitter hands its identity to a worker
++ *
++ * @req:	pointer to a submitted request
++ * @dst:	the idle io-wq worker task taking over
++ */
++TRACE_EVENT(io_uring_handoff,
++
++	TP_PROTO(struct io_kiocb *req, struct task_struct *dst),
++
++	TP_ARGS(req, dst),
++
++	TP_STRUCT__entry (
++		__field(  void *,	ctx		)
++		__field(  void *,	req		)
++		__field(  u64,		user_data	)
++		__field(  u8,		opcode		)
++		__field(  pid_t,	src_pid		)
++		__field(  pid_t,	dst_pid		)
++
++		__string( op_str, io_uring_get_opcode(req->opcode)	)
++	),
++
++	TP_fast_assign(
++		__entry->ctx		= req->ctx;
++		__entry->req		= req;
++		__entry->user_data	= req->cqe.user_data;
++		__entry->opcode		= req->opcode;
++		__entry->src_pid	= task_pid_nr(current);
++		__entry->dst_pid	= task_pid_nr(dst);
++
++		__assign_str(op_str);
++	),
++
++	TP_printk("ring %p, request %p, user_data 0x%llx, opcode %s, identity %d handed to worker %d",
++		__entry->ctx, __entry->req, __entry->user_data,
++		__get_str(op_str), __entry->src_pid, __entry->dst_pid)
++);
++
++/**
++ * io_uring_handoff_fail - a handoff didn't happen for a request
++ *
++ * @req:	pointer to the request being issued
++ * @reason:	why. "lock", "prepare" and "worker" mean the task blocked in
++ *		place, anything else that it took the io-wq punt path instead.
++ */
++TRACE_EVENT(io_uring_handoff_fail,
++
++	TP_PROTO(struct io_kiocb *req, const char *reason),
++
++	TP_ARGS(req, reason),
++
++	TP_STRUCT__entry (
++		__field(  void *,	ctx		)
++		__field(  void *,	req		)
++		__field(  u64,		user_data	)
++		__field(  u8,		opcode		)
++
++		__string( op_str, io_uring_get_opcode(req->opcode)	)
++		__string( reason, reason			)
++	),
++
++	TP_fast_assign(
++		__entry->ctx		= req->ctx;
++		__entry->req		= req;
++		__entry->user_data	= req->cqe.user_data;
++		__entry->opcode		= req->opcode;
++
++		__assign_str(op_str);
++		__assign_str(reason);
++	),
++
++	TP_printk("ring %p, request %p, user_data 0x%llx, opcode %s, %s",
++		__entry->ctx, __entry->req, __entry->user_data,
++		__get_str(op_str), __get_str(reason))
++);
++
++/**
++ * io_uring_handoff_resume - a promoted worker continues the submission
++ *
++ * @ctx:	pointer to a ring context structure
++ * @req:	the request that blocked, owned by the demoted task by now
++ * @worker:	pid the demoted task now runs under
++ * @consumed:	SQEs consumed by earlier handoffs of this syscall
++ * @to_submit:	SQE count the syscall asked for
++ */
++TRACE_EVENT(io_uring_handoff_resume,
++
++	TP_PROTO(void *ctx, void *req, pid_t worker, unsigned int consumed,
++		 unsigned int to_submit),
++
++	TP_ARGS(ctx, req, worker, consumed, to_submit),
++
++	TP_STRUCT__entry (
++		__field(  void *,	ctx		)
++		__field(  void *,	req		)
++		__field(  pid_t,	worker		)
++		__field(  unsigned int,	consumed	)
++		__field(  unsigned int,	to_submit	)
++	),
++
++	TP_fast_assign(
++		__entry->ctx		= ctx;
++		__entry->req		= req;
++		__entry->worker		= worker;
++		__entry->consumed	= consumed;
++		__entry->to_submit	= to_submit;
++	),
++
++	TP_printk("ring %p, request %p now on worker %d, consumed %u, to_submit %u",
++		__entry->ctx, __entry->req, __entry->worker,
++		__entry->consumed, __entry->to_submit)
++);
++
+ #endif /* _TRACE_IO_URING_H */
+ 
+ /* This part must be outside protection */
+diff --git a/init/Kconfig b/init/Kconfig
+index 8583d9f..b376f80 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1957,9 +1957,20 @@ config AIO
+ 	  by some high performance threaded applications. Disabling
+ 	  this option saves about 7k.
+ 
++config THREAD_HANDOFF
++	bool
++	depends on ARCH_HAS_THREAD_HANDOFF
++	help
++	  Support for handing the user visible identity of a thread that is
++	  about to block in the kernel to another thread of the same process,
++	  which then returns to userspace on its behalf. Used by io_uring to
++	  issue requests inline and only offload them to a worker thread if
++	  they actually block.
++
+ config IO_URING
+ 	bool "Enable IO uring support" if EXPERT
+ 	select IO_WQ
++	select THREAD_HANDOFF if ARCH_HAS_THREAD_HANDOFF
+ 	default y
+ 	help
+ 	  This option enables support for the io_uring interface, enabling
+diff --git a/io_uring/Makefile b/io_uring/Makefile
+index c54e328..9fd9911 100644
+--- a/io_uring/Makefile
++++ b/io_uring/Makefile
+@@ -18,6 +18,7 @@ obj-$(CONFIG_IO_URING)		+= io_uring.o opdef.o kbuf.o rsrc.o notif.o \
+ 
+ obj-$(CONFIG_IO_URING_ZCRX)	+= zcrx.o
+ obj-$(CONFIG_IO_WQ)		+= io-wq.o
++obj-$(CONFIG_THREAD_HANDOFF)	+= handoff.o
+ obj-$(CONFIG_FUTEX)		+= futex.o
+ obj-$(CONFIG_EPOLL)		+= epoll.o
+ obj-$(CONFIG_NET_RX_BUSY_POLL)	+= napi.o
+diff --git b/io_uring/handoff.c b/io_uring/handoff.c
+new file mode 100644
+index 0000000..8aefea5
+--- /dev/null
++++ b/io_uring/handoff.c
+@@ -0,0 +1,395 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Inline issue handoff: if an inline issue blocks, the submitter's identity
++ * moves to an idle io-wq worker which returns to userspace as the submitter,
++ * while the submitter finishes the request as the worker.
++ *
++ * Copyright (C) 2026 Jens Axboe
++ */
++#include <linux/kernel.h>
++#include <linux/errno.h>
++#include <linux/sched.h>
++#include <linux/sched/task.h>
++#include <linux/sched/signal.h>
++#include <linux/sched/task_stack.h>
++#include <linux/signal.h>
++#include <linux/task_work.h>
++#include <linux/thread_handoff.h>
++#include <linux/io_uring.h>
++#include <linux/blkdev.h>
++#include <linux/fs.h>
++#include <linux/file.h>
++#include <asm/syscall.h>
++#include <trace/events/io_uring.h>
++
++#include "io_uring.h"
++#include "io-wq.h"
++#include "opdef.h"
++#include "tctx.h"
++#include "handoff.h"
++
++int sysctl_io_uring_handoff __read_mostly = 1;
++
++static long io_handoff_resume(void);
++
++/*
++ * Can @req be issued inline in blocking mode with a handoff ready. Everything
++ * but the spare worker check is static, REQ_F_HANDOFF caches that part.
++ */
++bool io_handoff_possible(struct io_kiocb *req)
++{
++	const struct io_issue_def *def = &io_issue_defs[req->opcode];
++	struct io_ring_ctx *ctx = req->ctx;
++	struct io_uring_task *tctx = current->io_uring;
++
++	if (!sysctl_io_uring_handoff)
++		return false;
++	if (req->flags & REQ_F_HANDOFF)
++		goto check_spare;
++	if (!def->blockable)
++		return false;
++	/* nonblocking semantics were asked for, -EAGAIN is the answer */
++	if (req->flags & REQ_F_NOWAIT)
++		return false;
++	/* IOPOLL/SQPOLL issue differently, SQ_REWIND can't resume mid-batch */
++	if (ctx->flags & (IORING_SETUP_IOPOLL | IORING_SETUP_SQPOLL |
++			  IORING_SETUP_SQ_REWIND)) {
++		trace_io_uring_handoff_fail(req, "ring");
++		return false;
++	}
++	/* pollable files keep the nonblocking issue + poll retry path */
++	if (io_file_can_poll(req)) {
++		trace_io_uring_handoff_fail(req, "poll");
++		return false;
++	}
++	/* FMODE_NOWAIT files have a working nonblocking path, keep using it */
++	if ((def->pollin || def->pollout) && req->file &&
++	    (req->file->f_mode & FMODE_NOWAIT)) {
++		trace_io_uring_handoff_fail(req, "nowait-file");
++		return false;
++	}
++	if (!tctx->io_wq)
++		return false;
++	/* an intermediate task's own user state doesn't matter, it stays */
++	if (!tctx->handoff.src && !thread_handoff_allowed(current)) {
++		trace_io_uring_handoff_fail(req, "task");
++		return false;
++	}
++	/* the SQ head is published while we may still be running */
++	if (io_req_sqe_copy(req, IO_URING_F_INLINE)) {
++		trace_io_uring_handoff_fail(req, "sqe");
++		return false;
++	}
++	req->flags |= REQ_F_HANDOFF;
++check_spare:
++	/* have a worker ready to take over */
++	if (!io_wq_handoff_spare(tctx->io_wq, !io_req_unbound(req), false)) {
++		trace_io_uring_handoff_fail(req, "spare");
++		return false;
++	}
++	return true;
++}
++
++/* fork a spare worker upfront, so the first blockable issue has a target */
++void io_handoff_prime(struct io_uring_task *tctx, struct io_ring_ctx *ctx)
++{
++	if (!sysctl_io_uring_handoff || !tctx->io_wq)
++		return;
++	/* handoffs are never done for these, see io_handoff_possible() */
++	if (ctx->flags & (IORING_SETUP_IOPOLL | IORING_SETUP_SQPOLL |
++			  IORING_SETUP_SQ_REWIND))
++		return;
++	io_wq_handoff_spare(tctx->io_wq, true, true);
++}
++
++/*
++ * Blocking inline issues run with an io-wq worker's signal mask, a request
++ * shouldn't fail with -EINTR because the submitter has a timer.
++ */
++static void io_handoff_block_signals(struct io_handoff *ho)
++{
++	sigset_t mask;
++
++	if (ho->sigsaved)
++		return;
++	ho->sigsaved = true;
++	ho->sigmask = current->blocked;
++	siginitsetinv(&mask, sigmask(SIGKILL) | sigmask(SIGSTOP));
++	set_current_blocked(&mask);
++}
++
++void __io_handoff_restore_signals(struct io_handoff *ho)
++{
++	ho->sigsaved = false;
++	set_current_blocked(&ho->sigmask);
++}
++
++/*
++ * Arm a handoff for the inline issue of @req. Until io_handoff_end() the issue
++ * runs like on io-wq, neither normal signals nor task_work interrupt it.
++ */
++bool __io_handoff_begin(struct io_kiocb *req)
++{
++	struct io_handoff *ho = &current->io_uring->handoff;
++
++	if (!io_handoff_possible(req))
++		return false;
++	/* would interrupt the issue right away, and can't be handled here */
++	if (task_sigpending(current)) {
++		trace_io_uring_handoff_fail(req, "signal");
++		return false;
++	}
++
++	ho->req = req;
++	io_handoff_block_signals(ho);
++	current->flags |= PF_IO_HANDOFF;
++	/* already queued task_work gets picked up by io_handoff_end() too */
++	if (test_thread_flag(TIF_NOTIFY_SIGNAL))
++		clear_notify_signal();
++	return true;
++}
++
++/* Returns true if the identity got handed off during the issue */
++bool io_handoff_end(void)
++{
++	bool handed_off = current->flags & PF_IO_WORKER;
++
++	current->flags &= ~PF_IO_HANDOFF;
++	/* pairs with io_wq_task_work_add(), notify for work queued meanwhile */
++	smp_mb();
++	if (task_work_pending(current))
++		set_notify_signal(current);
++
++	/* once handed off the tctx isn't ours anymore */
++	if (likely(!handed_off))
++		current->io_uring->handoff.req = NULL;
++	return handed_off;
++}
++
++/* close our part of the batch and drop uring_lock for the promoted task */
++static void io_handoff_release_ring(struct io_ring_ctx *ctx,
++				    struct io_handoff *ho)
++	__releases(&ctx->uring_lock)
++{
++	lockdep_assert_held(&ctx->uring_lock);
++
++	ho->consumed += io_submit_sqes_abandon(ctx);
++	mutex_unlock(&ctx->uring_lock);
++}
++
++/* move the outstanding tctx task refs from @src to @dst, see io_put_task() */
++static void io_handoff_task_refs(struct io_uring_task *tctx,
++				 struct task_struct *src,
++				 struct task_struct *dst)
++{
++	unsigned int nr;
++
++	raw_spin_lock(&tctx->task_ref_lock);
++	nr = percpu_counter_sum(&tctx->inflight);
++	refcount_add(nr, &dst->usage);
++	WRITE_ONCE(tctx->task, dst);
++	raw_spin_unlock(&tctx->task_ref_lock);
++
++	/* dropped by the promoted task */
++	tctx->handoff.prev_refs = nr;
++}
++
++/* move tctx task_work queued on @task along to the tctx's new task */
++void io_handoff_tw_moved(struct io_uring_task *tctx, struct task_struct *task)
++{
++	struct task_struct *cur;
++
++	while (task_work_cancel(task, &tctx->task_work)) {
++		cur = READ_ONCE(tctx->task);
++		if (WARN_ON_ONCE(task_work_add(cur, &tctx->task_work, TWA_SIGNAL)))
++			break;
++		if (READ_ONCE(tctx->task) == cur)
++			break;
++		task = cur;
++	}
++}
++
++/* Move the io_uring task state from @src to @dst */
++static void io_handoff_move_tctx(struct io_uring_task *tctx,
++				 struct task_struct *src,
++				 struct task_struct *dst)
++{
++	struct io_tctx_node *node;
++
++	io_handoff_task_refs(tctx, src, dst);
++
++	dst->io_uring = tctx;
++	src->io_uring = NULL;
++	dst->io_uring_restrict = src->io_uring_restrict;
++	src->io_uring_restrict = NULL;
++
++	list_for_each_entry(node, &tctx->node_list, tctx_link) {
++		struct io_ring_ctx *ctx = node->ctx;
++
++		node->task = dst;
++		if (READ_ONCE(ctx->submitter_task) == src) {
++			get_task_struct(dst);
++			WRITE_ONCE(ctx->submitter_task, dst);
++			put_task_struct(src);
++		}
++	}
++
++	io_handoff_tw_moved(tctx, src);
++}
++
++/*
++ * Called from sched_submit_work() when a task blocks inside an inline issue,
++ * hand our identity to an idle worker. Can't block, uring_lock is held.
++ */
++void io_uring_task_sleeping(struct task_struct *tsk)
++{
++	struct io_uring_task *tctx = tsk->io_uring;
++	struct io_handoff *ho = &tctx->handoff;
++	struct io_kiocb *req = ho->req;
++	struct io_ring_ctx *ctx = req->ctx;
++	/* the identity being handed around, ours unless we're intermediate */
++	struct task_struct *src = ho->src ?: tsk;
++	struct task_struct *dst;
++	bool bound;
++
++	WARN_ON_ONCE(tsk != current);
++
++	/* the issue path is touching state that needs the ring lock held */
++	if (ctx->submit_lock_depth) {
++		trace_io_uring_handoff_fail(req, "lock");
++		return;
++	}
++	if (src == tsk && !thread_handoff_prepare(tsk)) {
++		trace_io_uring_handoff_fail(req, "prepare");
++		return;
++	}
++
++	/* don't let the woken worker preempt us before we've committed */
++	preempt_disable();
++	bound = !io_req_unbound(req);
++	dst = io_wq_handoff_claim(tctx->io_wq, bound, io_handoff_resume, src);
++	if (!dst) {
++		preempt_enable();
++		trace_io_uring_handoff_fail(req, "worker");
++		return;
++	}
++
++	/* committed, @req is ours as the worker from here on */
++	ho->src = src;
++	ho->prev = tsk;
++	ho->ctx = ctx;
++	ho->bound = bound;
++	/* our accounting follows the identity, an intermediate's doesn't */
++	if (src == tsk)
++		thread_handoff_stats_take(&ho->stats);
++	trace_io_uring_handoff(req, dst);
++
++	io_handoff_release_ring(ctx, ho);
++	io_handoff_move_tctx(tctx, tsk, dst);
++	io_wq_handoff_commit(dst);
++
++	/* do what sched_submit_work() would have done for an io-wq worker */
++	io_wq_worker_sleeping(tsk);
++	preempt_enable();
++}
++
++/* the issue of @req blocked and we're a worker now, finish it like io-wq */
++int io_handoff_complete(struct io_kiocb *req, int ret)
++{
++	WARN_ON_ONCE(!io_wq_current_is_worker());
++
++	if (ret == IOU_COMPLETE) {
++		req->io_task_work.func = io_req_task_complete;
++		io_req_task_work_add(req);
++	} else if (ret == IOU_ISSUE_SKIP_COMPLETE) {
++		/* completes on its own */
++	} else if ((ret == -EAGAIN && !(req->flags & REQ_F_NOWAIT)) ||
++		   io_issue_wants_restart(ret)) {
++		/* wants a blocking retry, or got interrupted, io-wq does that */
++		io_queue_iowq(req);
++	} else {
++		io_req_task_queue_fail(req, ret);
++	}
++
++	return -EIOCBQUEUED;
++}
++
++/*
++ * Runs on the promoted task, finishes io_uring_enter() for the submitter. Only
++ * takes its identity if it gets through the submission without handing off.
++ */
++static long io_handoff_resume(void)
++{
++	struct io_uring_task *tctx = current->io_uring;
++	struct io_handoff *ho = &tctx->handoff;
++	struct task_struct *src = ho->src, *prev = ho->prev;
++	struct io_ring_ctx *ctx = ho->ctx;
++	bool bound = ho->bound;
++	long ret;
++
++	trace_io_uring_handoff_resume(ctx, ho->req, task_pid_nr(prev),
++				      ho->consumed, ho->to_submit);
++
++	/* enough of the identity to issue requests on its behalf */
++	thread_handoff_adopt_creds(src);
++	put_task_struct_many(prev, ho->prev_refs);
++	ho->prev_refs = 0;
++	ho->prev = NULL;
++	ho->req = NULL;
++	ho->ctx = NULL;
++	/* an intermediate task has nothing we still need, let it work */
++	if (prev != src)
++		io_wq_handoff_finished(prev);
++
++	/* flush what the blocked batch left behind, then submit the rest */
++	io_run_task_work();
++	mutex_lock(&ctx->uring_lock);
++	io_submit_flush_completions(ctx);
++	if (ho->consumed < ho->to_submit) {
++		ret = io_submit_sqes(ctx, ho->to_submit - ho->consumed);
++		if (ret == -EIOCBQUEUED)
++			return ret;
++		if (ret > 0)
++			ho->consumed += ret;
++	}
++
++	mutex_unlock(&ctx->uring_lock);
++
++	/* submission done, become the submitter and return to userspace */
++	if (WARN_ON_ONCE(thread_handoff_finish(src, &ho->stats)))
++		force_sig(SIGKILL);
++	if (ho->sigsaved)
++		__io_handoff_restore_signals(ho);
++	io_wq_handoff_finished(src);
++	ho->src = NULL;
++
++	ret = ho->consumed;
++	if (ret == ho->to_submit && (ho->flags & IORING_ENTER_GETEVENTS)) {
++		mutex_lock(&ctx->uring_lock);
++		ret = io_uring_enter_finish(ctx, ret, ho->min_complete,
++					    ho->flags, ho->argp, ho->argsz);
++	}
++	if (!(ho->flags & IORING_ENTER_REGISTERED_RING))
++		fput(ho->file);
++
++	/* we took a worker, top the spare pool back up now the work is done */
++	io_wq_handoff_spare(tctx->io_wq, bound, true);
++
++	syscall_set_return_value(current, task_pt_regs(current),
++				 ret < 0 ? ret : 0, ret);
++	return ret;
++}
++
++/* run the worker loop after a demotion, returns once handed an identity */
++long io_uring_handoff_worker(void)
++{
++	io_wq_handoff_fn *fn;
++	long ret;
++
++	do {
++		fn = io_wq_handoff_worker();
++		ret = fn();
++	} while (ret == -EIOCBQUEUED);
++
++	return ret;
++}
+diff --git b/io_uring/handoff.h b/io_uring/handoff.h
+new file mode 100644
+index 0000000..f315f2a
+--- /dev/null
++++ b/io_uring/handoff.h
+@@ -0,0 +1,103 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef IOU_HANDOFF_H
++#define IOU_HANDOFF_H
++
++#include <linux/io_uring_types.h>
++#include "opdef.h"
++#include "tw.h"
++
++#ifdef CONFIG_THREAD_HANDOFF
++extern int sysctl_io_uring_handoff;
++
++bool io_handoff_possible(struct io_kiocb *req);
++bool __io_handoff_begin(struct io_kiocb *req);
++void io_handoff_prime(struct io_uring_task *tctx, struct io_ring_ctx *ctx);
++bool io_handoff_end(void);
++void __io_handoff_restore_signals(struct io_handoff *ho);
++int io_handoff_complete(struct io_kiocb *req, int ret);
++long io_uring_handoff_worker(void);
++void io_handoff_tw_moved(struct io_uring_task *tctx, struct task_struct *task);
++
++/*
++ * Stash the io_uring_enter() arguments so a promoted task can resume it, and
++ * run pending task_work so it doesn't interrupt a blocking issue later.
++ */
++static inline void io_handoff_enter(struct file *file, u32 to_submit,
++				    u32 min_complete, u32 flags,
++				    const void __user *argp, size_t argsz)
++{
++	struct io_handoff *ho = &current->io_uring->handoff;
++
++	io_run_task_work();
++	ho->file = file;
++	ho->to_submit = to_submit;
++	ho->consumed = 0;
++	ho->min_complete = min_complete;
++	ho->flags = flags;
++	ho->argp = argp;
++	ho->argsz = argsz;
++}
++
++/*
++ * Done issuing, restore the signal mask if we changed it. Not with a handoff
++ * in flight, io_handoff_resume() does that once it has the identity.
++ */
++static inline void io_handoff_submit_end(void)
++{
++	struct io_handoff *ho = &current->io_uring->handoff;
++
++	if (unlikely(ho->sigsaved) && !ho->src)
++		__io_handoff_restore_signals(ho);
++}
++
++/* if true, @req gets a blocking inline issue. Pair with io_handoff_end() */
++static inline bool io_handoff_begin(struct io_kiocb *req,
++				    const struct io_issue_def *def,
++				    unsigned int issue_flags)
++{
++	if (!(issue_flags & IO_URING_F_INLINE) || !def->blockable)
++		return false;
++	return __io_handoff_begin(req);
++}
++#else
++static inline void io_handoff_enter(struct file *file, u32 to_submit,
++				    u32 min_complete, u32 flags,
++				    const void __user *argp, size_t argsz)
++{
++}
++static inline bool io_handoff_begin(struct io_kiocb *req,
++				    const struct io_issue_def *def,
++				    unsigned int issue_flags)
++{
++	return false;
++}
++static inline bool io_handoff_possible(struct io_kiocb *req)
++{
++	return false;
++}
++static inline void io_handoff_submit_end(void)
++{
++}
++static inline bool io_handoff_end(void)
++{
++	return false;
++}
++static inline int io_handoff_complete(struct io_kiocb *req, int ret)
++{
++	return -EFAULT;
++}
++static inline long io_uring_handoff_worker(void)
++{
++	return -EFAULT;
++}
++static inline void io_handoff_tw_moved(struct io_uring_task *tctx,
++				       struct task_struct *task)
++{
++}
++static inline void io_handoff_prime(struct io_uring_task *tctx,
++				    struct io_ring_ctx *ctx)
++{
++}
++#endif
++
++#endif
+diff --git a/io_uring/io-wq.c b/io_uring/io-wq.c
+index 2ca223e..d29e5a8 100644
+--- a/io_uring/io-wq.c
++++ b/io_uring/io-wq.c
+@@ -20,6 +20,7 @@
+ #include <linux/sched/sysctl.h>
+ #include <uapi/linux/io_uring.h>
+ #include <linux/kcov.h>
++#include <linux/thread_handoff.h>
+ 
+ #include "io-wq.h"
+ #include "slist.h"
+@@ -32,6 +33,15 @@ enum {
+ 	IO_WORKER_F_UP		= 0,	/* up and active */
+ 	IO_WORKER_F_RUNNING	= 1,	/* account as running */
+ 	IO_WORKER_F_FREE	= 2,	/* worker on free list */
++	IO_WORKER_F_IDLE_SLEEP	= 3,	/* in the idle sleep of the worker loop */
++};
++
++/* worker->handoff handshake */
++enum {
++	IO_WORKER_HANDOFF_NONE		= 0,
++	IO_WORKER_HANDOFF_PROMOTE,	/* claimed, set under ->workers_lock */
++	IO_WORKER_HANDOFF_DONE,		/* claimer took over the worker */
++	IO_WORKER_HANDOFF_FINISHED,	/* identity moved, demoted released */
+ };
+ 
+ enum {
+@@ -64,6 +74,10 @@ struct io_worker {
+ 	struct callback_head create_work;
+ 	int init_retries;
+ 
++	atomic_t handoff;
++	io_wq_handoff_fn *handoff_fn;
++	struct task_struct *handoff_task;
++
+ 	union {
+ 		struct rcu_head rcu;
+ 		struct delayed_work work;
+@@ -88,6 +102,9 @@ struct io_wq_acct {
+ 	unsigned max_workers;
+ 	atomic_t nr_running;
+ 
++	/* workers in the idle sleep, claimable for a handoff */
++	atomic_t nr_iosleep;
++
+ 	/**
+ 	 * The list of free workers.  Protected by #workers_lock
+ 	 * (write) and RCU (read).
+@@ -151,6 +168,8 @@ static bool io_acct_cancel_pending_work(struct io_wq *wq,
+ 					struct io_wq_acct *acct,
+ 					struct io_cb_cancel_data *match);
+ static void create_worker_cb(struct callback_head *cb);
++static void create_worker_cont(struct callback_head *cb);
++static bool io_task_work_match(struct callback_head *cb, void *data);
+ static void io_wq_cancel_tw_create(struct io_wq *wq);
+ 
+ static inline unsigned int __io_get_work_hash(unsigned int work_flags)
+@@ -233,7 +252,7 @@ static bool io_task_worker_match(struct callback_head *cb, void *data)
+ 	return worker == data;
+ }
+ 
+-static void io_worker_exit(struct io_worker *worker)
++static void __noreturn io_worker_exit(struct io_worker *worker)
+ {
+ 	struct io_wq *wq = worker->wq;
+ 	struct io_wq_acct *acct = io_wq_get_acct(worker);
+@@ -411,7 +430,7 @@ static bool io_queue_worker_create(struct io_worker *worker,
+ 
+ 	atomic_inc(&wq->worker_refs);
+ 	init_task_work(&worker->create_work, func);
+-	if (!task_work_add(wq->task, &worker->create_work, TWA_SIGNAL)) {
++	if (!io_wq_task_work_add(wq->task, &worker->create_work, TWA_SIGNAL)) {
+ 		/*
+ 		 * EXIT may have been set after checking it above, check after
+ 		 * adding the task_work and remove any creation item if it is
+@@ -687,19 +706,48 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
+ 	} while (1);
+ }
+ 
+-static int io_wq_worker(void *data)
++/*
++ * Leave the idle sleep, check if we got claimed while in it. Serialized with
++ * the claimer by ->workers_lock, so a claim can't be missed or raced.
++ */
++static bool io_wq_worker_idle_done(struct io_wq_acct *acct,
++				   struct io_worker *worker)
++{
++	bool promoted;
++
++	atomic_dec(&acct->nr_iosleep);
++	raw_spin_lock(&acct->workers_lock);
++	clear_bit(IO_WORKER_F_IDLE_SLEEP, &worker->flags);
++	/* the claimer may have committed already, DONE rather than PROMOTE */
++	promoted = atomic_read(&worker->handoff) != IO_WORKER_HANDOFF_NONE;
++	raw_spin_unlock(&acct->workers_lock);
++
++	WARN_ON_ONCE(promoted && worker->handoff_task != current);
++	return promoted;
++}
++
++/* claimed, wait for the claimer to finish taking over the worker struct */
++static io_wq_handoff_fn *io_wq_worker_promoted(struct io_worker *worker)
++{
++	io_wq_handoff_fn *fn = worker->handoff_fn;
++
++	/* stop the scheduler from treating us as a worker while we wait */
++	current->flags &= ~(PF_IO_WORKER | PF_USER_WORKER);
++
++	wait_var_event(&worker->handoff,
++		atomic_read_acquire(&worker->handoff) == IO_WORKER_HANDOFF_DONE);
++
++	WARN_ON_ONCE(current->worker_private);
++	atomic_set(&worker->handoff, IO_WORKER_HANDOFF_NONE);
++	return fn;
++}
++
++/* the worker loop, only returns if claimed for a handoff */
++static io_wq_handoff_fn *io_wq_worker_run(struct io_worker *worker)
+ {
+-	struct io_worker *worker = data;
+ 	struct io_wq_acct *acct = io_wq_get_acct(worker);
+-	struct io_wq *wq = worker->wq;
+ 	bool exit_mask = false, last_timeout = false;
+-	char buf[TASK_COMM_LEN] = {};
+-
+-	set_mask_bits(&worker->flags, 0,
+-		      BIT(IO_WORKER_F_UP) | BIT(IO_WORKER_F_RUNNING));
+-
+-	snprintf(buf, sizeof(buf), "iou-wrk-%d", wq->task->pid);
+-	set_task_comm(current, buf);
++	struct io_wq *wq = worker->wq;
+ 
+ 	while (!test_bit(IO_WQ_BIT_EXIT, &wq->state)) {
+ 		long ret;
+@@ -724,6 +772,11 @@ static int io_wq_worker(void *data)
+ 		if ((last_timeout && (exit_mask || acct->nr_workers > 1)) ||
+ 		    test_bit(IO_WQ_BIT_EXIT_ON_IDLE, &wq->state)) {
+ 			acct->nr_workers--;
++			/* a handoff can't claim an exiting worker */
++			if (test_bit(IO_WORKER_F_FREE, &worker->flags)) {
++				clear_bit(IO_WORKER_F_FREE, &worker->flags);
++				hlist_nulls_del_rcu(&worker->nulls_node);
++			}
+ 			raw_spin_unlock(&acct->workers_lock);
+ 			__set_current_state(TASK_RUNNING);
+ 			break;
+@@ -733,7 +786,12 @@ static int io_wq_worker(void *data)
+ 		raw_spin_unlock(&acct->workers_lock);
+ 		if (io_run_task_work())
+ 			continue;
++		/* claimable only in this sleep, the free list isn't enough */
++		set_bit(IO_WORKER_F_IDLE_SLEEP, &worker->flags);
++		atomic_inc(&acct->nr_iosleep);
+ 		ret = schedule_timeout(WORKER_IDLE_TIMEOUT);
++		if (unlikely(io_wq_worker_idle_done(acct, worker)))
++			return io_wq_worker_promoted(worker);
+ 		if (signal_pending(current)) {
+ 			struct ksignal ksig;
+ 
+@@ -752,9 +810,197 @@ static int io_wq_worker(void *data)
+ 		io_worker_handle_work(acct, worker);
+ 
+ 	io_worker_exit(worker);
++}
++
++static int io_wq_worker(void *data)
++{
++	struct io_worker *worker = data;
++	struct io_wq *wq = worker->wq;
++	io_wq_handoff_fn *fn;
++	char buf[TASK_COMM_LEN] = {};
++
++	set_mask_bits(&worker->flags, 0,
++		      BIT(IO_WORKER_F_UP) | BIT(IO_WORKER_F_RUNNING));
++
++	snprintf(buf, sizeof(buf), "iou-wrk-%d", wq->task->pid);
++	set_task_comm(current, buf);
++
++	/*
++	 * Only returns if we got handed an identity. -EIOCBQUEUED means we got
++	 * demoted again while running it, back to the worker loop.
++	 */
++	fn = io_wq_worker_run(worker);
++	for (;;) {
++		long ret = fn();
++
++		/* what we return is what userspace gets on some archs */
++		if (ret != -EIOCBQUEUED)
++			return ret;
++		fn = io_wq_handoff_worker();
++	}
++}
++
++/* find and claim an idle sleeping worker, see io_wq_worker_idle_done() */
++static struct io_worker *io_wq_acct_handoff_claim(struct io_wq *wq,
++						  struct io_wq_acct *acct,
++						  io_wq_handoff_fn *fn,
++						  struct task_struct *src)
++{
++	struct io_worker *worker, *found = NULL;
++	struct hlist_nulls_node *n;
++
++	raw_spin_lock(&acct->workers_lock);
++	if (test_bit(IO_WQ_BIT_EXIT, &wq->state))
++		goto out_unlock;
++	hlist_nulls_for_each_entry(worker, n, &acct->free_list, nulls_node) {
++		/* only claimable inside the idle sleep of the worker loop */
++		if (!test_bit(IO_WORKER_F_IDLE_SLEEP, &worker->flags))
++			continue;
++		if (!thread_handoff_compatible(src, worker->task))
++			continue;
++		clear_bit(IO_WORKER_F_FREE, &worker->flags);
++		hlist_nulls_del_init_rcu(&worker->nulls_node);
++		worker->handoff_fn = fn;
++		worker->handoff_task = worker->task;
++		atomic_set_release(&worker->handoff, IO_WORKER_HANDOFF_PROMOTE);
++		found = worker;
++		break;
++	}
++out_unlock:
++	raw_spin_unlock(&acct->workers_lock);
++	if (found)
++		wake_up_process(found->handoff_task);
++	return found;
++}
++
++/*
++ * task_work_add() that doesn't notify a task inside a blocking inline issue,
++ * it'd interrupt the sleep. io_handoff_end() picks pending work up instead.
++ */
++int io_wq_task_work_add(struct task_struct *task, struct callback_head *cb,
++			enum task_work_notify_mode notify)
++{
++	int ret;
++
++	if (notify != TWA_SIGNAL && notify != TWA_SIGNAL_NO_IPI)
++		return task_work_add(task, cb, notify);
++
++	ret = task_work_add(task, cb, TWA_NONE);
++	if (ret)
++		return ret;
++	if (READ_ONCE(task->flags) & PF_IO_HANDOFF)
++		return 0;
++	if (notify == TWA_SIGNAL)
++		set_notify_signal(task);
++	else
++		__set_notify_signal(task);
+ 	return 0;
+ }
+ 
++/* claim an idle worker to hand @src's identity to, pairs with _commit() */
++struct task_struct *io_wq_handoff_claim(struct io_wq *wq, bool bound,
++					io_wq_handoff_fn *fn,
++					struct task_struct *src)
++{
++	struct io_worker *worker;
++
++	worker = io_wq_acct_handoff_claim(wq, io_get_acct(wq, bound), fn, src);
++	if (!worker)
++		worker = io_wq_acct_handoff_claim(wq, io_get_acct(wq, !bound),
++						  fn, src);
++	if (worker)
++		return worker->task;
++	return NULL;
++}
++
++/* we take over the worker @dst was, @dst goes on to run the handoff fn */
++void io_wq_handoff_commit(struct task_struct *dst)
++{
++	struct io_worker *worker = dst->worker_private;
++	struct task_struct *src = current;
++	struct io_wq *wq = worker->wq;
++	struct callback_head *cb;
++
++	WARN_ON_ONCE(src->worker_private);
++	WARN_ON_ONCE(worker->task != dst);
++	WARN_ON_ONCE(wq->task != src);
++
++	/* the sched hooks around @dst's wakeup cope with NULL worker_private */
++	WRITE_ONCE(dst->worker_private, NULL);
++	src->worker_private = worker;
++	WRITE_ONCE(worker->task, src);
++	src->flags |= PF_IO_WORKER | PF_USER_WORKER;
++
++	/* the user task owns the wq */
++	get_task_struct(dst);
++	WRITE_ONCE(wq->task, dst);
++
++	/* move pending worker creations along, we may block for a while */
++	while ((cb = task_work_cancel_match(src, io_task_work_match, wq))) {
++		struct io_worker *w = container_of(cb, struct io_worker,
++						  create_work);
++
++		if (!task_work_add(dst, cb, TWA_SIGNAL))
++			continue;
++		io_worker_cancel_cb(w);
++		if (cb->func == create_worker_cont)
++			kfree(w);
++	}
++	put_task_struct(src);
++
++	atomic_set_release(&worker->handoff, IO_WORKER_HANDOFF_DONE);
++	wake_up_var(&worker->handoff);
++}
++
++/* worker loop entry for a demoted task, only returns on another handoff */
++io_wq_handoff_fn *io_wq_handoff_worker(void)
++{
++	struct io_worker *worker = current->worker_private;
++	char buf[TASK_COMM_LEN] = {};
++
++	WARN_ON_ONCE(!io_wq_current_is_worker());
++
++	/*
++	 * Wait until nobody needs our state anymore, which may be a while if
++	 * an identity is still parked on us. Hence TASK_IDLE.
++	 */
++	___wait_var_event(&worker->handoff,
++			  atomic_read_acquire(&worker->handoff) ==
++						IO_WORKER_HANDOFF_FINISHED,
++			  TASK_IDLE, 0, 0, schedule());
++	atomic_set(&worker->handoff, IO_WORKER_HANDOFF_NONE);
++
++	snprintf(buf, sizeof(buf), "iou-wrk-%d", worker->wq->task->pid);
++	set_task_comm(current, buf);
++	set_cpus_allowed_ptr(current, worker->wq->cpu_mask);
++
++	return io_wq_worker_run(worker);
++}
++
++/* release the demoted task @tsk to run as the worker it now is */
++void io_wq_handoff_finished(struct task_struct *tsk)
++{
++	struct io_worker *worker = tsk->worker_private;
++
++	atomic_set_release(&worker->handoff, IO_WORKER_HANDOFF_FINISHED);
++	wake_up_var(&worker->handoff);
++}
++
++/* idle sleepers to keep around as handoff targets */
++#define IO_WQ_HANDOFF_SPARES	2
++
++/* true if a worker is claimable, @topup forks one if below the target */
++bool io_wq_handoff_spare(struct io_wq *wq, bool bound, bool topup)
++{
++	struct io_wq_acct *acct = io_get_acct(wq, bound);
++	unsigned int idle;
++
++	idle = atomic_read(&acct->nr_iosleep);
++	if (topup && idle < IO_WQ_HANDOFF_SPARES)
++		io_wq_create_worker(wq, acct);
++	return idle > 0;
++}
++
+ /*
+  * Called when a worker is scheduled in. Mark us as currently running.
+  */
+diff --git a/io_uring/io-wq.h b/io_uring/io-wq.h
+index 42f00a4..df45183 100644
+--- a/io_uring/io-wq.h
++++ b/io_uring/io-wq.h
+@@ -4,6 +4,7 @@
+ 
+ #include <linux/refcount.h>
+ #include <linux/io_uring_types.h>
++#include <linux/task_work.h>
+ 
+ struct io_wq;
+ 
+@@ -47,6 +48,20 @@ void io_wq_set_exit_on_idle(struct io_wq *wq, bool enable);
+ void io_wq_enqueue(struct io_wq *wq, struct io_wq_work *work);
+ void io_wq_hash_work(struct io_wq_work *work, void *val);
+ 
++typedef long (io_wq_handoff_fn)(void);
++
++/* claim an idle worker, it runs @fn instead of the worker loop when woken */
++struct task_struct *io_wq_handoff_claim(struct io_wq *wq, bool bound,
++					io_wq_handoff_fn *fn,
++					struct task_struct *src);
++
++void io_wq_handoff_commit(struct task_struct *dst);
++io_wq_handoff_fn *io_wq_handoff_worker(void);
++bool io_wq_handoff_spare(struct io_wq *wq, bool bound, bool topup);
++void io_wq_handoff_finished(struct task_struct *tsk);
++int io_wq_task_work_add(struct task_struct *task, struct callback_head *cb,
++			enum task_work_notify_mode notify);
++
+ int io_wq_cpu_affinity(struct io_uring_task *tctx, cpumask_var_t mask);
+ int io_wq_max_workers(struct io_wq *wq, int *new_count);
+ bool io_wq_worker_stopped(void);
+diff --git a/io_uring/io_uring.c b/io_uring/io_uring.c
+index 6105342..04e2fbd 100644
+--- a/io_uring/io_uring.c
++++ b/io_uring/io_uring.c
+@@ -98,6 +98,7 @@
+ #include "wait.h"
+ #include "bpf_filter.h"
+ #include "loop.h"
++#include "handoff.h"
+ 
+ #define SQE_COMMON_FLAGS (IOSQE_FIXED_FILE | IOSQE_IO_LINK | \
+ 			  IOSQE_IO_HARDLINK | IOSQE_ASYNC)
+@@ -119,7 +120,7 @@
+ /* requests with any of those set should undergo io_disarm_next() */
+ #define IO_DISARM_MASK (REQ_F_ARM_LTIMEOUT | REQ_F_LINK_TIMEOUT | REQ_F_FAIL)
+ 
+-static void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags);
++static int io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags);
+ static void __io_req_caches_free(struct io_ring_ctx *ctx);
+ 
+ static __read_mostly DEFINE_STATIC_KEY_DEFERRED_FALSE(io_key_has_sqarray, HZ);
+@@ -132,6 +133,17 @@ static int __read_mostly sysctl_io_uring_group = -1;
+ 
+ #ifdef CONFIG_SYSCTL
+ static const struct ctl_table kernel_io_uring_disabled_table[] = {
++#ifdef CONFIG_THREAD_HANDOFF
++	{
++		.procname	= "io_uring_handoff",
++		.data		= &sysctl_io_uring_handoff,
++		.maxlen		= sizeof(sysctl_io_uring_handoff),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax,
++		.extra1		= SYSCTL_ZERO,
++		.extra2		= SYSCTL_ONE,
++	},
++#endif
+ 	{
+ 		.procname	= "io_uring_disabled",
+ 		.data		= &sysctl_io_uring_disabled,
+@@ -384,9 +396,8 @@ static void io_prep_async_work(struct io_kiocb *req)
+ 			should_hash = false;
+ 		if (should_hash || (req->flags & REQ_F_IOPOLL))
+ 			io_wq_hash_work(&req->work, file_inode(req->file));
+-	} else if (!req->file || !S_ISBLK(file_inode(req->file)->i_mode)) {
+-		if (def->unbound_nonreg_file)
+-			atomic_or(IO_WQ_WORK_UNBOUND, &req->work.flags);
++	} else if (io_req_unbound(req)) {
++		atomic_or(IO_WQ_WORK_UNBOUND, &req->work.flags);
+ 	}
+ }
+ 
+@@ -595,10 +606,16 @@ static inline void io_put_task(struct io_kiocb *req)
+ 	if (likely(tctx->task == current)) {
+ 		tctx->cached_refs++;
+ 	} else {
++		struct task_struct *task;
++
++		/* ->task can change under us, see io_handoff_task_refs() */
++		raw_spin_lock(&tctx->task_ref_lock);
+ 		percpu_counter_sub(&tctx->inflight, 1);
++		task = tctx->task;
++		raw_spin_unlock(&tctx->task_ref_lock);
+ 		if (unlikely(atomic_read(&tctx->in_cancel)))
+ 			wake_up(&tctx->wait);
+-		put_task_struct(tctx->task);
++		put_task_struct(task);
+ 	}
+ }
+ 
+@@ -1401,12 +1418,31 @@ static inline int __io_issue_sqe(struct io_kiocb *req,
+ static int io_issue_sqe(struct io_kiocb *req, unsigned int issue_flags)
+ {
+ 	const struct io_issue_def *def = &io_issue_defs[req->opcode];
++	bool handoff;
+ 	int ret;
+ 
+ 	if (unlikely(!io_assign_file(req, def, issue_flags)))
+ 		return -EBADF;
+ 
++	/*
++	 * No point in a nonblocking attempt with a handoff armed. A force-async
++	 * request can't do nonblocking at all, punt if no handoff is possible.
++	 */
++	handoff = io_handoff_begin(req, def, issue_flags);
++	if (handoff) {
++		issue_flags &= ~IO_URING_F_NONBLOCK;
++	} else if ((issue_flags & IO_URING_F_INLINE) &&
++		   (req->flags & REQ_F_FORCE_ASYNC)) {
++		return -EAGAIN;
++	}
+ 	ret = __io_issue_sqe(req, issue_flags, def);
++	if (handoff) {
++		if (unlikely(io_handoff_end()))
++			return io_handoff_complete(req, ret);
++		/* interrupted regardless (fatal signal, stop), io-wq retries */
++		if (unlikely(io_issue_wants_restart(ret)))
++			return -EAGAIN;
++	}
+ 
+ 	if (ret == IOU_COMPLETE) {
+ 		if (issue_flags & IO_URING_F_COMPLETE_DEFER)
+@@ -1590,7 +1626,7 @@ struct file *io_file_get_normal(struct io_kiocb *req, int fd)
+ 	return file;
+ }
+ 
+-static int io_req_sqe_copy(struct io_kiocb *req, unsigned int issue_flags)
++int io_req_sqe_copy(struct io_kiocb *req, unsigned int issue_flags)
+ {
+ 	const struct io_cold_def *def = &io_cold_defs[req->opcode];
+ 
+@@ -1630,7 +1666,8 @@ fail:
+ 	}
+ }
+ 
+-static inline void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
++/* returns -EIOCBQUEUED if the identity got handed off, we're a worker now */
++static inline int io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
+ 	__must_hold(&req->ctx->uring_lock)
+ {
+ 	unsigned int issue_flags = IO_URING_F_NONBLOCK |
+@@ -1638,6 +1675,8 @@ static inline void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
+ 	int ret;
+ 
+ 	ret = io_issue_sqe(req, issue_flags);
++	if (unlikely(ret == -EIOCBQUEUED))
++		return ret;
+ 
+ 	/*
+ 	 * We async punt it if the file wasn't marked NOWAIT, or if the file
+@@ -1645,6 +1684,7 @@ static inline void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
+ 	 */
+ 	if (unlikely(ret))
+ 		io_queue_async(req, issue_flags, ret);
++	return 0;
+ }
+ 
+ static void io_queue_sqe_fallback(struct io_kiocb *req)
+@@ -1810,7 +1850,7 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
+ 		if (state->need_plug && def->plug) {
+ 			state->plug_started = true;
+ 			state->need_plug = false;
+-			blk_start_plug_nr_ios(&state->plug, state->submit_nr);
++			blk_start_plug_nr_ios(state->plug, state->submit_nr);
+ 		}
+ 	}
+ 
+@@ -1870,6 +1910,22 @@ static __cold int io_submit_fail_init(const struct io_uring_sqe *sqe,
+ 	return 0;
+ }
+ 
++/* a blockable force-async request issued inline beats an io-wq punt */
++static bool io_req_force_async(struct io_kiocb *req)
++{
++	if (req->flags & REQ_F_FAIL)
++		return true;
++	if (!(req->flags & REQ_F_FORCE_ASYNC))
++		return false;
++	if (req->ctx->int_flags & IO_RING_F_DRAIN_ACTIVE)
++		return true;
++	/* the file decides on pollability, resolve it now if fixed */
++	if (!io_assign_file(req, &io_issue_defs[req->opcode],
++			    IO_URING_F_INLINE))
++		return true;
++	return !io_handoff_possible(req);
++}
++
+ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
+ 			 const struct io_uring_sqe *sqe, unsigned int *left)
+ 	__must_hold(&ctx->uring_lock)
+@@ -1907,7 +1963,7 @@ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
+ 		/* last request of the link, flush it */
+ 		req = link->head;
+ 		link->head = NULL;
+-		if (req->flags & (REQ_F_FORCE_ASYNC | REQ_F_FAIL))
++		if (io_req_force_async(req))
+ 			goto fallback;
+ 
+ 	} else if (unlikely(req->flags & (IO_REQ_LINK_FLAGS |
+@@ -1915,15 +1971,16 @@ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
+ 		if (req->flags & IO_REQ_LINK_FLAGS) {
+ 			link->head = req;
+ 			link->last = req;
+-		} else {
++			return 0;
++		}
++		if (io_req_force_async(req)) {
+ fallback:
+ 			io_queue_sqe_fallback(req);
++			return 0;
+ 		}
+-		return 0;
+ 	}
+ 
+-	io_queue_sqe(req, IO_URING_F_INLINE);
+-	return 0;
++	return io_queue_sqe(req, IO_URING_F_INLINE);
+ }
+ 
+ /*
+@@ -1938,13 +1995,14 @@ static void io_submit_state_end(struct io_ring_ctx *ctx)
+ 	/* flush only after queuing links as they can generate completions */
+ 	io_submit_flush_completions(ctx);
+ 	if (state->plug_started)
+-		blk_finish_plug(&state->plug);
++		blk_finish_plug(state->plug);
+ }
+ 
+ /*
+  * Start submission side cache.
+  */
+ static void io_submit_state_start(struct io_submit_state *state,
++				  struct blk_plug *plug,
+ 				  unsigned int max_ios)
+ {
+ 	state->plug_started = false;
+@@ -1952,6 +2010,8 @@ static void io_submit_state_start(struct io_submit_state *state,
+ 	state->submit_nr = max_ios;
+ 	/* set only head, no need to init link_last in advance */
+ 	state->link.head = NULL;
++	/* on the submitter's stack, the block layer caches current->plug */
++	state->plug = plug;
+ }
+ 
+ static void io_commit_sqring(struct io_ring_ctx *ctx)
+@@ -2010,47 +2070,11 @@ static bool io_get_sqe(struct io_ring_ctx *ctx, const struct io_uring_sqe **sqe)
+ 	return true;
+ }
+ 
+-int io_submit_sqes(struct io_ring_ctx *ctx, unsigned int nr)
++static int io_submit_sqes_end(struct io_ring_ctx *ctx, unsigned int entries,
++			      unsigned int left)
+ 	__must_hold(&ctx->uring_lock)
+ {
+-	unsigned int entries;
+-	unsigned int left;
+-	int ret;
+-
+-	if (ctx->flags & IORING_SETUP_SQ_REWIND)
+-		entries = ctx->sq_entries;
+-	else
+-		entries = __io_sqring_entries(ctx);
+-
+-	entries = min(nr, entries);
+-	if (unlikely(!entries))
+-		return 0;
+-
+-	ret = left = entries;
+-	io_get_task_refs(left);
+-	io_submit_state_start(&ctx->submit_state, left);
+-
+-	do {
+-		const struct io_uring_sqe *sqe;
+-		struct io_kiocb *req;
+-
+-		if (unlikely(!io_alloc_req(ctx, &req)))
+-			break;
+-		if (unlikely(!io_get_sqe(ctx, &sqe))) {
+-			io_req_add_to_cache(req, ctx);
+-			break;
+-		}
+-
+-		/*
+-		 * Continue submitting even for sqe failure if the
+-		 * ring was setup with IORING_SETUP_SUBMIT_ALL
+-		 */
+-		if (unlikely(io_submit_sqe(ctx, req, sqe, &left)) &&
+-		    !(ctx->flags & IORING_SETUP_SUBMIT_ALL)) {
+-			left--;
+-			break;
+-		}
+-	} while (--left);
++	int ret = entries;
+ 
+ 	if (unlikely(left)) {
+ 		ret -= left;
+@@ -2066,6 +2090,79 @@ int io_submit_sqes(struct io_ring_ctx *ctx, unsigned int nr)
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_THREAD_HANDOFF
++/*
++ * The submitter blocked mid-batch, return the task refs for what it won't
++ * submit and publish the SQ head. Returns the number of entries consumed.
++ */
++unsigned int io_submit_sqes_abandon(struct io_ring_ctx *ctx)
++	__must_hold(&ctx->uring_lock)
++{
++	struct io_submit_state *state = &ctx->submit_state;
++	unsigned int consumed = ctx->cached_sq_head - state->sq_head;
++
++	WARN_ON_ONCE(state->link.head);
++	current->io_uring->cached_refs += state->submit_nr - consumed;
++	state->plug_started = false;
++	io_commit_sqring(ctx);
++	return consumed;
++}
++#endif
++
++int io_submit_sqes(struct io_ring_ctx *ctx, unsigned int nr)
++	__must_hold(&ctx->uring_lock)
++{
++	unsigned int entries;
++	unsigned int left;
++	struct blk_plug plug;
++
++	if (ctx->flags & IORING_SETUP_SQ_REWIND)
++		entries = ctx->sq_entries;
++	else
++		entries = __io_sqring_entries(ctx);
++
++	entries = min(nr, entries);
++	if (unlikely(!entries))
++		return 0;
++
++	left = entries;
++	io_get_task_refs(left);
++	io_submit_state_start(&ctx->submit_state, &plug, left);
++	ctx->submit_state.sq_head = ctx->cached_sq_head;
++
++	do {
++		const struct io_uring_sqe *sqe;
++		struct io_kiocb *req;
++		int ret;
++
++		if (unlikely(!io_alloc_req(ctx, &req)))
++			break;
++		if (unlikely(!io_get_sqe(ctx, &sqe))) {
++			io_req_add_to_cache(req, ctx);
++			break;
++		}
++
++		ret = io_submit_sqe(ctx, req, sqe, &left);
++		/* handed off, the promoted task finishes the batch */
++		if (unlikely(ret == -EIOCBQUEUED)) {
++			if (current->plug == &plug)
++				blk_finish_plug(&plug);
++			return ret;
++		}
++		/*
++		 * Continue submitting even for sqe failure if the
++		 * ring was setup with IORING_SETUP_SUBMIT_ALL
++		 */
++		if (unlikely(ret) && !(ctx->flags & IORING_SETUP_SUBMIT_ALL)) {
++			left--;
++			break;
++		}
++	} while (--left);
++
++	io_handoff_submit_end();
++	return io_submit_sqes_end(ctx, entries, left);
++}
++
+ static void io_rings_free(struct io_ring_ctx *ctx)
+ {
+ 	io_free_region(ctx->user, &ctx->sq_region);
+@@ -2583,6 +2680,94 @@ struct file *io_uring_ctx_get_file(unsigned int fd, bool registered)
+ }
+ 
+ 
++static int io_iopoll_getevents(struct io_ring_ctx *ctx, u32 min_complete,
++			       u32 flags, const void __user *argp, size_t argsz)
++	__must_hold(&ctx->uring_lock)
++{
++	int ret;
++
++	ret = io_validate_ext_arg(ctx, flags, argp, argsz);
++	if (likely(!ret))
++		return io_iopoll_check(ctx, min_complete);
++	return ret;
++}
++
++static int io_wait_getevents(struct io_ring_ctx *ctx, u32 min_complete,
++			     u32 flags, const void __user *argp, size_t argsz)
++{
++	struct ext_arg ext_arg = { .argsz = argsz };
++	int ret;
++
++	ret = io_get_ext_arg(ctx, flags, argp, &ext_arg);
++	if (likely(!ret))
++		return io_cqring_wait(ctx, min_complete, flags, &ext_arg);
++	return ret;
++}
++
++static int io_getevents_ret(struct io_ring_ctx *ctx, int ret, int ret2)
++{
++	if (ret)
++		return ret;
++	/*
++	 * EBADR indicates that one or more CQE were dropped. Once the user has
++	 * been informed we can clear the bit as they are obviously ok with
++	 * those drops.
++	 */
++	if (unlikely(ret2 == -EBADR))
++		clear_bit(IO_CHECK_CQ_DROPPED_BIT, &ctx->check_cq);
++	return ret2;
++}
++
++static int io_uring_getevents(struct io_ring_ctx *ctx, int ret,
++			      u32 min_complete, u32 flags,
++			      const void __user *argp, size_t argsz)
++{
++	int ret2;
++
++	if (ctx->int_flags & IO_RING_F_SYSCALL_IOPOLL) {
++		/*
++		 * We disallow the app entering submit/complete with polling,
++		 * but we still need to lock the ring to prevent racing with
++		 * polled issue that got punted to a workqueue.
++		 */
++		mutex_lock(&ctx->uring_lock);
++		ret2 = io_iopoll_getevents(ctx, min_complete, flags, argp,
++					   argsz);
++		mutex_unlock(&ctx->uring_lock);
++	} else {
++		ret2 = io_wait_getevents(ctx, min_complete, flags, argp, argsz);
++	}
++	return io_getevents_ret(ctx, ret, ret2);
++}
++
++/* Finish an io_uring_enter() call that submitted and holds the uring_lock */
++int io_uring_enter_finish(struct io_ring_ctx *ctx, int ret, u32 min_complete,
++			  u32 flags, const void __user *argp, size_t argsz)
++{
++	int ret2;
++
++	if (!(flags & IORING_ENTER_GETEVENTS)) {
++		mutex_unlock(&ctx->uring_lock);
++		return ret;
++	}
++
++	if (ctx->int_flags & IO_RING_F_SYSCALL_IOPOLL) {
++		ret2 = io_iopoll_getevents(ctx, min_complete, flags, argp,
++					   argsz);
++		mutex_unlock(&ctx->uring_lock);
++	} else {
++		/*
++		 * Ignore errors, we'll soon call io_cqring_wait() and it
++		 * should handle ownership problems if any.
++		 */
++		if (ctx->flags & IORING_SETUP_DEFER_TASKRUN)
++			(void)io_run_local_work_locked(ctx, min_complete);
++		mutex_unlock(&ctx->uring_lock);
++		ret2 = io_wait_getevents(ctx, min_complete, flags, argp, argsz);
++	}
++	return io_getevents_ret(ctx, ret, ret2);
++}
++
+ SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
+ 		u32, min_complete, u32, flags, const void __user *, argp,
+ 		size_t, argsz)
+@@ -2633,63 +2818,28 @@ SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
+ 		if (unlikely(ret))
+ 			goto out;
+ 
++		io_handoff_enter(file, to_submit, min_complete, flags, argp,
++				 argsz);
+ 		mutex_lock(&ctx->uring_lock);
+ 		ret = io_submit_sqes(ctx, to_submit);
++		/* handed off, the promoted task finishes the syscall */
++		if (unlikely(ret == -EIOCBQUEUED)) {
++			/* uring_lock was dropped for the promoted task */
++			__release(&ctx->uring_lock);
++			return io_uring_handoff_worker();
++		}
+ 		if (ret != to_submit) {
+ 			mutex_unlock(&ctx->uring_lock);
+ 			goto out;
+ 		}
+-		if (flags & IORING_ENTER_GETEVENTS) {
+-			if (ctx->int_flags & IO_RING_F_SYSCALL_IOPOLL)
+-				goto iopoll_locked;
+-			/*
+-			 * Ignore errors, we'll soon call io_cqring_wait() and
+-			 * it should handle ownership problems if any.
+-			 */
+-			if (ctx->flags & IORING_SETUP_DEFER_TASKRUN)
+-				(void)io_run_local_work_locked(ctx, min_complete);
+-		}
+-		mutex_unlock(&ctx->uring_lock);
++		ret = io_uring_enter_finish(ctx, ret, min_complete, flags,
++					    argp, argsz);
++		goto out;
+ 	}
+ 
+-	if (flags & IORING_ENTER_GETEVENTS) {
+-		int ret2;
+-
+-		if (ctx->int_flags & IO_RING_F_SYSCALL_IOPOLL) {
+-			/*
+-			 * We disallow the app entering submit/complete with
+-			 * polling, but we still need to lock the ring to
+-			 * prevent racing with polled issue that got punted to
+-			 * a workqueue.
+-			 */
+-			mutex_lock(&ctx->uring_lock);
+-iopoll_locked:
+-			ret2 = io_validate_ext_arg(ctx, flags, argp, argsz);
+-			if (likely(!ret2))
+-				ret2 = io_iopoll_check(ctx, min_complete);
+-			mutex_unlock(&ctx->uring_lock);
+-		} else {
+-			struct ext_arg ext_arg = { .argsz = argsz };
+-
+-			ret2 = io_get_ext_arg(ctx, flags, argp, &ext_arg);
+-			if (likely(!ret2))
+-				ret2 = io_cqring_wait(ctx, min_complete, flags,
+-						      &ext_arg);
+-		}
+-
+-		if (!ret) {
+-			ret = ret2;
+-
+-			/*
+-			 * EBADR indicates that one or more CQE were dropped.
+-			 * Once the user has been informed we can clear the bit
+-			 * as they are obviously ok with those drops.
+-			 */
+-			if (unlikely(ret2 == -EBADR))
+-				clear_bit(IO_CHECK_CQ_DROPPED_BIT,
+-					  &ctx->check_cq);
+-		}
+-	}
++	if (flags & IORING_ENTER_GETEVENTS)
++		ret = io_uring_getevents(ctx, ret, min_complete, flags, argp,
++					 argsz);
+ out:
+ 	if (!(flags & IORING_ENTER_REGISTERED_RING))
+ 		fput(file);
+diff --git a/io_uring/io_uring.h b/io_uring/io_uring.h
+index 896aab1..1f53661 100644
+--- a/io_uring/io_uring.h
++++ b/io_uring/io_uring.h
+@@ -211,6 +211,10 @@ void io_free_req(struct io_kiocb *req);
+ void io_queue_next(struct io_kiocb *req);
+ void io_task_refs_refill(struct io_uring_task *tctx);
+ bool __io_alloc_req_refill(struct io_ring_ctx *ctx);
++int io_req_sqe_copy(struct io_kiocb *req, unsigned int issue_flags);
++unsigned int io_submit_sqes_abandon(struct io_ring_ctx *ctx);
++int io_uring_enter_finish(struct io_ring_ctx *ctx, int ret, u32 min_complete,
++			  u32 flags, const void __user *argp, size_t argsz);
+ 
+ void io_activate_pollwq(struct io_ring_ctx *ctx);
+ void io_restriction_clone(struct io_restriction *dst, struct io_restriction *src);
+@@ -389,11 +393,48 @@ static inline void io_put_file(struct io_kiocb *req)
+ 		fput(req->file);
+ }
+ 
++/* a handed off issue keeps its issue_flags but no longer holds uring_lock */
++static inline bool io_issue_handed_off(unsigned int issue_flags)
++{
++	return !(issue_flags & IO_URING_F_UNLOCKED) &&
++		(current->flags & (PF_IO_HANDOFF | PF_IO_WORKER)) ==
++			(PF_IO_HANDOFF | PF_IO_WORKER);
++}
++
++/* which io-wq pool a request belongs in, bound unless a non-reg file op */
++static inline bool io_req_unbound(struct io_kiocb *req)
++{
++	if (!io_issue_defs[req->opcode].unbound_nonreg_file)
++		return false;
++	if (req->file) {
++		umode_t mode = file_inode(req->file)->i_mode;
++
++		if (S_ISREG(mode) || S_ISBLK(mode))
++			return false;
++	}
++	return true;
++}
++
++static inline bool io_issue_needs_lock(unsigned int issue_flags)
++{
++	return (issue_flags & IO_URING_F_UNLOCKED) ||
++		io_issue_handed_off(issue_flags);
++}
++
++/* a blocking issue got interrupted, retry on io-wq rather than restart */
++static inline bool io_issue_wants_restart(int ret)
++{
++	return ret == -ERESTARTSYS || ret == -ERESTARTNOINTR ||
++	       ret == -ERESTARTNOHAND || ret == -ERESTART_RESTARTBLOCK;
++}
++
+ static inline void io_ring_submit_unlock(struct io_ring_ctx *ctx,
+ 					 unsigned issue_flags)
+ {
+ 	lockdep_assert_held(&ctx->uring_lock);
+-	if (unlikely(issue_flags & IO_URING_F_UNLOCKED))
++	lockdep_assert(ctx->submit_lock_depth > 0);
++	ctx->submit_lock_depth--;
++	if (unlikely(io_issue_needs_lock(issue_flags)))
+ 		mutex_unlock(&ctx->uring_lock);
+ }
+ 
+@@ -406,9 +447,10 @@ static inline void io_ring_submit_lock(struct io_ring_ctx *ctx,
+ 	 * The only exception is when we've detached the request and issue it
+ 	 * from an async worker thread, grab the lock for that case.
+ 	 */
+-	if (unlikely(issue_flags & IO_URING_F_UNLOCKED))
++	if (unlikely(io_issue_needs_lock(issue_flags)))
+ 		mutex_lock(&ctx->uring_lock);
+ 	lockdep_assert_held(&ctx->uring_lock);
++	ctx->submit_lock_depth++;
+ }
+ 
+ static inline void io_commit_cqring(struct io_ring_ctx *ctx)
+diff --git a/io_uring/kbuf.c b/io_uring/kbuf.c
+index 7c30917..8f04e6c 100644
+--- a/io_uring/kbuf.c
++++ b/io_uring/kbuf.c
+@@ -371,10 +371,9 @@ int io_buffers_select(struct io_kiocb *req, struct buf_sel_arg *arg,
+ 		ret = io_provided_buffers_select(req, &arg->out_len, sel->buf_list, arg->iovs);
+ 	}
+ out_unlock:
+-	if (issue_flags & IO_URING_F_UNLOCKED) {
++	if (issue_flags & IO_URING_F_UNLOCKED)
+ 		sel->buf_list = NULL;
+-		mutex_unlock(&ctx->uring_lock);
+-	}
++	io_ring_submit_unlock(ctx, issue_flags);
+ 	return ret;
+ }
+ 
+diff --git a/io_uring/msg_ring.c b/io_uring/msg_ring.c
+index 3067c93..04f2ffe 100644
+--- a/io_uring/msg_ring.c
++++ b/io_uring/msg_ring.c
+@@ -245,7 +245,7 @@ static int io_msg_fd_remote(struct io_kiocb *req)
+ 	struct task_struct *task = ctx->submitter_task;
+ 
+ 	init_task_work(&msg->tw, io_msg_tw_fd_complete);
+-	if (task_work_add(task, &msg->tw, TWA_SIGNAL))
++	if (io_wq_task_work_add(task, &msg->tw, TWA_SIGNAL))
+ 		return -EOWNERDEAD;
+ 
+ 	return IOU_ISSUE_SKIP_COMPLETE;
+diff --git a/io_uring/opdef.c b/io_uring/opdef.c
+index cf3aa22..fa07a2b 100644
+--- a/io_uring/opdef.c
++++ b/io_uring/opdef.c
+@@ -69,6 +69,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.iopoll			= 1,
+ 		.vectored		= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_readv,
+ 		.issue			= io_read,
+ 	},
+@@ -83,12 +84,14 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.iopoll			= 1,
+ 		.vectored		= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_writev,
+ 		.issue			= io_write,
+ 	},
+ 	[IORING_OP_FSYNC] = {
+ 		.needs_file		= 1,
+ 		.audit_skip		= 1,
++		.blockable		= 1,
+ 		.prep			= io_fsync_prep,
+ 		.issue			= io_fsync,
+ 	},
+@@ -101,6 +104,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.ioprio			= 1,
+ 		.iopoll			= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_read_fixed,
+ 		.issue			= io_read_fixed,
+ 	},
+@@ -114,6 +118,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.ioprio			= 1,
+ 		.iopoll			= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_write_fixed,
+ 		.issue			= io_write_fixed,
+ 	},
+@@ -132,6 +137,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 	[IORING_OP_SYNC_FILE_RANGE] = {
+ 		.needs_file		= 1,
+ 		.audit_skip		= 1,
++		.blockable		= 1,
+ 		.prep			= io_sfr_prep,
+ 		.issue			= io_sync_file_range,
+ 	},
+@@ -215,16 +221,19 @@ const struct io_issue_def io_issue_defs[] = {
+ 	[IORING_OP_FALLOCATE] = {
+ 		.needs_file		= 1,
+ 		.hash_reg_file          = 1,
++		.blockable		= 1,
+ 		.prep			= io_fallocate_prep,
+ 		.issue			= io_fallocate,
+ 	},
+ 	[IORING_OP_OPENAT] = {
+ 		.filter_pdu_size	= sizeof_field(struct io_uring_bpf_ctx, open),
++		.blockable		= 1,
+ 		.prep			= io_openat_prep,
+ 		.issue			= io_openat,
+ 		.filter_populate	= io_openat_bpf_populate,
+ 	},
+ 	[IORING_OP_CLOSE] = {
++		.blockable		= 1,
+ 		.prep			= io_close_prep,
+ 		.issue			= io_close,
+ 	},
+@@ -236,6 +245,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 	},
+ 	[IORING_OP_STATX] = {
+ 		.audit_skip		= 1,
++		.blockable		= 1,
+ 		.prep			= io_statx_prep,
+ 		.issue			= io_statx,
+ 	},
+@@ -249,6 +259,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.ioprio			= 1,
+ 		.iopoll			= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_read,
+ 		.issue			= io_read,
+ 	},
+@@ -262,17 +273,20 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.ioprio			= 1,
+ 		.iopoll			= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_write,
+ 		.issue			= io_write,
+ 	},
+ 	[IORING_OP_FADVISE] = {
+ 		.needs_file		= 1,
+ 		.audit_skip		= 1,
++		.blockable		= 1,
+ 		.prep			= io_fadvise_prep,
+ 		.issue			= io_fadvise,
+ 	},
+ 	[IORING_OP_MADVISE] = {
+ 		.audit_skip		= 1,
++		.blockable		= 1,
+ 		.prep			= io_madvise_prep,
+ 		.issue			= io_madvise,
+ 	},
+@@ -308,6 +322,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 	},
+ 	[IORING_OP_OPENAT2] = {
+ 		.filter_pdu_size	= sizeof_field(struct io_uring_bpf_ctx, open),
++		.blockable		= 1,
+ 		.prep			= io_openat2_prep,
+ 		.issue			= io_openat2,
+ 		.filter_populate	= io_openat_bpf_populate,
+@@ -327,6 +342,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.hash_reg_file		= 1,
+ 		.unbound_nonreg_file	= 1,
+ 		.audit_skip		= 1,
++		.blockable		= 1,
+ 		.prep			= io_splice_prep,
+ 		.issue			= io_splice,
+ 	},
+@@ -347,6 +363,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.hash_reg_file		= 1,
+ 		.unbound_nonreg_file	= 1,
+ 		.audit_skip		= 1,
++		.blockable		= 1,
+ 		.prep			= io_tee_prep,
+ 		.issue			= io_tee,
+ 	},
+@@ -360,22 +377,27 @@ const struct io_issue_def io_issue_defs[] = {
+ #endif
+ 	},
+ 	[IORING_OP_RENAMEAT] = {
++		.blockable		= 1,
+ 		.prep			= io_renameat_prep,
+ 		.issue			= io_renameat,
+ 	},
+ 	[IORING_OP_UNLINKAT] = {
++		.blockable		= 1,
+ 		.prep			= io_unlinkat_prep,
+ 		.issue			= io_unlinkat,
+ 	},
+ 	[IORING_OP_MKDIRAT] = {
++		.blockable		= 1,
+ 		.prep			= io_mkdirat_prep,
+ 		.issue			= io_mkdirat,
+ 	},
+ 	[IORING_OP_SYMLINKAT] = {
++		.blockable		= 1,
+ 		.prep			= io_symlinkat_prep,
+ 		.issue			= io_symlinkat,
+ 	},
+ 	[IORING_OP_LINKAT] = {
++		.blockable		= 1,
+ 		.prep			= io_linkat_prep,
+ 		.issue			= io_linkat,
+ 	},
+@@ -387,19 +409,23 @@ const struct io_issue_def io_issue_defs[] = {
+ 	},
+ 	[IORING_OP_FSETXATTR] = {
+ 		.needs_file = 1,
++		.blockable		= 1,
+ 		.prep			= io_fsetxattr_prep,
+ 		.issue			= io_fsetxattr,
+ 	},
+ 	[IORING_OP_SETXATTR] = {
++		.blockable		= 1,
+ 		.prep			= io_setxattr_prep,
+ 		.issue			= io_setxattr,
+ 	},
+ 	[IORING_OP_FGETXATTR] = {
+ 		.needs_file = 1,
++		.blockable		= 1,
+ 		.prep			= io_fgetxattr_prep,
+ 		.issue			= io_fgetxattr,
+ 	},
+ 	[IORING_OP_GETXATTR] = {
++		.blockable		= 1,
+ 		.prep			= io_getxattr_prep,
+ 		.issue			= io_getxattr,
+ 	},
+@@ -497,6 +523,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 	[IORING_OP_FTRUNCATE] = {
+ 		.needs_file		= 1,
+ 		.hash_reg_file		= 1,
++		.blockable		= 1,
+ 		.prep			= io_ftruncate_prep,
+ 		.issue			= io_ftruncate,
+ 	},
+@@ -553,6 +580,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.iopoll			= 1,
+ 		.vectored		= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_readv_fixed,
+ 		.issue			= io_read,
+ 	},
+@@ -567,6 +595,7 @@ const struct io_issue_def io_issue_defs[] = {
+ 		.iopoll			= 1,
+ 		.vectored		= 1,
+ 		.async_size		= sizeof(struct io_async_rw),
++		.blockable		= 1,
+ 		.prep			= io_prep_writev_fixed,
+ 		.issue			= io_write,
+ 	},
+diff --git a/io_uring/opdef.h b/io_uring/opdef.h
+index 667f981..45c2f77 100644
+--- a/io_uring/opdef.h
++++ b/io_uring/opdef.h
+@@ -29,6 +29,8 @@ struct io_issue_def {
+ 	unsigned		vectored : 1;
+ 	/* set to 1 if this opcode uses 128b sqes in a mixed sq */
+ 	unsigned		is_128 : 1;
++	/* issue path is safe to run inline in blocking mode */
++	unsigned		blockable : 1;
+ 
+ 	/* size of async data needed, if any */
+ 	unsigned short		async_size;
+diff --git a/io_uring/rw.c b/io_uring/rw.c
+index 95106dd..23b078f 100644
+--- a/io_uring/rw.c
++++ b/io_uring/rw.c
+@@ -134,7 +134,7 @@ static bool io_rw_recycle(struct io_kiocb *req, unsigned int issue_flags)
+ {
+ 	struct io_async_rw *rw = req->async_data;
+ 
+-	if (unlikely(issue_flags & IO_URING_F_UNLOCKED))
++	if (unlikely(io_issue_needs_lock(issue_flags)))
+ 		return false;
+ 
+ 	io_alloc_cache_vec_kasan(&rw->vec);
+diff --git a/io_uring/splice.c b/io_uring/splice.c
+index e81ebbb..7d464de 100644
+--- a/io_uring/splice.c
++++ b/io_uring/splice.c
+@@ -100,6 +100,9 @@ int io_tee(struct io_kiocb *req, unsigned int issue_flags)
+ 
+ 	if (!(sp->flags & SPLICE_F_FD_IN_FIXED))
+ 		fput(in);
++	/* interrupted before making progress, have the core retry it */
++	if (io_issue_wants_restart(ret))
++		return -EAGAIN;
+ done:
+ 	if (ret != sp->len)
+ 		req_set_fail(req);
+@@ -141,6 +144,9 @@ int io_splice(struct io_kiocb *req, unsigned int issue_flags)
+ 
+ 	if (!(sp->flags & SPLICE_F_FD_IN_FIXED))
+ 		fput(in);
++	/* interrupted before making progress, have the core retry it */
++	if (io_issue_wants_restart(ret))
++		return -EAGAIN;
+ done:
+ 	if (ret != sp->len)
+ 		req_set_fail(req);
+diff --git a/io_uring/tctx.c b/io_uring/tctx.c
+index 466b730..f86aca4 100644
+--- a/io_uring/tctx.c
++++ b/io_uring/tctx.c
+@@ -10,6 +10,7 @@
+ #include <uapi/linux/io_uring.h>
+ 
+ #include "io_uring.h"
++#include "handoff.h"
+ #include "tctx.h"
+ #include "bpf_filter.h"
+ 
+@@ -104,7 +105,9 @@ __cold struct io_uring_task *io_uring_alloc_task_context(struct task_struct *tas
+ 	}
+ 
+ 	tctx->task = task;
++	raw_spin_lock_init(&tctx->task_ref_lock);
+ 	xa_init(&tctx->xa);
++	INIT_LIST_HEAD(&tctx->node_list);
+ 	init_waitqueue_head(&tctx->wait);
+ 	atomic_set(&tctx->in_cancel, 0);
+ 	atomic_set(&tctx->inflight_tracked, 0);
+@@ -135,6 +138,7 @@ static int io_tctx_install_node(struct io_ring_ctx *ctx,
+ 		kfree(node);
+ 		return ret;
+ 	}
++	list_add(&node->tctx_link, &tctx->node_list);
+ 
+ 	mutex_lock(&ctx->tctx_lock);
+ 	list_add(&node->ctx_node, &ctx->tctx_list);
+@@ -173,8 +177,10 @@ int __io_uring_add_tctx_node(struct io_ring_ctx *ctx)
+ 	 * been marked for idle-exit when the task temporarily had no active
+ 	 * io_uring instances.
+ 	 */
+-	if (tctx->io_wq)
++	if (tctx->io_wq) {
+ 		io_wq_set_exit_on_idle(tctx->io_wq, false);
++		io_handoff_prime(tctx, ctx);
++	}
+ 
+ 	if (new_tctx)
+ 		current->io_uring = tctx;
+@@ -227,6 +233,7 @@ __cold void io_uring_del_tctx_node(unsigned long index)
+ 
+ 	WARN_ON_ONCE(current != node->task);
+ 	WARN_ON_ONCE(list_empty(&node->ctx_node));
++	list_del(&node->tctx_link);
+ 
+ 	mutex_lock(&node->ctx->tctx_lock);
+ 	list_del(&node->ctx_node);
+@@ -243,11 +250,10 @@ __cold void io_uring_del_tctx_node(unsigned long index)
+ __cold void io_uring_clean_tctx(struct io_uring_task *tctx)
+ {
+ 	struct io_wq *wq = tctx->io_wq;
+-	struct io_tctx_node *node;
+-	unsigned long index;
++	struct io_tctx_node *node, *tmp;
+ 
+-	xa_for_each(&tctx->xa, index, node) {
+-		io_uring_del_tctx_node(index);
++	list_for_each_entry_safe(node, tmp, &tctx->node_list, tctx_link) {
++		io_uring_del_tctx_node((unsigned long)node->ctx);
+ 		cond_resched();
+ 	}
+ 	if (wq) {
+diff --git a/io_uring/tctx.h b/io_uring/tctx.h
+index 76ad1ad..9a13981 100644
+--- a/io_uring/tctx.h
++++ b/io_uring/tctx.h
+@@ -2,6 +2,8 @@
+ 
+ struct io_tctx_node {
+ 	struct list_head	ctx_node;
++	/* on tctx->node_list, only ever touched by the owning task */
++	struct list_head	tctx_link;
+ 	struct task_struct	*task;
+ 	struct io_ring_ctx	*ctx;
+ };
+diff --git a/io_uring/tw.c b/io_uring/tw.c
+index f573bcc..f26faeb 100644
+--- a/io_uring/tw.c
++++ b/io_uring/tw.c
+@@ -9,6 +9,7 @@
+ #include <linux/indirect_call_wrapper.h>
+ 
+ #include "io_uring.h"
++#include "handoff.h"
+ #include "tctx.h"
+ #include "poll.h"
+ #include "rw.h"
+@@ -130,6 +131,10 @@ void tctx_task_work(struct callback_head *cb)
+ 	unsigned int count = 0;
+ 
+ 	tctx = container_of(cb, struct io_uring_task, task_work);
++	/* the tctx may have moved while queued, run it there if so */
++	if (unlikely(READ_ONCE(tctx->task) != current) &&
++	    !task_work_add(tctx->task, cb, TWA_SIGNAL))
++		return;
+ 	tctx_task_work_run(tctx, UINT_MAX, &count);
+ }
+ 
+@@ -209,6 +214,7 @@ void io_req_normal_work_add(struct io_kiocb *req)
+ {
+ 	struct io_uring_task *tctx = req->tctx;
+ 	struct io_ring_ctx *ctx = req->ctx;
++	struct task_struct *task;
+ 
+ 	/* tw run already pending, nothing else to do */
+ 	if (!mpscq_push(&tctx->task_list, &req->io_task_work.node))
+@@ -227,8 +233,14 @@ void io_req_normal_work_add(struct io_kiocb *req)
+ 		return;
+ 	}
+ 
+-	if (likely(!task_work_add(tctx->task, &tctx->task_work, ctx->notify_method)))
++	task = READ_ONCE(tctx->task);
++	if (likely(!io_wq_task_work_add(task, &tctx->task_work,
++					 ctx->notify_method))) {
++		/* the tctx moved while we were adding, move the work along */
++		if (unlikely(READ_ONCE(tctx->task) != task))
++			io_handoff_tw_moved(tctx, task);
+ 		return;
++	}
+ 
+ 	io_fallback_tw(tctx);
+ }
+diff --git a/io_uring/uring_cmd.c b/io_uring/uring_cmd.c
+index 726a659..ba36a55 100644
+--- a/io_uring/uring_cmd.c
++++ b/io_uring/uring_cmd.c
+@@ -28,7 +28,7 @@ static void io_req_uring_cleanup(struct io_kiocb *req, unsigned int issue_flags)
+ 	struct io_uring_cmd *ioucmd = io_kiocb_to_cmd(req, struct io_uring_cmd);
+ 	struct io_async_cmd *ac = req->async_data;
+ 
+-	if (issue_flags & IO_URING_F_UNLOCKED)
++	if (io_issue_needs_lock(issue_flags))
+ 		return;
+ 
+ 	io_alloc_cache_vec_kasan(&ac->vec);
+@@ -172,7 +172,8 @@ void __io_uring_cmd_done(struct io_uring_cmd *ioucmd, s32 ret, u64 res2,
+ 	if (req->flags & REQ_F_IOPOLL) {
+ 		/* order with io_do_iopoll() checking ->iopoll_completed */
+ 		smp_store_release(&req->iopoll_completed, 1);
+-	} else if (issue_flags & IO_URING_F_COMPLETE_DEFER) {
++	} else if ((issue_flags & IO_URING_F_COMPLETE_DEFER) &&
++		   !io_issue_handed_off(issue_flags)) {
+ 		if (WARN_ON_ONCE(issue_flags & IO_URING_F_UNLOCKED))
+ 			return;
+ 		io_req_complete_defer(req);
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 1e1a316..5843d48 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -14,6 +14,7 @@ obj-y     = fork.o exec_domain.o exec_state.o panic.o \
+ 
+ obj-$(CONFIG_MULTIUSER) += groups.o
+ obj-$(CONFIG_VHOST_TASK) += vhost_task.o
++obj-$(CONFIG_THREAD_HANDOFF) += thread_handoff.o
+ 
+ ifdef CONFIG_FUNCTION_TRACER
+ # Do not trace internal ftrace files
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 416758c..f31af9c 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -2190,7 +2190,8 @@ __latent_entropy struct task_struct *copy_process(
+ 		goto bad_fork_cleanup_count;
+ 
+ 	delayacct_tsk_init(p);	/* Must remain after dup_task_struct() */
+-	p->flags &= ~(PF_SUPERPRIV | PF_WQ_WORKER | PF_IDLE | PF_NO_SETAFFINITY);
++	p->flags &= ~(PF_SUPERPRIV | PF_WQ_WORKER | PF_IDLE |
++		      PF_NO_SETAFFINITY | PF_IO_HANDOFF);
+ 	p->flags |= PF_FORKNOEXEC;
+ 	INIT_LIST_HEAD(&p->children);
+ 	INIT_LIST_HEAD(&p->sibling);
+@@ -2687,11 +2688,12 @@ struct task_struct * __init fork_idle(int cpu)
+  * creating io_uring workers. It returns a created task, or an error pointer.
+  * The returned task is inactive, and the caller must fire it up through
+  * wake_up_new_task(p). All signals are blocked in the created task.
++ * CLONE_SYSVSEM as a worker may take over a user thread's identity.
+  */
+ struct task_struct *create_io_thread(int (*fn)(void *), void *arg, int node)
+ {
+ 	unsigned long flags = CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|
+-			      CLONE_IO|CLONE_VM|CLONE_UNTRACED;
++			      CLONE_IO|CLONE_VM|CLONE_UNTRACED|CLONE_SYSVSEM;
+ 	struct kernel_clone_args args = {
+ 		.flags		= flags,
+ 		.fn		= fn,
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 91f059a..a88db48 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -96,6 +96,8 @@
+ 
+ #include "../workqueue_internal.h"
+ #include "../../io_uring/io-wq.h"
++#include <linux/io_uring.h>
++#include <linux/thread_handoff.h>
+ #include "../smpboot.h"
+ #include "../locking/mutex.h"
+ 
+@@ -5685,6 +5687,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
+  * In case the task is currently running, return the runtime plus current's
+  * pending runtime that have not been accounted yet.
+  */
++#ifdef CONFIG_THREAD_HANDOFF
++/* keep the prev_sum_exec_runtime delta intact, slice accounting uses it */
++u64 sched_exec_runtime_take(struct task_struct *p)
++{
++	struct rq_flags rf;
++	struct rq *rq;
++	u64 ns;
++
++	rq = task_rq_lock(p, &rf);
++	if (task_current_donor(rq, p) && task_on_rq_queued(p)) {
++		update_rq_clock(rq);
++		p->sched_class->update_curr(rq);
++	}
++	ns = p->se.sum_exec_runtime;
++	p->se.sum_exec_runtime = 0;
++	p->se.prev_sum_exec_runtime -= ns;
++	task_rq_unlock(rq, p, &rf);
++	return ns;
++}
++
++void sched_exec_runtime_add(struct task_struct *p, u64 ns)
++{
++	struct rq_flags rf;
++	struct rq *rq;
++
++	rq = task_rq_lock(p, &rf);
++	p->se.sum_exec_runtime += ns;
++	p->se.prev_sum_exec_runtime += ns;
++	task_rq_unlock(rq, p, &rf);
++}
++#endif
++
+ unsigned long long task_sched_runtime(struct task_struct *p)
+ {
+ 	struct rq_flags rf;
+@@ -7339,6 +7373,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
+ 		wq_worker_sleeping(tsk);
+ 	else if (task_flags & PF_IO_WORKER)
+ 		io_wq_worker_sleeping(tsk);
++	else if (task_flags & PF_IO_HANDOFF)
++		io_uring_task_sleeping(tsk);
+ 
+ 	/*
+ 	 * spinlock and rwlock must not flush block requests.  This will
+diff --git b/kernel/thread_handoff.c b/kernel/thread_handoff.c
+new file mode 100644
+index 0000000..822fdd9
+--- /dev/null
++++ b/kernel/thread_handoff.c
+@@ -0,0 +1,490 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Thread identity handoff, see include/linux/thread_handoff.h
++ *
++ * Copyright (C) 2026 Jens Axboe
++ */
++#include <linux/thread_handoff.h>
++#include <linux/sched/signal.h>
++#include <linux/sched/task.h>
++#include <linux/sched/rt.h>
++#include <linux/sched/mm.h>
++#include <linux/audit.h>
++#include <linux/cgroup.h>
++#include <linux/cred.h>
++#include <linux/futex.h>
++#include <linux/mempolicy.h>
++#include <linux/pid.h>
++#include <linux/rseq.h>
++#include <linux/seccomp.h>
++#include <linux/thread_info.h>
++#include <uapi/linux/sched/types.h>
++#include <linux/ioprio.h>
++#include <linux/iocontext.h>
++#include <linux/task_io_accounting_ops.h>
++#include <linux/uprobes.h>
++#include <linux/perf_event.h>
++
++/* prctl state that moves. Not PF_MEMALLOC_NOIO, kernel code sets that too */
++#define THREAD_HANDOFF_PF_FLAGS	(PF_MCE_PROCESS | PF_MCE_EARLY)
++
++/* can the identity of @tsk (current) be handed off, errs on the safe side */
++bool thread_handoff_allowed(struct task_struct *tsk)
++{
++	WARN_ON_ONCE(tsk != current);
++
++	if (tsk->flags & (PF_EXITING | PF_KTHREAD | PF_IO_WORKER))
++		return false;
++	if (tsk->ptrace)
++		return false;
++	/* tracees point back at the tracer task */
++	if (!list_empty(&tsk->ptraced))
++		return false;
++	if (tsk->signal->flags & SIGNAL_GROUP_EXIT)
++		return false;
++#ifdef CONFIG_PERF_EVENTS
++	/* per-task perf contexts are bound to the task_struct */
++	if (tsk->perf_event_ctxp)
++		return false;
++#endif
++#ifdef CONFIG_FUTEX
++	/* PI futex ownership is tied to the task_struct */
++	if (!list_empty(&tsk->futex.pi_state_list))
++		return false;
++#endif
++#ifdef CONFIG_GENERIC_ENTRY
++	if (test_syscall_work(SYSCALL_USER_DISPATCH))
++		return false;
++#endif
++	/* only the fair class moves, see thread_handoff_sched() */
++	if (rt_or_dl_task(tsk))
++		return false;
++#ifdef CONFIG_SCHED_CORE
++	/* the core scheduling cookie is bound to the task */
++	if (tsk->core_cookie)
++		return false;
++#endif
++#ifdef CONFIG_KCOV
++	/* coverage collection is per-thread */
++	if (tsk->kcov)
++		return false;
++#endif
++#ifdef CONFIG_POSIX_TIMERS
++	/* armed per-thread CPU timers would sample the destination's clock */
++	if (tsk->posix_cputimers.timers_active)
++		return false;
++#endif
++	/* the syscall never exits, its audit record would never be emitted */
++	if (!audit_dummy_context())
++		return false;
++#ifdef CONFIG_UPROBES
++	/* pending uretprobes, the return address bookkeeping is in our utask */
++	if (tsk->utask && tsk->utask->return_instances)
++		return false;
++#endif
++	/* a vfork() parent waits on this task_struct, not on the identity */
++	if (tsk->vfork_done)
++		return false;
++
++	return arch_thread_handoff_allowed(tsk);
++}
++
++/* can @dst take over the identity of @src, called from sched_submit_work() */
++bool thread_handoff_compatible(struct task_struct *src, struct task_struct *dst)
++{
++	if (dst->flags & PF_EXITING)
++		return false;
++	/* the identity would land under a tracer that never attached to it */
++	if (dst->ptrace)
++		return false;
++	if (!same_thread_group(src, dst))
++		return false;
++#ifdef CONFIG_GENERIC_ENTRY
++	/* inherited from the thread that forked the destination */
++	if (test_task_syscall_work(dst, SYSCALL_USER_DISPATCH))
++		return false;
++#endif
++	if (dst->mm != src->mm || dst->files != src->files ||
++	    dst->fs != src->fs || dst->nsproxy != src->nsproxy)
++		return false;
++	/* the identity must not gain no_new_privs */
++	if (task_no_new_privs(dst) && !task_no_new_privs(src))
++		return false;
++#ifdef CONFIG_SECCOMP
++	/* seccomp filters are per-thread, the identity must not escape them */
++	if (dst->seccomp.mode != src->seccomp.mode ||
++	    dst->seccomp.filter != src->seccomp.filter)
++		return false;
++#endif
++#ifdef CONFIG_SYSVIPC
++	/* SEM_UNDO adjustments are accounted per undo list */
++	if (dst->sysvsem.undo_list != src->sysvsem.undo_list)
++		return false;
++#endif
++	/* thread_handoff_creds() doesn't switch namespaces */
++	scoped_guard(rcu) {
++		if (__task_cred(dst)->user_ns != __task_cred(src)->user_ns)
++			return false;
++	}
++	return arch_thread_handoff_compatible(src, dst);
++}
++
++/* runs on the source right before it blocks, syncs its live user state */
++bool thread_handoff_prepare(struct task_struct *tsk)
++{
++	WARN_ON_ONCE(tsk != current);
++	/* re-check, may have changed since thread_handoff_allowed() */
++	if (tsk->ptrace)
++		return false;
++#ifdef CONFIG_PERF_EVENTS
++	if (tsk->perf_event_ctxp)
++		return false;
++#endif
++#ifdef CONFIG_FUTEX
++	if (!list_empty(&tsk->futex.pi_state_list))
++		return false;
++#endif
++	return arch_thread_handoff_prepare();
++}
++
++/*
++ * Take the source's per-thread accounting for the destination, so the tid's
++ * counters stay monotonic. Runs as current, the tick writes these from irq.
++ */
++void thread_handoff_stats_take(struct thread_handoff_stats *st)
++{
++	struct task_struct *p = current;
++
++	st->exec_runtime = sched_exec_runtime_take(p);
++
++	local_irq_disable();
++	st->utime = p->utime;
++	st->stime = p->stime;
++	st->gtime = p->gtime;
++	p->utime = p->stime = p->gtime = 0;
++#ifndef CONFIG_VIRT_CPU_ACCOUNTING_NATIVE
++	raw_spin_lock(&p->prev_cputime.lock);
++	p->prev_cputime.utime = p->prev_cputime.stime = 0;
++	raw_spin_unlock(&p->prev_cputime.lock);
++#endif
++	local_irq_enable();
++
++	st->min_flt = p->min_flt;
++	st->maj_flt = p->maj_flt;
++	st->nvcsw = p->nvcsw;
++	st->nivcsw = p->nivcsw;
++	p->min_flt = p->maj_flt = p->nvcsw = p->nivcsw = 0;
++	st->ioac = p->ioac;
++	memset(&p->ioac, 0, sizeof(p->ioac));
++}
++
++static void thread_handoff_stats_add(struct task_struct *p,
++				     struct thread_handoff_stats *st)
++{
++	sched_exec_runtime_add(p, st->exec_runtime);
++
++	local_irq_disable();
++	p->utime += st->utime;
++	p->stime += st->stime;
++	p->gtime += st->gtime;
++	local_irq_enable();
++
++	p->min_flt += st->min_flt;
++	p->maj_flt += st->maj_flt;
++	p->nvcsw += st->nvcsw;
++	p->nivcsw += st->nivcsw;
++	task_io_accounting_add(&p->ioac, &st->ioac);
++}
++
++/* signal state follows the identity, the source gets a worker's mask */
++static void thread_handoff_signals(struct task_struct *dst,
++				   struct task_struct *src)
++	__must_hold(&dst->sighand->siglock)
++{
++	dst->blocked = src->blocked;
++	dst->real_blocked = src->real_blocked;
++	dst->saved_sigmask = src->saved_sigmask;
++	dst->sas_ss_sp = src->sas_ss_sp;
++	dst->sas_ss_size = src->sas_ss_size;
++	dst->sas_ss_flags = src->sas_ss_flags;
++	dst->restart_block = src->restart_block;
++
++	siginitsetinv(&src->blocked, sigmask(SIGKILL) | sigmask(SIGSTOP));
++	sigemptyset(&src->real_blocked);
++	sas_ss_reset(src);
++
++	list_splice_tail_init(&src->pending.list, &dst->pending.list);
++	sigorsets(&dst->pending.signal, &dst->pending.signal,
++		  &src->pending.signal);
++	sigemptyset(&src->pending.signal);
++}
++
++/* the tgid is the leader's tid, so leadership follows. Like de_thread() */
++static void thread_handoff_leader(struct task_struct *dst,
++				  struct task_struct *src)
++	__must_hold(&tasklist_lock)
++{
++	struct list_head *prev = dst->thread_node.prev;
++	struct task_struct *t;
++
++	/*
++	 * The leader must be first on ->thread_head, swap the two list
++	 * positions. RCU readers may see a thread twice, never miss one.
++	 */
++	if (prev == &src->thread_node)
++		prev = &dst->thread_node;
++	list_del_rcu(&dst->thread_node);
++	list_replace_rcu(&src->thread_node, &dst->thread_node);
++	list_add_rcu(&src->thread_node, prev);
++
++	transfer_pid(src, dst, PIDTYPE_TGID);
++	transfer_pid(src, dst, PIDTYPE_PGID);
++	transfer_pid(src, dst, PIDTYPE_SID);
++
++	list_replace_rcu(&src->tasks, &dst->tasks);
++	list_replace_init(&src->sibling, &dst->sibling);
++
++	for_each_thread(dst, t)
++		t->group_leader = dst;
++
++	dst->exit_signal = src->exit_signal;
++	src->exit_signal = -1;
++}
++
++/* children are parented to the forking thread, move them along */
++static void thread_handoff_children(struct task_struct *dst,
++				    struct task_struct *src)
++	__must_hold(&tasklist_lock)
++{
++	struct task_struct *p;
++
++	list_for_each_entry(p, &src->children, sibling) {
++		RCU_INIT_POINTER(p->real_parent, dst);
++		if (rcu_access_pointer(p->parent) == src)
++			RCU_INIT_POINTER(p->parent, dst);
++	}
++	list_splice_init(&src->children, &dst->children);
++	dst->self_exec_id = src->self_exec_id;
++}
++
++static bool thread_handoff_sched_same(struct task_struct *dst,
++				      struct task_struct *src)
++{
++	if (dst->policy != src->policy || task_nice(dst) != task_nice(src))
++		return false;
++	if (dst->sched_reset_on_fork != src->sched_reset_on_fork)
++		return false;
++	if (dst->se.custom_slice != src->se.custom_slice ||
++	    (src->se.custom_slice && dst->se.slice != src->se.slice))
++		return false;
++#ifdef CONFIG_UCLAMP_TASK
++	for (int i = 0; i < UCLAMP_CNT; i++) {
++		if (dst->uclamp_req[i].user_defined != src->uclamp_req[i].user_defined)
++			return false;
++		if (src->uclamp_req[i].user_defined &&
++		    dst->uclamp_req[i].value != src->uclamp_req[i].value)
++			return false;
++	}
++#endif
++	return true;
++}
++
++/* sched attributes follow the identity, sched_setattr() only if needed */
++static void thread_handoff_sched(struct task_struct *dst,
++				 struct task_struct *src)
++{
++	struct sched_attr attr = {
++		.sched_policy = src->policy,
++		.sched_nice = task_nice(src),
++	};
++
++	if (thread_handoff_sched_same(dst, src))
++		return;
++	if (src->sched_reset_on_fork)
++		attr.sched_flags |= SCHED_FLAG_RESET_ON_FORK;
++	if (src->se.custom_slice)
++		attr.sched_runtime = src->se.slice;
++#ifdef CONFIG_UCLAMP_TASK
++	if (src->uclamp_req[UCLAMP_MIN].user_defined) {
++		attr.sched_flags |= SCHED_FLAG_UTIL_CLAMP_MIN;
++		attr.sched_util_min = src->uclamp_req[UCLAMP_MIN].value;
++	}
++	if (src->uclamp_req[UCLAMP_MAX].user_defined) {
++		attr.sched_flags |= SCHED_FLAG_UTIL_CLAMP_MAX;
++		attr.sched_util_max = src->uclamp_req[UCLAMP_MAX].value;
++	}
++#endif
++	WARN_ON_ONCE(sched_setattr_nocheck(dst, &attr));
++}
++
++static void thread_handoff_mempolicy(struct task_struct *dst,
++				     struct task_struct *src)
++{
++#ifdef CONFIG_NUMA
++	struct mempolicy *pol = mpol_dup(src->mempolicy);
++
++	if (IS_ERR(pol))
++		return;
++	task_lock(dst);
++	swap(dst->mempolicy, pol);
++	task_unlock(dst);
++	mpol_put(pol);
++#endif
++}
++
++#ifdef CONFIG_BLOCK
++/* ionice'd threads keep their IO priority, the source's ioc may be in use */
++static void thread_handoff_ioprio(struct task_struct *dst,
++				  struct task_struct *src)
++{
++	struct io_context *ioc = src->io_context;
++
++	/* workers share the ioc of the thread that forked them, detach */
++	if (dst->io_context)
++		exit_io_context(dst);
++	if (ioc && ioprio_valid(ioc->ioprio))
++		WARN_ON_ONCE(set_task_ioprio(dst, ioc->ioprio));
++}
++#else
++static void thread_handoff_ioprio(struct task_struct *dst,
++				  struct task_struct *src)
++{
++}
++#endif
++
++#ifdef CONFIG_CGROUPS
++/* threaded cgroup placement follows the identity, the source stays put */
++static void thread_handoff_cgroup(struct task_struct *dst,
++				  struct task_struct *src)
++{
++	if (rcu_access_pointer(src->cgroups) == rcu_access_pointer(dst->cgroups))
++		return;
++	WARN_ON_ONCE(cgroup_attach_task_all(src, dst));
++}
++#else
++static void thread_handoff_cgroup(struct task_struct *dst,
++				  struct task_struct *src)
++{
++}
++#endif
++
++/*
++ * Adopt the source's creds. Not commit_creds(), the process isn't changing
++ * credentials, an existing identity is just moving between two of its tasks.
++ */
++static void thread_handoff_creds(struct task_struct *dst,
++				 struct task_struct *src)
++{
++	/* neither side changes its own creds while a handoff is in flight */
++	const struct cred *old = rcu_dereference_protected(dst->real_cred, true);
++	const struct cred *new = rcu_dereference_protected(src->real_cred, true);
++
++	WARN_ON_ONCE(rcu_dereference_protected(dst->cred, true) != old);
++	if (new == old)
++		return;
++
++	get_cred_many(new, 2);
++	if (new->user != old->user)
++		inc_rlimit_ucounts(new->ucounts, UCOUNT_RLIMIT_NPROC, 1);
++	rcu_assign_pointer(dst->real_cred, new);
++	rcu_assign_pointer(dst->cred, new);
++	if (new->user != old->user)
++		dec_rlimit_ucounts(old->ucounts, UCOUNT_RLIMIT_NPROC, 1);
++	put_cred_many(old, 2);
++}
++
++/* the part of thread_handoff_finish() needed to run kernel code for @src */
++void thread_handoff_adopt_creds(struct task_struct *src)
++{
++	thread_handoff_creds(current, src);
++}
++
++/* the user requested affinity follows, the effective mask derives from it */
++static void thread_handoff_affinity(struct task_struct *dst,
++				    struct task_struct *src)
++{
++	/* dup_user_cpus_ptr() wants no user mask, nothing can race us here */
++	release_user_cpus_ptr(dst);
++	dup_user_cpus_ptr(dst, src, NUMA_NO_NODE);
++	set_cpus_allowed_ptr(dst, src->cpus_ptr);
++}
++
++/* runs on the destination, the source never looks at the moved state again */
++int thread_handoff_finish(struct task_struct *src,
++			  struct thread_handoff_stats *st)
++{
++	struct task_struct *dst = current;
++	struct sighand_struct *sighand;
++	char comm[TASK_COMM_LEN];
++	bool leader;
++
++	/* the same for both, neither can be mid exec */
++	sighand = rcu_dereference_protected(dst->sighand, true);
++	WARN_ON_ONCE(sighand != rcu_dereference_protected(src->sighand, true));
++
++	/* tid, leadership, and signal state swap in one go */
++	cgroup_threadgroup_change_begin(dst);
++	write_lock_irq(&tasklist_lock);
++	spin_lock(&sighand->siglock);
++	leader = thread_group_leader(src);
++	exchange_tids(dst, src);
++	if (leader)
++		thread_handoff_leader(dst, src);
++	thread_handoff_children(dst, src);
++	thread_handoff_signals(dst, src);
++	spin_unlock(&sighand->siglock);
++	write_unlock_irq(&tasklist_lock);
++	cgroup_threadgroup_change_end(dst);
++	recalc_sigpending();
++
++#ifdef CONFIG_FUTEX
++	dst->futex.robust_list = src->futex.robust_list;
++	src->futex.robust_list = NULL;
++#ifdef CONFIG_COMPAT
++	dst->futex.compat_robust_list = src->futex.compat_robust_list;
++	src->futex.compat_robust_list = NULL;
++#endif
++#endif
++	dst->clear_child_tid = src->clear_child_tid;
++	src->clear_child_tid = NULL;
++
++#ifdef CONFIG_RSEQ
++	scoped_guard(irqsave) {
++		dst->rseq = src->rseq;
++		memset(&src->rseq, 0, sizeof(src->rseq));
++		src->rseq.ids.cpu_id = RSEQ_CPU_ID_UNINITIALIZED;
++	}
++	rseq_force_update();
++#endif
++
++	thread_handoff_creds(dst, src);
++#ifdef CONFIG_AUDIT
++	dst->loginuid = src->loginuid;
++	dst->sessionid = src->sessionid;
++#endif
++
++	dst->personality = src->personality;
++	dst->pdeath_signal = src->pdeath_signal;
++	dst->timer_slack_ns = src->timer_slack_ns;
++	dst->default_timer_slack_ns = src->default_timer_slack_ns;
++	dst->start_time = src->start_time;
++	dst->start_boottime = src->start_boottime;
++	if (task_no_new_privs(src))
++		task_set_no_new_privs(dst);
++	/* prctl driven per-task flags, the source keeps them for its work */
++	dst->flags = (dst->flags & ~THREAD_HANDOFF_PF_FLAGS) |
++		     (src->flags & THREAD_HANDOFF_PF_FLAGS);
++
++	thread_handoff_mempolicy(dst, src);
++	thread_handoff_cgroup(dst, src);
++	thread_handoff_ioprio(dst, src);
++	thread_handoff_stats_add(dst, st);
++
++	thread_handoff_sched(dst, src);
++	thread_handoff_affinity(dst, src);
++
++	get_task_comm(comm, src);
++	set_task_comm(dst, comm);
++
++	return arch_thread_handoff_finish(src, leader);
++}

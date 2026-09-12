@@ -82,10 +82,10 @@ index 54e14ed..0befde2 100644
  
  static void init_amd(struct cpuinfo_x86 *c)
 diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
-index d70a3e7..ae5c2aa 100644
+index 002b9f9..bad6327 100644
 --- a/drivers/bluetooth/btusb.c
 +++ b/drivers/bluetooth/btusb.c
-@@ -569,6 +569,8 @@ static const struct usb_device_id quirks_table[] = {
+@@ -570,6 +570,8 @@ static const struct usb_device_id quirks_table[] = {
  						     BTUSB_WIDEBAND_SPEECH },
  	{ USB_DEVICE(0x13d3, 0x3612), .driver_info = BTUSB_REALTEK |
  						     BTUSB_WIDEBAND_SPEECH },
@@ -94,7 +94,7 @@ index d70a3e7..ae5c2aa 100644
  	{ USB_DEVICE(0x0489, 0xe122), .driver_info = BTUSB_REALTEK |
  						     BTUSB_WIDEBAND_SPEECH },
  
-@@ -699,6 +701,8 @@ static const struct usb_device_id quirks_table[] = {
+@@ -700,6 +702,8 @@ static const struct usb_device_id quirks_table[] = {
  	{ USB_DEVICE(0x13d3, 0x3596), .driver_info = BTUSB_MEDIATEK |
  						     BTUSB_WIDEBAND_SPEECH },
  	/* MediaTek MT7922 Bluetooth devices */
@@ -194,26 +194,6 @@ index de9bbcc..7cbdbdd 100644
  		pci_info(dev, "broken device, retraining non-functional downstream link at 2.5GT/s\n");
  		ret = pcie_set_target_speed(dev, PCIE_SPEED_2_5GT, false);
  		if (ret)
-diff --git a/drivers/platform/x86/amd/pmf/spc.c b/drivers/platform/x86/amd/pmf/spc.c
-index 94355b4..592ba4d 100644
---- a/drivers/platform/x86/amd/pmf/spc.c
-+++ b/drivers/platform/x86/amd/pmf/spc.c
-@@ -17,7 +17,6 @@
- #include <linux/units.h>
- #include "pmf.h"
- 
--#ifdef CONFIG_AMD_PMF_DEBUG
- u32 amd_pmf_get_ta_custom_bios_inputs(struct ta_pmf_enact_table *in, int index)
- {
- 	switch (index) {
-@@ -31,6 +30,7 @@ u32 amd_pmf_get_ta_custom_bios_inputs(struct ta_pmf_enact_table *in, int index)
- }
- EXPORT_SYMBOL(amd_pmf_get_ta_custom_bios_inputs);
- 
-+#ifdef CONFIG_AMD_PMF_DEBUG
- void amd_pmf_dump_ta_inputs(struct amd_pmf_dev *dev, struct ta_pmf_enact_table *in)
- {
- 	int i;
 diff --git a/drivers/usb/core/message.c b/drivers/usb/core/message.c
 index 75e2bfd..1d83f8b 100644
 --- a/drivers/usb/core/message.c
@@ -245,10 +225,10 @@ index 75e2bfd..1d83f8b 100644
  		dev_dbg(&dev->dev,
  			"wrong descriptor type %02x for string %d (\"%s\")\n",
 diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
-index 5842552..2c163e2 100644
+index 7cc2345..a44ec61 100644
 --- a/include/linux/perf_event.h
 +++ b/include/linux/perf_event.h
-@@ -1632,7 +1632,7 @@ static inline void perf_event_task_migrate(struct task_struct *task)
+@@ -1655,7 +1655,7 @@ static inline void perf_event_task_migrate(struct task_struct *task)
  		task->sched_migrated = 1;
  }
  
@@ -400,10 +380,10 @@ index 82825e7..ce83fc7 100644
  	if (vtime_accounting_enabled_this_cpu())
  		vtime_task_switch_generic(prev);
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 853afc8..ddbea1c 100644
+index a88db48..1a31827 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -5091,7 +5091,7 @@ static inline void prepare_task(struct task_struct *next)
+@@ -5093,7 +5093,7 @@ static inline void prepare_task(struct task_struct *next)
  	WRITE_ONCE(next->on_cpu, 1);
  }
  
@@ -412,7 +392,7 @@ index 853afc8..ddbea1c 100644
  {
  	/*
  	 * This must be the very last reference to @prev from this CPU. After
-@@ -5135,7 +5135,7 @@ static void zap_balance_callbacks(struct rq *rq)
+@@ -5137,7 +5137,7 @@ static void zap_balance_callbacks(struct rq *rq)
  	rq->balance_callback = found ? &balance_push_callback : NULL;
  }
  
@@ -421,7 +401,7 @@ index 853afc8..ddbea1c 100644
  {
  	void (*func)(struct rq *rq);
  	struct balance_callback *next;
-@@ -5170,7 +5170,7 @@ struct balance_callback balance_push_callback = {
+@@ -5172,7 +5172,7 @@ struct balance_callback balance_push_callback = {
  	.func = balance_push,
  };
  
@@ -430,7 +410,7 @@ index 853afc8..ddbea1c 100644
  __splice_balance_callbacks(struct rq *rq, bool split)
  {
  	struct balance_callback *head = rq->balance_callback;
-@@ -5244,7 +5244,7 @@ prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf
+@@ -5246,7 +5246,7 @@ prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf
  	__acquire(__rq_lockp(this_rq()));
  }
  
@@ -439,7 +419,7 @@ index 853afc8..ddbea1c 100644
  	__releases(__rq_lockp(rq))
  {
  	/*
-@@ -5278,7 +5278,7 @@ static inline void kmap_local_sched_out(void)
+@@ -5280,7 +5280,7 @@ static inline void kmap_local_sched_out(void)
  #endif
  }
  
@@ -448,7 +428,7 @@ index 853afc8..ddbea1c 100644
  {
  #ifdef CONFIG_KMAP_LOCAL
  	if (unlikely(current->kmap_ctrl.idx))
-@@ -5332,7 +5332,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
+@@ -5334,7 +5334,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
   * past. 'prev == current' is still correct but we need to recalculate this_rq
   * because prev may have moved to another CPU.
   */
@@ -458,10 +438,10 @@ index 853afc8..ddbea1c 100644
  {
  	struct rq *rq = this_rq();
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index b8bd308..bc03e60 100644
+index 4d0b944..7af4143 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -13520,12 +13520,15 @@ redo:
+@@ -13531,12 +13531,15 @@ redo:
  		 * still unbalanced. ld_moved simply stays zero, so it is
  		 * correctly treated as an imbalance.
  		 */
