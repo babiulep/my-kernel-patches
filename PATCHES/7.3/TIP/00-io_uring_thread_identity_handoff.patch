@@ -2488,7 +2488,7 @@ index 667f981..45c2f77 100644
  	/* size of async data needed, if any */
  	unsigned short		async_size;
 diff --git a/io_uring/rw.c b/io_uring/rw.c
-index 95106dd..23b078f 100644
+index 432820f..694fdd7 100644
 --- a/io_uring/rw.c
 +++ b/io_uring/rw.c
 @@ -134,7 +134,7 @@ static bool io_rw_recycle(struct io_kiocb *req, unsigned int issue_flags)
@@ -2685,10 +2685,10 @@ index 1e1a316..5843d48 100644
  ifdef CONFIG_FUNCTION_TRACER
  # Do not trace internal ftrace files
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 416758c..f31af9c 100644
+index a5934a3..0a761d2 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
-@@ -2190,7 +2190,8 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2193,7 +2193,8 @@ __latent_entropy struct task_struct *copy_process(
  		goto bad_fork_cleanup_count;
  
  	delayacct_tsk_init(p);	/* Must remain after dup_task_struct() */
@@ -2698,7 +2698,7 @@ index 416758c..f31af9c 100644
  	p->flags |= PF_FORKNOEXEC;
  	INIT_LIST_HEAD(&p->children);
  	INIT_LIST_HEAD(&p->sibling);
-@@ -2687,11 +2688,12 @@ struct task_struct * __init fork_idle(int cpu)
+@@ -2690,11 +2691,12 @@ struct task_struct * __init fork_idle(int cpu)
   * creating io_uring workers. It returns a created task, or an error pointer.
   * The returned task is inactive, and the caller must fire it up through
   * wake_up_new_task(p). All signals are blocked in the created task.

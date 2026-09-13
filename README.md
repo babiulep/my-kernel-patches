@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-14
+- TIP: update patches for Linux 7.3-rc3
+
 ## 2026-09-12
 - TIP: update patches
 
