@@ -1,0 +1,1380 @@
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index 33cd309..1b4a966 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -1980,6 +1980,14 @@ Kernel parameters
+ 		protect_image	Turn on image protection during restoration
+ 				(that will set all pages holding image data
+ 				during restoration read-only).
++		reserve[:<size>]
++				Hold <size> of swap back for the image when the
++				area named by resume= and resume_offset= is
++				swapped on.  Swap cannot use that space.
++				Without <size>, /sys/power/image_size is used.
++				<size> takes K, M or G.  More than half of the
++				area is refused.  Later changes take effect at
++				the next swapon.
+ 
+ 	hibernate.compressor= 	[HIBERNATION] Compression algorithm to be
+ 				used with hibernation.
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 3b2eb2a..a2b1ae9 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -17404,6 +17404,7 @@ F:	include/linux/swapfile.h
+ F:	include/linux/swapops.h
+ F:	mm/page_io.c
+ F:	mm/swap.h
++F:	mm/swap_hibernate.c
+ F:	mm/swap_table.h
+ F:	mm/swap_state.c
+ F:	mm/swapfile.c
+diff --git a/include/linux/suspend.h b/include/linux/suspend.h
+index b02876f..1fb1f5d 100644
+--- a/include/linux/suspend.h
++++ b/include/linux/suspend.h
+@@ -393,6 +393,7 @@ extern void hibernation_set_ops(const struct platform_hibernation_ops *ops);
+ extern int hibernate(void);
+ extern bool system_entering_hibernation(void);
+ extern bool hibernation_available(void);
++unsigned long hibernation_reserve_pages(dev_t dev, sector_t offset);
+ asmlinkage int swsusp_save(void);
+ extern struct pbe *restore_pblist;
+ int pfn_is_nosave(unsigned long pfn);
+@@ -412,6 +413,8 @@ static inline void hibernation_set_ops(const struct platform_hibernation_ops *op
+ static inline int hibernate(void) { return -ENOSYS; }
+ static inline bool system_entering_hibernation(void) { return false; }
+ static inline bool hibernation_available(void) { return false; }
++static inline unsigned long hibernation_reserve_pages(dev_t dev, sector_t offset)
++{ return 0; }
+ 
+ static inline int hibernate_quiet_exec(int (*func)(void *data), void *data) {
+ 	return -ENOTSUPP;
+diff --git a/include/linux/swap.h b/include/linux/swap.h
+index 5658a16..0d1a72d 100644
+--- a/include/linux/swap.h
++++ b/include/linux/swap.h
+@@ -255,6 +255,8 @@ struct swap_info_struct {
+ 					/* list of cluster that are fragmented or contented */
+ 	unsigned int pages;		/* total of usable pages of swap */
+ 	atomic_long_t inuse_pages;	/* number of those currently in use */
++	unsigned int hib_reserve_start;	/* clusters held back for hibernation */
++	unsigned int hib_reserve_nr;	/* how many, 0 for none */
+ 	struct swap_sequential_cluster *global_cluster; /* Use one global cluster for rotating device */
+ 	spinlock_t global_cluster_lock;	/* Serialize usage of global cluster */
+ 	struct rb_root swap_extent_root;/* root of the swap extent rbtree */
+@@ -402,9 +404,12 @@ void swap_put_entries_direct(swp_entry_t entry, int nr);
+  */
+ bool folio_free_swap(struct folio *folio);
+ 
+-/* Allocate / free (hibernation) exclusive entries */
+-swp_entry_t swap_alloc_hibernation_slot(int type);
+-void swap_free_hibernation_slot(swp_entry_t entry);
++/* Hibernation takes runs of slots off the device it is bound to */
++int swap_hibernation_bind(int type);
++void swap_hibernation_unbind(void);
++void swap_hibernation_reset(void);
++swp_entry_t swap_alloc_hibernation_slot(unsigned int *nr);
++void swap_free_hibernation_slot(swp_entry_t entry, unsigned int nr);
+ 
+ static inline void put_swap_device(struct swap_info_struct *si)
+ {
+diff --git a/kernel/power/hibernate.c b/kernel/power/hibernate.c
+index d2479c6..225fe55 100644
+--- a/kernel/power/hibernate.c
++++ b/kernel/power/hibernate.c
+@@ -41,6 +41,8 @@
+ static int nocompress;
+ static int noresume;
+ static int nohibernate;
++static int reserve_swap;
++static unsigned long reserve_size;
+ static int resume_wait;
+ static unsigned int resume_delay;
+ static char resume_file[256] = CONFIG_PM_STD_PARTITION;
+@@ -113,6 +115,26 @@ bool hibernation_available(void)
+ 		!secretmem_active() && !cxl_mem_active();
+ }
+ 
++/**
++ * hibernation_reserve_pages - How much swap to hold back for an image.
++ * @dev: the block device the swap area lives on.
++ * @offset: the first block of the swap area on that device.
++ *
++ * Only the area named by resume= and resume_offset= holds anything back.
++ * The image can still grow past this amount.
++ *
++ * Return: the number of pages to hold back, or zero when nothing should be.
++ */
++unsigned long hibernation_reserve_pages(dev_t dev, sector_t offset)
++{
++	if (!reserve_swap || !hibernation_available())
++		return 0;
++	if (!dev || dev != swsusp_resume_device || offset != swsusp_resume_block)
++		return 0;
++
++	return DIV_ROUND_UP(reserve_size ? reserve_size : image_size, PAGE_SIZE);
++}
++
+ /**
+  * hibernation_set_ops - Set the global hibernate operations.
+  * @ops: Hibernation operations to use in subsequent hibernation transitions.
+@@ -857,8 +879,12 @@ int hibernate(void)
+ 	if (snapshot_test) {
+ 		pm_pr_dbg("Checking hibernation image\n");
+ 		error = swsusp_check(false);
+-		if (!error)
++		if (!error) {
+ 			error = load_image_and_restore();
++			/* The image was not used, so free its slots. */
++			if (error)
++				swsusp_free_image_slots();
++		}
+ 	}
+ 	thaw_processes();
+ 
+@@ -1433,6 +1459,10 @@ static int __init hibernate_setup(char *str)
+ 	} else if (IS_ENABLED(CONFIG_STRICT_KERNEL_RWX)
+ 		   && !strncmp(str, "protect_image", 13)) {
+ 		enable_restore_image_protection();
++	} else if (!strncmp(str, "reserve", 7)) {
++		reserve_swap = 1;
++		if (str[7] == ':')
++			reserve_size = memparse(str + 8, NULL);
+ 	}
+ 	return 1;
+ }
+diff --git a/kernel/power/power.h b/kernel/power/power.h
+index 75b6384..9c398cd 100644
+--- a/kernel/power/power.h
++++ b/kernel/power/power.h
+@@ -171,6 +171,7 @@ extern void hibernate_release(void);
+ extern sector_t alloc_swapdev_block(int swap);
+ extern void free_all_swap_pages(int swap);
+ extern int swsusp_swap_in_use(void);
++void swsusp_free_image_slots(void);
+ 
+ /*
+  * Flags that can be passed from the hibernatig hernel to the "boot" kernel in
+diff --git a/kernel/power/swap.c b/kernel/power/swap.c
+index c78f159..f2fc849 100644
+--- a/kernel/power/swap.c
++++ b/kernel/power/swap.c
+@@ -166,44 +166,73 @@ static int swsusp_extents_insert(unsigned long swap_offset)
+ 	return 0;
+ }
+ 
++/*
++ * Swap gives the image whole runs of slots while the writer asks for one
++ * page at a time, so the part of a run that is still to come waits here.
++ */
++static struct {
++	int type;
++	unsigned long offset;	/* the slot the next page gets */
++	unsigned int left;	/* slots the run still holds, that one included */
++} swsusp_run = { .type = -1 };
++
+ sector_t alloc_swapdev_block(int swap)
+ {
+ 	unsigned long offset;
+ 
+-	/*
+-	 * Allocate a swap page and register that it has been allocated, so that
+-	 * it can be freed in case of an error.
+-	 */
+-	offset = swp_offset(swap_alloc_hibernation_slot(swap));
+-	if (offset) {
+-		if (swsusp_extents_insert(offset))
+-			swap_free_hibernation_slot(swp_entry(swap, offset));
+-		else
+-			return swapdev_block(swap, offset);
++	if (swap != swsusp_run.type || !swsusp_run.left) {
++		unsigned int nr;
++
++		offset = swp_offset(swap_alloc_hibernation_slot(&nr));
++		if (!offset)
++			return 0;
++		swsusp_run.type = swap;
++		swsusp_run.offset = offset;
++		swsusp_run.left = nr;
+ 	}
+-	return 0;
++	offset = swsusp_run.offset++;
++	swsusp_run.left--;
++
++	/*
++	 * Register the slot, so that it can be freed in case of an error.
++	 * The slots behind it in the run are recorded nowhere, so they have
++	 * to go back here together with it when that fails.
++	 */
++	if (swsusp_extents_insert(offset)) {
++		swap_free_hibernation_slot(swp_entry(swap, offset),
++					   swsusp_run.left + 1);
++		swsusp_run.left = 0;
++		return 0;
++	}
++	return swapdev_block(swap, offset);
+ }
+ 
+ void free_all_swap_pages(int swap)
+ {
+-	unsigned long offset;
+ 	struct rb_node *node;
+ 
+ 	/*
+ 	 * Free swap pages allocated for saving image data.  It also frees the
+ 	 * extents used to register which swap entries had been allocated.
++	 * Whatever the last run still holds was never registered, so it goes
++	 * back before the extents do.
+ 	 */
++	if (swsusp_run.type == swap && swsusp_run.left)
++		swap_free_hibernation_slot(swp_entry(swap, swsusp_run.offset),
++					   swsusp_run.left);
++	swsusp_run.type = -1;
++	swsusp_run.left = 0;
++
+ 	while ((node = swsusp_extents.rb_node)) {
+ 		struct swsusp_extent *ext;
+ 
+ 		ext = rb_entry(node, struct swsusp_extent, node);
+ 		rb_erase(node, &swsusp_extents);
+-
+-		for (offset = ext->start; offset <= ext->end; offset++)
+-			swap_free_hibernation_slot(swp_entry(swap, offset));
+-
++		swap_free_hibernation_slot(swp_entry(swap, ext->start),
++					   ext->end - ext->start + 1);
+ 		kfree(ext);
+ 	}
++	swap_hibernation_reset();
+ }
+ 
+ int swsusp_swap_in_use(void)
+@@ -223,25 +252,55 @@ struct hib_bio_batch {
+ 	wait_queue_head_t	wait;
+ 	blk_status_t		error;
+ 	struct blk_plug		plug;
++	struct bio		*cur;		/* the bio still being filled */
++	unsigned int		max_pages;	/* what the device takes at once */
++	unsigned int		nr_pages;	/* what the next bio is sized for */
+ };
+ 
++/* How much of the image the device is willing to take as one request. */
++static unsigned int hib_bio_max_pages(struct block_device *bdev)
++{
++	unsigned int pages = queue_max_bytes(bdev_get_queue(bdev)) >> PAGE_SHIFT;
++
++	pages = min_t(unsigned int, pages, bdev_max_segments(bdev));
++	return bio_max_segs(max(pages, 1U));
++}
++
+ static void hib_init_batch(struct hib_bio_batch *hb)
+ {
+ 	atomic_set(&hb->count, 0);
+ 	init_waitqueue_head(&hb->wait);
+ 	hb->error = BLK_STS_OK;
++	hb->cur = NULL;
++	hb->max_pages = hib_bio_max_pages(file_bdev(hib_resume_bdev_file));
++	hb->nr_pages = 1;
+ 	blk_start_plug(&hb->plug);
+ }
+ 
++/* Hand over the bio being filled, if there is one. */
++static void hib_submit_cur(struct hib_bio_batch *hb)
++{
++	struct bio *bio = hb->cur;
++
++	if (!bio)
++		return;
++
++	hb->cur = NULL;
++	atomic_inc(&hb->count);
++	submit_bio(bio);
++}
++
+ static void hib_finish_batch(struct hib_bio_batch *hb)
+ {
++	hib_submit_cur(hb);
+ 	blk_finish_plug(&hb->plug);
+ }
+ 
+ static void hib_end_io(struct bio *bio)
+ {
+ 	struct hib_bio_batch *hb = bio->bi_private;
+-	struct page *page = bio_first_page_all(bio);
++	struct bvec_iter_all iter_all;
++	struct bio_vec *bv;
+ 
+ 	if (bio->bi_status) {
+ 		pr_alert("Read-error on swap-device (%u:%u:%Lu)\n",
+@@ -249,11 +308,16 @@ static void hib_end_io(struct bio *bio)
+ 			 (unsigned long long)bio->bi_iter.bi_sector);
+ 	}
+ 
+-	if (bio_data_dir(bio) == WRITE)
+-		put_page(page);
+-	else if (clean_pages_on_read)
+-		flush_icache_range((unsigned long)page_address(page),
+-				   (unsigned long)page_address(page) + PAGE_SIZE);
++	/* A bio carries as many pages as the image was contiguous for. */
++	bio_for_each_segment_all(bv, bio, iter_all) {
++		struct page *page = bv->bv_page;
++
++		if (bio_data_dir(bio) == WRITE)
++			put_page(page);
++		else if (clean_pages_on_read)
++			flush_icache_range((unsigned long)page_address(page),
++					   (unsigned long)page_address(page) + PAGE_SIZE);
++	}
+ 
+ 	if (bio->bi_status && !hb->error)
+ 		hb->error = bio->bi_status;
+@@ -269,24 +333,54 @@ static int hib_submit_io_sync(blk_opf_t opf, pgoff_t page_off, void *addr)
+ 			page_off * (PAGE_SIZE >> 9), addr, PAGE_SIZE, opf);
+ }
+ 
++/*
++ * The image moves a page at a time in either direction.  Keep filling one bio
++ * for as long as the next page lands right after the last, so that pages that
++ * are consecutive on the device reach it as one request rather than as many
++ * that the block layer then has to merge.
++ */
+ static int hib_submit_io_async(blk_opf_t opf, pgoff_t page_off, void *addr,
+ 			 struct hib_bio_batch *hb)
+ {
++	sector_t sector = page_off * (PAGE_SIZE >> 9);
+ 	struct bio *bio;
+ 
+-	bio = bio_alloc(file_bdev(hib_resume_bdev_file), 1, opf,
++	if (hb->cur) {
++		bool contiguous = bio_end_sector(hb->cur) == sector;
++
++		if (contiguous && hb->cur->bi_vcnt < hb->cur->bi_max_vecs) {
++			bio_add_virt_nofail(hb->cur, addr, PAGE_SIZE);
++			return 0;
++		}
++
++		/*
++		 * Size the next bio for what the image has just shown.  A run
++		 * that carried on past this bio, or a bio that took more than
++		 * one page, says there are runs here worth the room.  Anything
++		 * else is an image in pieces, and a single page is all it can
++		 * use.
++		 */
++		hb->nr_pages = contiguous || hb->cur->bi_vcnt > 1 ?
++			       hb->max_pages : 1;
++
++		hib_submit_cur(hb);
++	}
++
++	bio = bio_alloc(file_bdev(hib_resume_bdev_file), hb->nr_pages, opf,
+ 			GFP_NOIO | __GFP_HIGH);
+-	bio->bi_iter.bi_sector = page_off * (PAGE_SIZE >> 9);
++	bio->bi_iter.bi_sector = sector;
+ 	bio_add_virt_nofail(bio, addr, PAGE_SIZE);
+ 	bio->bi_end_io = hib_end_io;
+ 	bio->bi_private = hb;
+-	atomic_inc(&hb->count);
+-	submit_bio(bio);
++	hb->cur = bio;
+ 	return 0;
+ }
+ 
+ static int hib_wait_io(struct hib_bio_batch *hb)
+ {
++	/* Nothing will complete a bio that was never handed over. */
++	hib_submit_cur(hb);
++
+ 	/*
+ 	 * We are relying on the behavior of blk_plug that a thread with
+ 	 * a plug will flush the plug list before sleeping.
+@@ -347,6 +441,9 @@ static int swsusp_swap_check(void)
+ 	if (res < 0)
+ 		return res;
+ 	root_swap = res;
++	res = swap_hibernation_bind(root_swap);
++	if (res)
++		return res;
+ 
+ 	hib_resume_bdev_file = bdev_file_open_by_dev(swsusp_resume_device,
+ 			BLK_OPEN_WRITE, NULL, NULL);
+@@ -418,6 +515,7 @@ static int get_swap_writer(struct swap_map_handle *handle)
+ err_rel:
+ 	release_swap_writer(handle);
+ err_close:
++	swap_hibernation_unbind();
+ 	swsusp_close();
+ 	return ret;
+ }
+@@ -492,6 +590,8 @@ static int swap_writer_finish(struct swap_map_handle *handle,
+ 
+ 	if (error)
+ 		free_all_swap_pages(root_swap);
++	/* Give back the free clusters the image did not use. */
++	swap_hibernation_unbind();
+ 	release_swap_writer(handle);
+ 	swsusp_close();
+ 
+@@ -882,6 +982,12 @@ static int save_compressed_image(struct swap_map_handle *handle,
+ 			}
+ 		}
+ 
++		/*
++		 * Submit the rest of the round now.  Otherwise it can wait in
++		 * the bio until the next round fills it.
++		 */
++		hib_submit_cur(&hb);
++
+ 		wait_event(crc->done, atomic_read_acquire(&crc->stop));
+ 		atomic_set(&crc->stop, 0);
+ 	}
+@@ -1362,6 +1468,12 @@ static int load_compressed_image(struct swap_map_handle *handle,
+ 		asked += i;
+ 		want -= i;
+ 
++		/*
++		 * Submit the reads queued above now.  Otherwise the last of
++		 * them can wait in the bio until more reads fill it.
++		 */
++		hib_submit_cur(&hb);
++
+ 		/*
+ 		 * We are out of data, wait for some more.
+ 		 */
+@@ -1612,6 +1724,18 @@ put:
+ 	return error;
+ }
+ 
++/**
++ * swsusp_free_image_slots - Give back the swap slots the image was written to.
++ *
++ * For a path that writes an image and then does not resume from it.  Until
++ * the slots are given back they stay allocated, and swapoff on that device
++ * cannot finish either.
++ */
++void swsusp_free_image_slots(void)
++{
++	free_all_swap_pages(root_swap);
++}
++
+ /**
+  * swsusp_close - close resume device.
+  */
+diff --git b/mm/swap_hibernate.c b/mm/swap_hibernate.c
+new file mode 100644
+index 0000000..7475ae0
+--- /dev/null
++++ b/mm/swap_hibernate.c
+@@ -0,0 +1,547 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Hibernation support for swap.  Included by mm/swapfile.c so that it can
++ * use the allocator's static helpers.
++ */
++
++/*
++ * The image gets the run held at swapon first, then whole free clusters,
++ * then single slots from the allocator.  Free clusters it does not use go
++ * back when the session ends.
++ */
++static struct swap_info_struct *hib_si;
++static unsigned int hib_reserve;	/* clusters held back, still to hand out */
++
++/* Free clusters set aside for the image, out of the allocator's reach. */
++static LIST_HEAD(hib_free_clusters);
++
++static int hib_cluster_cmp(void *priv, const struct list_head *a,
++			   const struct list_head *b)
++{
++	return list_entry(a, struct swap_cluster_info, list) <
++	       list_entry(b, struct swap_cluster_info, list) ? -1 : 1;
++}
++
++static void hib_claim_free_clusters(struct swap_info_struct *si)
++{
++	spin_lock(&si->lock);
++	list_splice_tail_init(&si->free_clusters, &hib_free_clusters);
++	spin_unlock(&si->lock);
++
++	list_sort(NULL, &hib_free_clusters, hib_cluster_cmp);
++}
++
++static void hib_return_free_clusters(struct swap_info_struct *si)
++{
++	if (list_empty(&hib_free_clusters))
++		return;
++	spin_lock(&si->lock);
++	list_splice_tail_init(&hib_free_clusters, &si->free_clusters);
++	spin_unlock(&si->lock);
++}
++
++static bool hib_cluster_reserved(struct swap_info_struct *si, unsigned int idx)
++{
++	return idx >= si->hib_reserve_start &&
++	       idx < si->hib_reserve_start + si->hib_reserve_nr;
++}
++
++/*
++ * Hold a run of empty clusters back for the image.  This runs at swapon
++ * before the device is in use, so it needs no lock.
++ *
++ * Return: the number of pages held, to be taken out of si->pages.
++ */
++static unsigned long hib_reserve_at_swapon(struct swap_info_struct *si,
++					   struct swap_cluster_info *cluster_info,
++					   unsigned long nr_clusters)
++{
++	unsigned long want, run = 0, i;
++
++	si->hib_reserve_start = 0;
++	si->hib_reserve_nr = 0;
++
++	if (!si->bdev)
++		return 0;
++	/* Swap files sharing a block device differ by their first block. */
++	want = DIV_ROUND_UP(hibernation_reserve_pages(si->bdev->bd_dev,
++						      first_se(si)->start_block),
++			    SWAPFILE_CLUSTER);
++	if (!want)
++		return 0;
++	if (want > nr_clusters / 2) {
++		pr_warn("swapon: %lu clusters for the hibernation image is more than half of the device\n",
++			want);
++		return 0;
++	}
++
++	for (i = 0; i < nr_clusters && run < want; i++)
++		run = cluster_info[i].count ? 0 : run + 1;
++	if (run < want) {
++		pr_warn("swapon: no run of %lu clusters for the hibernation image\n",
++			want);
++		return 0;
++	}
++
++	si->hib_reserve_start = i - want;
++	si->hib_reserve_nr = want;
++	pr_info("swapon: holding %lu clusters at %u back for the hibernation image\n",
++		want, si->hib_reserve_start);
++	return want * SWAPFILE_CLUSTER;
++}
++
++/*
++ * Take a whole free cluster.  It gets no swap table, so cluster_is_usable()
++ * keeps the allocator away from it.
++ */
++static void hib_take_cluster(struct swap_info_struct *si,
++			     struct swap_cluster_info *ci)
++{
++	lockdep_assert_held(&ci->lock);
++	VM_WARN_ON_ONCE(ci->count || cluster_table_is_alloced(ci));
++
++	ci->order = 0;
++	ci->count = SWAPFILE_CLUSTER;
++	swap_range_alloc(si, SWAPFILE_CLUSTER);
++	/* Only clusters that are still free may stay on the free list. */
++	move_cluster(si, ci, &si->full_clusters, CLUSTER_FLAG_FULL);
++}
++
++/*
++ * Give back slots of a cluster taken whole.  It has no table, so it stays
++ * off every list until all of its slots are back.
++ */
++static void hib_put_cluster_slots(struct swap_info_struct *si,
++				  struct swap_cluster_info *ci,
++				  unsigned int ci_off, unsigned int nr)
++{
++	lockdep_assert_held(&ci->lock);
++	VM_WARN_ON_ONCE(ci->count < nr);
++
++	if (ci->flags != CLUSTER_FLAG_NONE) {
++		spin_lock(&si->lock);
++		list_del(&ci->list);
++		ci->flags = CLUSTER_FLAG_NONE;
++		spin_unlock(&si->lock);
++	}
++	ci->count -= nr;
++	swap_range_free(si, cluster_offset(si, ci) + ci_off, nr);
++	if (!ci->count)
++		free_cluster(si, ci);
++}
++
++/*
++ * Hand out the next set-aside cluster.  Clusters are only set aside once
++ * storage is suspended, since that takes them from everyone else.
++ */
++static unsigned int hib_take_free(struct swap_info_struct *si,
++				  unsigned long *start)
++{
++	struct swap_cluster_info *ci;
++
++	if (list_empty(&hib_free_clusters) && !list_empty(&si->free_clusters) &&
++	    pm_suspended_storage())
++		hib_claim_free_clusters(si);
++	if (list_empty(&hib_free_clusters))
++		return 0;
++
++	ci = list_first_entry(&hib_free_clusters, struct swap_cluster_info,
++			      list);
++	spin_lock(&ci->lock);
++	hib_take_cluster(si, ci);
++	*start = cluster_offset(si, ci);
++	spin_unlock(&ci->lock);
++	return SWAPFILE_CLUSTER;
++}
++
++/* One slot from the allocator, trying this CPU's cluster first. */
++static unsigned long hib_alloc_slot(struct swap_info_struct *si)
++{
++	unsigned long pcp_offset, offset = SWAP_ENTRY_INVALID;
++	struct swap_info_struct *pcp_si;
++	struct swap_cluster_info *ci;
++
++	local_lock(&percpu_swap_cluster.lock);
++	pcp_si = this_cpu_read(percpu_swap_cluster.si[0]);
++	pcp_offset = this_cpu_read(percpu_swap_cluster.offset[0]);
++	if (pcp_si == si && pcp_offset) {
++		ci = swap_cluster_lock(si, pcp_offset);
++		if (cluster_is_usable(ci, 0))
++			offset = alloc_swap_scan_cluster(si, ci, NULL, pcp_offset);
++		else
++			swap_cluster_unlock(ci);
++	}
++	if (!offset)
++		offset = cluster_alloc_swap_entry(si, NULL);
++	local_unlock(&percpu_swap_cluster.lock);
++	return offset;
++}
++
++static void hib_session_begin(struct swap_info_struct *si)
++{
++	if (hib_si)
++		hib_return_free_clusters(hib_si);
++	hib_si = si;
++	hib_reserve = si->hib_reserve_nr;
++}
++
++static void hib_session_end(void)
++{
++	if (hib_si)
++		hib_return_free_clusters(hib_si);
++	hib_si = NULL;
++}
++
++/**
++ * swap_hibernation_bind() - Point the hibernation session at a swap device.
++ * @type: swap device type index.
++ *
++ * Return: 0, or -ENODEV when there is no such device.
++ */
++int swap_hibernation_bind(int type)
++{
++	struct swap_info_struct *si = swap_type_to_info(type);
++
++	if (!si)
++		return -ENODEV;
++	hib_session_begin(si);
++	return 0;
++}
++
++/**
++ * swap_hibernation_unbind() - End the session, giving back unused clusters.
++ */
++void swap_hibernation_unbind(void)
++{
++	hib_session_end();
++}
++
++/**
++ * swap_hibernation_reset() - Return set-aside clusters and start over.
++ */
++void swap_hibernation_reset(void)
++{
++	if (hib_si)
++		hib_session_begin(hib_si);
++}
++
++/**
++ * swap_alloc_hibernation_slot() - Take the next run of slots for the image.
++ * @nr: set to the number of slots in the run.
++ *
++ * Return: the first slot of the run, or an empty entry if none is left.
++ */
++swp_entry_t swap_alloc_hibernation_slot(unsigned int *nr)
++{
++	struct swap_info_struct *si = hib_si;
++	swp_entry_t entry = {0};
++	unsigned long start;
++	unsigned int len;
++
++	*nr = 0;
++	if (WARN_ON_ONCE(!si))
++		return entry;
++
++	if (hib_reserve) {
++		*nr = hib_reserve * SWAPFILE_CLUSTER;
++		hib_reserve = 0;
++		return swp_entry(si->type,
++				 si->hib_reserve_start * SWAPFILE_CLUSTER);
++	}
++
++	len = hib_take_free(si, &start);
++	if (!len) {
++		start = hib_alloc_slot(si);
++		if (!start)
++			return entry;
++		len = 1;
++	}
++
++	*nr = len;
++	return swp_entry(si->type, start);
++}
++
++/**
++ * swap_free_hibernation_slot() - Give a run of slots back.
++ * @entry: the entry of the first slot of the run.
++ * @nr: how many slots it has.
++ */
++void swap_free_hibernation_slot(swp_entry_t entry, unsigned int nr)
++{
++	struct swap_info_struct *si = __swap_entry_to_info(entry);
++	unsigned long offset = swp_offset(entry);
++	struct swap_cluster_info *ci;
++	unsigned int ci_off, count;
++
++	/* A run can span clusters. */
++	while (nr) {
++		ci_off = offset % SWAPFILE_CLUSTER;
++		count = min(nr, SWAPFILE_CLUSTER - ci_off);
++		ci = swap_cluster_lock(si, offset);
++		/* A cluster held for the image is left as it is. */
++		if (!hib_cluster_reserved(si, cluster_index(si, ci))) {
++			if (cluster_table_is_alloced(ci))
++				__swap_cluster_free_entries(si, ci, ci_off, count);
++			else
++				hib_put_cluster_slots(si, ci, ci_off, count);
++		}
++		swap_cluster_unlock(ci);
++		offset += count;
++		nr -= count;
++	}
++}
++
++static int __find_hibernation_swap_type(dev_t device, sector_t offset)
++{
++	int type;
++
++	lockdep_assert_held(&swap_lock);
++
++	if (!device)
++		return -EINVAL;
++
++	for (type = 0; type < nr_swapfiles; type++) {
++		struct swap_info_struct *sis = swap_info[type];
++
++		if (!(sis->flags & SWP_WRITEOK) || !sis->bdev)
++			continue;
++
++		if (device == sis->bdev->bd_dev) {
++			struct swap_extent *se = first_se(sis);
++
++			if (se->start_block == offset)
++				return type;
++		}
++	}
++	return -ENODEV;
++}
++
++/**
++ * pin_hibernation_swap_type - Pin the swap device for hibernation
++ * @device: Block device containing the resume image
++ * @offset: Offset identifying the swap area
++ *
++ * Locate the swap device for @device/@offset and mark it as pinned
++ * for hibernation. While pinned, swapoff() is prevented.
++ *
++ * Only one uswsusp context may pin a swap device at a time.
++ * If already pinned, this function returns -EBUSY.
++ *
++ * Return:
++ * >= 0 on success (swap type).
++ * -EINVAL if @device is invalid.
++ * -ENODEV if the swap device is not found.
++ * -EBUSY if the device is already pinned for hibernation.
++ */
++int pin_hibernation_swap_type(dev_t device, sector_t offset)
++{
++	int type;
++	struct swap_info_struct *si;
++
++	spin_lock(&swap_lock);
++
++	type = __find_hibernation_swap_type(device, offset);
++	if (type < 0) {
++		spin_unlock(&swap_lock);
++		return type;
++	}
++
++	si = swap_type_to_info(type);
++	if (WARN_ON_ONCE(!si)) {
++		spin_unlock(&swap_lock);
++		return -ENODEV;
++	}
++
++	/*
++	 * hibernate_acquire() prevents concurrent hibernation sessions.
++	 * This check additionally guards against double-pinning within
++	 * the same session.
++	 */
++	if (WARN_ON_ONCE(si->flags & SWP_HIBERNATION)) {
++		spin_unlock(&swap_lock);
++		return -EBUSY;
++	}
++
++	si->flags |= SWP_HIBERNATION;
++
++	spin_unlock(&swap_lock);
++	hib_session_begin(si);
++	return type;
++}
++
++/**
++ * repin_hibernation_swap_type - Atomically replace the hibernation pin
++ * @old_type: Swap type currently pinned (or < 0 if none).
++ * @device:   Block device of the new resume image.
++ * @offset:   Offset identifying the new swap area.
++ *
++ * Look up the swap device for @device/@offset and atomically transfer
++ * the SWP_HIBERNATION pin from @old_type (if valid) to the new device,
++ * all under a single swap_lock critical section. This closes the
++ * swapoff() window that exists when callers unpin and re-pin in two
++ * separate operations.
++ *
++ * If the new device cannot be located, the existing pin on @old_type
++ * is preserved and an error is returned. If @old_type already refers
++ * to the same swap_info_struct as the new lookup, no flag changes are
++ * made and @old_type is returned.
++ *
++ * Return:
++ * >= 0 on success (new swap type).
++ * -EINVAL if @device is invalid.
++ * -ENODEV if the swap device is not found.
++ * -EBUSY  if the new device is already pinned by another context.
++ */
++int repin_hibernation_swap_type(int old_type, dev_t device, sector_t offset)
++{
++	struct swap_info_struct *old_si, *new_si;
++	int new_type;
++
++	spin_lock(&swap_lock);
++
++	new_type = __find_hibernation_swap_type(device, offset);
++	if (new_type < 0) {
++		spin_unlock(&swap_lock);
++		return new_type;
++	}
++
++	new_si = swap_type_to_info(new_type);
++	if (WARN_ON_ONCE(!new_si)) {
++		spin_unlock(&swap_lock);
++		return -ENODEV;
++	}
++
++	old_si = swap_type_to_info(old_type);
++	if (new_si == old_si) {
++		spin_unlock(&swap_lock);
++		hib_session_begin(new_si);
++		return new_type;
++	}
++
++	if (WARN_ON_ONCE(new_si->flags & SWP_HIBERNATION)) {
++		spin_unlock(&swap_lock);
++		return -EBUSY;
++	}
++
++	if (old_si)
++		old_si->flags &= ~SWP_HIBERNATION;
++	new_si->flags |= SWP_HIBERNATION;
++
++	spin_unlock(&swap_lock);
++	hib_session_begin(new_si);
++	return new_type;
++}
++
++/**
++ * unpin_hibernation_swap_type - Unpin the swap device for hibernation
++ * @type: Swap type previously returned by pin_hibernation_swap_type()
++ *
++ * Clear the hibernation pin on the given swap device, allowing
++ * swapoff() to proceed normally.
++ *
++ * If @type does not refer to a valid swap device, this function
++ * does nothing.
++ */
++void unpin_hibernation_swap_type(int type)
++{
++	struct swap_info_struct *si;
++
++	spin_lock(&swap_lock);
++	si = swap_type_to_info(type);
++	if (!si) {
++		spin_unlock(&swap_lock);
++		return;
++	}
++	si->flags &= ~SWP_HIBERNATION;
++	spin_unlock(&swap_lock);
++	hib_session_end();
++}
++
++/**
++ * find_hibernation_swap_type - Find swap type for hibernation
++ * @device: Block device containing the resume image
++ * @offset: Offset within the device identifying the swap area
++ *
++ * Locate the swap device corresponding to @device and @offset.
++ *
++ * Unlike pin_hibernation_swap_type(), this function only performs a
++ * lookup and does not mark the swap device as pinned for hibernation.
++ *
++ * This is safe in the sysfs-based hibernation path where user space
++ * is already frozen and swapoff() cannot run concurrently.
++ *
++ * Return:
++ * A non-negative swap type on success.
++ * -EINVAL if @device is invalid.
++ * -ENODEV if no matching swap device is found.
++ */
++int find_hibernation_swap_type(dev_t device, sector_t offset)
++{
++	int type;
++
++	spin_lock(&swap_lock);
++	type = __find_hibernation_swap_type(device, offset);
++	spin_unlock(&swap_lock);
++
++	return type;
++}
++
++int find_first_swap(dev_t *device)
++{
++	int type;
++
++	spin_lock(&swap_lock);
++	for (type = 0; type < nr_swapfiles; type++) {
++		struct swap_info_struct *sis = swap_info[type];
++
++		if (!(sis->flags & SWP_WRITEOK) || !sis->bdev)
++			continue;
++		*device = sis->bdev->bd_dev;
++		spin_unlock(&swap_lock);
++		return type;
++	}
++	spin_unlock(&swap_lock);
++	return -ENODEV;
++}
++
++/*
++ * Get the (PAGE_SIZE) block corresponding to given offset on the swapdev
++ * corresponding to given index in swap_info (swap type).
++ */
++sector_t swapdev_block(int type, pgoff_t offset)
++{
++	struct swap_info_struct *si = swap_type_to_info(type);
++	struct swap_extent *se;
++
++	if (!si || !(si->flags & SWP_WRITEOK))
++		return 0;
++	se = offset_to_swap_extent(si, offset);
++	return se->start_block + (offset - se->start_page);
++}
++
++/*
++ * Return either the total number of swap pages of given type, or the number
++ * of free pages of that type (depending on @free)
++ *
++ * This is needed for software suspend
++ */
++unsigned int count_swap_pages(int type, int free)
++{
++	unsigned int n = 0;
++
++	spin_lock(&swap_lock);
++	if ((unsigned int)type < nr_swapfiles) {
++		struct swap_info_struct *sis = swap_info[type];
++
++		spin_lock(&sis->lock);
++		if (sis->flags & SWP_WRITEOK) {
++			/* the run held back is there for the image */
++			n = sis->pages + sis->hib_reserve_nr * SWAPFILE_CLUSTER;
++			if (free)
++				n -= swap_usage_in_pages(sis);
++		}
++		spin_unlock(&sis->lock);
++	}
++	spin_unlock(&swap_lock);
++	return n;
++}
+diff --git a/mm/swapfile.c b/mm/swapfile.c
+index 601979b..03a40b8 100644
+--- a/mm/swapfile.c
++++ b/mm/swapfile.c
+@@ -38,6 +38,7 @@
+ #include <linux/swapfile.h>
+ #include <linux/export.h>
+ #include <linux/sort.h>
++#include <linux/list_sort.h>
+ #include <linux/completion.h>
+ #include <linux/suspend.h>
+ #include <linux/zswap.h>
+@@ -506,6 +507,10 @@ static void swap_cluster_assert_empty(struct swap_cluster_info *ci,
+ 	if (!IS_ENABLED(CONFIG_DEBUG_VM) && !swapoff)
+ 		return;
+ 
++	/* A cluster that has no table has no entries to look at. */
++	if (!cluster_table_is_alloced(ci))
++		return;
++
+ 	do {
+ 		swp_tb = __swap_table_get(ci, ci_off);
+ 		if (swp_tb_is_bad(swp_tb))
+@@ -769,6 +774,13 @@ static void relocate_cluster(struct swap_info_struct *si,
+ 		if (ci->flags != CLUSTER_FLAG_FREE)
+ 			free_cluster(si, ci);
+ 	} else if (ci->count != SWAPFILE_CLUSTER) {
++		/*
++		 * A cluster taken whole without a table has nothing to
++		 * allocate from, so it waits off the lists until all of it
++		 * has been given back.
++		 */
++		if (!cluster_table_is_alloced(ci))
++			return;
+ 		if (ci->flags != CLUSTER_FLAG_FRAG)
+ 			move_cluster(si, ci, &si->frag_clusters[ci->order],
+ 				     CLUSTER_FLAG_FRAG);
+@@ -895,7 +907,7 @@ static bool cluster_scan_range(struct swap_info_struct *si,
+ 		if (swp_tb_is_null(swp_tb))
+ 			continue;
+ 		if (swp_tb_is_folio(swp_tb) && !__swp_tb_get_count(swp_tb)) {
+-			if (!vm_swap_full())
++			if (!vm_swap_full() || pm_suspended_storage())
+ 				return false;
+ 			*need_reclaim = true;
+ 			continue;
+@@ -1042,6 +1054,10 @@ static void swap_reclaim_full_clusters(struct swap_info_struct *si, bool force)
+ 	unsigned long swp_tb;
+ 	int nr_reclaim;
+ 
++	/* Swap cache cannot be freed while storage is suspended. */
++	if (pm_suspended_storage())
++		return;
++
+ 	if (force)
+ 		to_scan = swap_usage_in_pages(si) / SWAPFILE_CLUSTER;
+ 
+@@ -1307,7 +1323,7 @@ static void swap_range_alloc(struct swap_info_struct *si,
+ 			     unsigned int nr_entries)
+ {
+ 	if (swap_usage_add(si, nr_entries)) {
+-		if (vm_swap_full())
++		if (vm_swap_full() && !pm_suspended_storage())
+ 			schedule_work(&si->reclaim_work);
+ 	}
+ 	atomic_long_sub(nr_entries, &nr_swap_pages);
+@@ -2144,265 +2160,18 @@ out:
+ }
+ 
+ #ifdef CONFIG_HIBERNATION
+-/**
+- * swap_alloc_hibernation_slot() - Allocate a swap slot for hibernation.
+- * @type: swap device type index to allocate from.
+- *
+- * The caller must ensure the swap device is stable, either by pinning
+- * it (SWP_HIBERNATION) or by freezing user-space.
+- *
+- * Return: a valid swp_entry_t on success, or an empty entry (val == 0)
+- * on failure.
+- */
+-swp_entry_t swap_alloc_hibernation_slot(int type)
++#include "swap_hibernate.c"
++#else
++static unsigned long hib_reserve_at_swapon(struct swap_info_struct *si,
++                                          struct swap_cluster_info *cluster_info,
++                                          unsigned long nr_clusters)
+ {
+-	struct swap_info_struct *pcp_si, *si = swap_type_to_info(type);
+-	unsigned long pcp_offset, offset = SWAP_ENTRY_INVALID;
+-	struct swap_cluster_info *ci;
+-	swp_entry_t entry = {0};
+-
+-	if (!si)
+-		goto fail;
+-
+-	/*
+-	 * Try the local cluster first if it matches the device. If
+-	 * not, try grab a new cluster and override local cluster.
+-	 */
+-	local_lock(&percpu_swap_cluster.lock);
+-	pcp_si = this_cpu_read(percpu_swap_cluster.si[0]);
+-	pcp_offset = this_cpu_read(percpu_swap_cluster.offset[0]);
+-	if (pcp_si == si && pcp_offset) {
+-		ci = swap_cluster_lock(si, pcp_offset);
+-		if (cluster_is_usable(ci, 0))
+-			offset = alloc_swap_scan_cluster(si, ci, NULL, pcp_offset);
+-		else
+-			swap_cluster_unlock(ci);
+-	}
+-	if (!offset)
+-		offset = cluster_alloc_swap_entry(si, NULL);
+-	local_unlock(&percpu_swap_cluster.lock);
+-	if (offset)
+-		entry = swp_entry(si->type, offset);
+-
+-fail:
+-	return entry;
++       return 0;
+ }
+ 
+-/**
+- * swap_free_hibernation_slot() - Free a swap slot allocated for hibernation.
+- * @entry: swap entry to free.
+- *
+- * The caller must ensure the swap device is stable.
+- */
+-void swap_free_hibernation_slot(swp_entry_t entry)
++static bool hib_cluster_reserved(struct swap_info_struct *si, unsigned int idx)
+ {
+-	struct swap_info_struct *si = __swap_entry_to_info(entry);
+-	struct swap_cluster_info *ci;
+-	pgoff_t offset = swp_offset(entry);
+-
+-	ci = swap_cluster_lock(si, offset);
+-	__swap_cluster_put_entry(ci, offset % SWAPFILE_CLUSTER);
+-	/*
+-	 * A slot with a folio in the swap cache is freed when the folio
+-	 * leaves the cache, the same rule swap_put_entries_cluster() follows.
+-	 * Readahead can put a folio here, and freeing the slot now would
+-	 * leave that folio with no entry behind it.
+-	 */
+-	if (!swp_tb_is_folio(__swap_table_get(ci, offset % SWAPFILE_CLUSTER)))
+-		__swap_cluster_free_entries(si, ci, offset % SWAPFILE_CLUSTER, 1);
+-	swap_cluster_unlock(ci);
+-
+-	/* In theory readahead might add it to the swap cache by accident */
+-	__try_to_reclaim_swap(si, offset, TTRS_ANYWAY);
+-}
+-
+-static int __find_hibernation_swap_type(dev_t device, sector_t offset)
+-{
+-	int type;
+-
+-	lockdep_assert_held(&swap_lock);
+-
+-	if (!device)
+-		return -EINVAL;
+-
+-	for (type = 0; type < nr_swapfiles; type++) {
+-		struct swap_info_struct *sis = swap_info[type];
+-
+-		if (!(sis->flags & SWP_WRITEOK))
+-			continue;
+-
+-		if (device == sis->bdev->bd_dev) {
+-			struct swap_extent *se = first_se(sis);
+-
+-			if (se->start_block == offset)
+-				return type;
+-		}
+-	}
+-	return -ENODEV;
+-}
+-
+-/**
+- * pin_hibernation_swap_type - Pin the swap device for hibernation
+- * @device: Block device containing the resume image
+- * @offset: Offset identifying the swap area
+- *
+- * Locate the swap device for @device/@offset and mark it as pinned
+- * for hibernation. While pinned, swapoff() is prevented.
+- *
+- * Only one uswsusp context may pin a swap device at a time.
+- * If already pinned, this function returns -EBUSY.
+- *
+- * Return:
+- * >= 0 on success (swap type).
+- * -EINVAL if @device is invalid.
+- * -ENODEV if the swap device is not found.
+- * -EBUSY if the device is already pinned for hibernation.
+- */
+-int pin_hibernation_swap_type(dev_t device, sector_t offset)
+-{
+-	int type;
+-	struct swap_info_struct *si;
+-
+-	spin_lock(&swap_lock);
+-
+-	type = __find_hibernation_swap_type(device, offset);
+-	if (type < 0) {
+-		spin_unlock(&swap_lock);
+-		return type;
+-	}
+-
+-	si = swap_type_to_info(type);
+-	if (WARN_ON_ONCE(!si)) {
+-		spin_unlock(&swap_lock);
+-		return -ENODEV;
+-	}
+-
+-	/*
+-	 * hibernate_acquire() prevents concurrent hibernation sessions.
+-	 * This check additionally guards against double-pinning within
+-	 * the same session.
+-	 */
+-	if (WARN_ON_ONCE(si->flags & SWP_HIBERNATION)) {
+-		spin_unlock(&swap_lock);
+-		return -EBUSY;
+-	}
+-
+-	si->flags |= SWP_HIBERNATION;
+-
+-	spin_unlock(&swap_lock);
+-	return type;
+-}
+-
+-/**
+- * unpin_hibernation_swap_type - Unpin the swap device for hibernation
+- * @type: Swap type previously returned by pin_hibernation_swap_type()
+- *
+- * Clear the hibernation pin on the given swap device, allowing
+- * swapoff() to proceed normally.
+- *
+- * If @type does not refer to a valid swap device, this function
+- * does nothing.
+- */
+-void unpin_hibernation_swap_type(int type)
+-{
+-	struct swap_info_struct *si;
+-
+-	spin_lock(&swap_lock);
+-	si = swap_type_to_info(type);
+-	if (!si) {
+-		spin_unlock(&swap_lock);
+-		return;
+-	}
+-	si->flags &= ~SWP_HIBERNATION;
+-	spin_unlock(&swap_lock);
+-}
+-
+-/**
+- * find_hibernation_swap_type - Find swap type for hibernation
+- * @device: Block device containing the resume image
+- * @offset: Offset within the device identifying the swap area
+- *
+- * Locate the swap device corresponding to @device and @offset.
+- *
+- * Unlike pin_hibernation_swap_type(), this function only performs a
+- * lookup and does not mark the swap device as pinned for hibernation.
+- *
+- * This is safe in the sysfs-based hibernation path where user space
+- * is already frozen and swapoff() cannot run concurrently.
+- *
+- * Return:
+- * A non-negative swap type on success.
+- * -EINVAL if @device is invalid.
+- * -ENODEV if no matching swap device is found.
+- */
+-int find_hibernation_swap_type(dev_t device, sector_t offset)
+-{
+-	int type;
+-
+-	spin_lock(&swap_lock);
+-	type = __find_hibernation_swap_type(device, offset);
+-	spin_unlock(&swap_lock);
+-
+-	return type;
+-}
+-
+-int find_first_swap(dev_t *device)
+-{
+-	int type;
+-
+-	spin_lock(&swap_lock);
+-	for (type = 0; type < nr_swapfiles; type++) {
+-		struct swap_info_struct *sis = swap_info[type];
+-
+-		if (!(sis->flags & SWP_WRITEOK))
+-			continue;
+-		*device = sis->bdev->bd_dev;
+-		spin_unlock(&swap_lock);
+-		return type;
+-	}
+-	spin_unlock(&swap_lock);
+-	return -ENODEV;
+-}
+-
+-/*
+- * Get the (PAGE_SIZE) block corresponding to given offset on the swapdev
+- * corresponding to given index in swap_info (swap type).
+- */
+-sector_t swapdev_block(int type, pgoff_t offset)
+-{
+-	struct swap_info_struct *si = swap_type_to_info(type);
+-	struct swap_extent *se;
+-
+-	if (!si || !(si->flags & SWP_WRITEOK))
+-		return 0;
+-	se = offset_to_swap_extent(si, offset);
+-	return se->start_block + (offset - se->start_page);
+-}
+-
+-/*
+- * Return either the total number of swap pages of given type, or the number
+- * of free pages of that type (depending on @free)
+- *
+- * This is needed for software suspend
+- */
+-unsigned int count_swap_pages(int type, int free)
+-{
+-	unsigned int n = 0;
+-
+-	spin_lock(&swap_lock);
+-	if ((unsigned int)type < nr_swapfiles) {
+-		struct swap_info_struct *sis = swap_info[type];
+-
+-		spin_lock(&sis->lock);
+-		if (sis->flags & SWP_WRITEOK) {
+-			n = sis->pages;
+-			if (free)
+-				n -= swap_usage_in_pages(sis);
+-		}
+-		spin_unlock(&sis->lock);
+-	}
+-	spin_unlock(&swap_lock);
+-	return n;
++       return false;
+ }
+ #endif /* CONFIG_HIBERNATION */
+ 
+@@ -3582,6 +3351,13 @@ static int setup_swap_clusters_info(struct swap_info_struct *si,
+ 			goto err;
+ 	}
+ 
++	/*
++	 * Whatever is held back for a hibernation image leaves si->pages, so
++	 * that it is never advertised as swap, and it goes on no list below,
++	 * so that the allocator cannot find it.
++	 */
++	si->pages -= hib_reserve_at_swapon(si, cluster_info, nr_clusters);
++
+ 	INIT_LIST_HEAD(&si->free_clusters);
+ 	INIT_LIST_HEAD(&si->full_clusters);
+ 	INIT_LIST_HEAD(&si->discard_clusters);
+@@ -3594,7 +3370,9 @@ static int setup_swap_clusters_info(struct swap_info_struct *si,
+ 	for (i = 0; i < nr_clusters; i++) {
+ 		struct swap_cluster_info *ci = &cluster_info[i];
+ 
+-		if (ci->count) {
++		if (hib_cluster_reserved(si, i)) {
++			ci->flags = CLUSTER_FLAG_NONE;
++		} else if (ci->count) {
+ 			ci->flags = CLUSTER_FLAG_NONFULL;
+ 			list_add_tail(&ci->list, &si->nonfull_clusters[0]);
+ 		} else {

@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-15
+- TIP: faster hibernate patch
+- TIP: adios patch added
+
 ## 2026-09-14
 - TIP: update patches for Linux 7.3-rc3
 

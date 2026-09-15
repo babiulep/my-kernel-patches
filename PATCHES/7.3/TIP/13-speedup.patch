@@ -11,10 +11,10 @@ index 9875120..00fc262 100644
  *.o.*
  *.patch
 diff --git a/Documentation/kbuild/kbuild.rst b/Documentation/kbuild/kbuild.rst
-index 5a9013b..ebfc231 100644
+index 5a9013b..ebfc294 100644
 --- a/Documentation/kbuild/kbuild.rst
 +++ b/Documentation/kbuild/kbuild.rst
-@@ -110,6 +110,19 @@ HOSTLDLIBS
+@@ -110,6 +110,21 @@ HOSTLDLIBS
  ----------
  Additional libraries to link against when building host programs.
  
@@ -23,8 +23,10 @@ index 5a9013b..ebfc231 100644
 +The gzip compressor used for the compressed kernel image, compressed
 +modules and packaging.
 +
-+If unset, it defaults to pigz (a parallel implementation of gzip) if available,
-+otherwise gzip.
++Defaults to pigz (a parallel implementation of gzip) if it is available,
++otherwise gzip. Set ``KGZIP=`` on the make command line to use another
++program. Modules are compressed one per make job, so pigz is limited to a
++single thread there.
 +
 +KBZIP2, KLZOP, LZMA, LZ4, XZ, ZSTD
 +----------------------------------
@@ -34,8 +36,22 @@ index 5a9013b..ebfc231 100644
  .. _userkbuildflags:
  
  USERCFLAGS
+@@ -134,6 +149,13 @@ See make help for the full list.
+ 
+ Setting "V=..." takes precedence over KBUILD_VERBOSE.
+ 
++KBUILD_RUST_THREADS
++-------------------
++The number of threads rustc's parallel front end may use, passed to it as
++``-Zthreads``. Unset by default, as the parallel front end is not yet
++stable and its output is not reproducible. The gain levels off at 8
++threads.
++
+ KBUILD_EXTMOD
+ -------------
+ Set the directory to look for the kernel source when building external
 diff --git a/Documentation/kbuild/reproducible-builds.rst b/Documentation/kbuild/reproducible-builds.rst
-index bc1eb82..b95586d 100644
+index bc1eb82..ec0135d 100644
 --- a/Documentation/kbuild/reproducible-builds.rst
 +++ b/Documentation/kbuild/reproducible-builds.rst
 @@ -76,6 +76,22 @@ include generated files.  You should ensure the source tree is
@@ -46,11 +62,11 @@ index bc1eb82..b95586d 100644
 +-----------------
 +
 +The compressed kernel image, compressed modules and packages are produced
-+using the binary specified by the environment variable ``KGZIP`` (described
-+in Documentation/kbuild/kbuild.rst).
++using the program named by the make variable ``KGZIP`` (described in
++Documentation/kbuild/kbuild.rst).
 +
-+This variable defaults to ``pigz`` if installed (a parallel implementation
-+of gzip), or ``gzip`` otherwise.
++It defaults to ``pigz`` if installed (a parallel implementation of gzip),
++or ``gzip`` otherwise.
 +
 +The generated output between two invocations of identical builds with
 +either of the default tools will be byte-for-byte equivalent.
@@ -75,7 +91,7 @@ index a6a0192..9670556 100644
 +$(KBUILD_RUST_DIRS): | rust
 +endif
 diff --git a/Makefile b/Makefile
-index 28da54b..276ffe9 100644
+index 28da54b..15606b1 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -561,7 +561,7 @@ PERL		= perl
@@ -98,7 +114,7 @@ index 28da54b..276ffe9 100644
  endif
  
  ifdef CONFIG_READABLE_ASM
-@@ -1031,18 +1031,18 @@ endif
+@@ -1031,18 +1031,20 @@ endif
  endif
  
  # Explicitly clear padding bits during variable initialization
@@ -107,8 +123,9 @@ index 28da54b..276ffe9 100644
  
  # While VLAs have been removed, GCC produces unreachable stack probes
  # for the randomize_kstack_offset feature. Disable it for all compilers.
--KBUILD_CFLAGS	+= $(call cc-option, -fno-stack-clash-protection)
-+KBUILD_CFLAGS	+= $(if $(CONFIG_CC_HAS_NO_STACK_CLASH_PROTECTION),-fno-stack-clash-protection)
++# Probed here rather than in Kconfig as clang only accepts it for some
++# sub-targets, so the architecture's flags matter.
+ KBUILD_CFLAGS	+= $(call cc-option, -fno-stack-clash-protection)
  
  # Get details on warnings generated due to GCC value tracking.
 -KBUILD_CFLAGS	+= $(call cc-option, -fdiagnostics-show-context=2)
@@ -121,7 +138,7 @@ index 28da54b..276ffe9 100644
  
  # Clear used registers at func exit (to reduce data lifetime and ROP gadgets).
  ifdef CONFIG_ZERO_CALL_USED_REGS
-@@ -1053,7 +1053,7 @@ ifdef CONFIG_FUNCTION_TRACER
+@@ -1053,7 +1055,7 @@ ifdef CONFIG_FUNCTION_TRACER
  ifdef CONFIG_FTRACE_MCOUNT_USE_CC
    CC_FLAGS_FTRACE	+= -mrecord-mcount
    ifdef CONFIG_HAVE_NOP_MCOUNT
@@ -130,7 +147,7 @@ index 28da54b..276ffe9 100644
        CC_FLAGS_FTRACE	+= -mnop-mcount
        CC_FLAGS_USING	+= -DCC_USING_NOP_MCOUNT
      endif
-@@ -1071,8 +1071,7 @@ ifdef CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT
+@@ -1071,8 +1073,7 @@ ifdef CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT
    endif
  endif
  ifdef CONFIG_HAVE_FENTRY
@@ -140,7 +157,7 @@ index 28da54b..276ffe9 100644
      CC_FLAGS_FTRACE	+= -mfentry
      CC_FLAGS_USING	+= -DCC_USING_FENTRY
    endif
-@@ -1180,7 +1179,7 @@ NOSTDINC_FLAGS += -nostdinc
+@@ -1180,7 +1181,7 @@ NOSTDINC_FLAGS += -nostdinc
  # the kernel uses only C99 flexible arrays for dynamically sized trailing
  # arrays. Enforce this for everything that may examine structure sizes and
  # perform bounds checking.
@@ -149,18 +166,18 @@ index 28da54b..276ffe9 100644
  
  # disable invalid "can't wrap" optimizations for signed / pointers
  KBUILD_CFLAGS	+= -fno-strict-overflow
-@@ -1225,6 +1224,10 @@ KBUILD_RUSTFLAGS += --remap-path-prefix=$(srcroot)/= --remap-path-scope=macro
+@@ -1225,6 +1226,10 @@ KBUILD_RUSTFLAGS += --remap-path-prefix=$(srcroot)/= --remap-path-scope=macro
  endif
  endif
  
-+ifdef CONFIG_RUST
-+KBUILD_RUSTFLAGS += $(if $(CONFIG_RUSTC_HAS_JOBS),-j8,$(if $(CONFIG_RUSTC_HAS_ZTHREADS),-Zthreads=8))
++ifneq ($(KBUILD_RUST_THREADS),)
++KBUILD_RUSTFLAGS += -Zthreads=$(KBUILD_RUST_THREADS)
 +endif
 +
  # include additional Makefiles when needed
  include-y			:= scripts/Makefile.warn
  include-$(CONFIG_DEBUG_INFO)	+= scripts/Makefile.debug
-@@ -1260,11 +1263,11 @@ LDFLAGS_vmlinux += --build-id=sha1
+@@ -1260,11 +1265,11 @@ LDFLAGS_vmlinux += --build-id=sha1
  # COMDAT-deduplicated sections. Use --force-group-allocation to resolve these
  # groups when linking modules. The option is available from ld.bfd 2.29 and
  # ld.lld 19.1.0.
@@ -174,18 +191,15 @@ index 28da54b..276ffe9 100644
  endif
  
  ifeq ($(CONFIG_STRIP_ASM_SYMS),y)
-@@ -1283,8 +1286,10 @@ LDFLAGS_vmlinux += --orphan-handling=$(CONFIG_LD_ORPHAN_WARN_LEVEL)
+@@ -1283,7 +1288,7 @@ LDFLAGS_vmlinux += --orphan-handling=$(CONFIG_LD_ORPHAN_WARN_LEVEL)
  endif
  
  ifneq ($(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS),)
 -LDFLAGS_vmlinux	+= --emit-relocs --discard-none
 +LDFLAGS_vmlinux	+= --discard-none
-+LDFLAGS_vmlinux_relocs := --emit-relocs
  endif
-+export LDFLAGS_vmlinux_relocs
  
  # Align the architecture of userspace programs with the kernel
- USERFLAGS_FROM_KERNEL := --target=%
 @@ -1441,14 +1446,17 @@ archprepare: outputmakefile archheaders archscripts scripts include/config/kerne
  	include/generated/rustc_cfg remove-stale-files
  
@@ -211,8 +225,8 @@ index 28da54b..276ffe9 100644
  modules_prepare: prepare
  	$(Q)$(MAKE) $(build)=scripts scripts/module.lds
 +ifdef CONFIG_RUST
-+# Ensure rust/ is build before any external rust module which will rely upon it.
-+ifeq ($(MAKECMDGOALS),modules_prepare)
++# Ensure rust/ is built before any external rust module which will rely upon it.
++ifneq ($(filter modules_prepare,$(MAKECMDGOALS)),)
 +	$(Q)$(MAKE) $(build)=rust
 +endif
 +endif
@@ -403,18 +417,366 @@ index 335c360..09f05d0 100644
  
  #include <generated/utsrelease.h>
 diff --git a/init/Kconfig b/init/Kconfig
-index ef1d030..6069e6a 100644
+index ef1d030..c623528 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -144,6 +144,44 @@ config CC_HAS_ASSUME
- config CC_HAS_NO_PROFILE_FN_ATTR
- 	def_bool $(success,echo '__attribute__((no_profile_instrument_function)) int x();' | $(CC) -x c - -c -o /dev/null -Werror)
+@@ -1,201 +1,6 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+-config CC_VERSION_TEXT
+-	string
+-	default "$(CC_VERSION_TEXT)"
+-	help
+-	  This is used in unclear ways:
  
+-	  - Re-run Kconfig when the compiler is updated
+-	    The 'default' property references the environment variable,
+-	    CC_VERSION_TEXT so it is recorded in include/config/auto.conf.cmd.
+-	    When the compiler is updated, Kconfig will be invoked.
+-
+-	  - Ensure full rebuild when the compiler is updated
+-	    include/linux/compiler-version.h contains this option in the comment
+-	    line so fixdep adds include/config/CC_VERSION_TEXT into the
+-	    auto-generated dependency. When the compiler is updated, syncconfig
+-	    will touch it and then every file will be rebuilt.
+-
+-config CC_IS_GCC
+-	def_bool $(success,test "$(cc-name)" = GCC)
+-
+-config GCC_VERSION
+-	int
+-	default $(cc-version) if CC_IS_GCC
+-	default 0
+-
+-config CC_IS_CLANG
+-	def_bool $(success,test "$(cc-name)" = Clang)
+-
+-config CLANG_VERSION
+-	int
+-	default $(cc-version) if CC_IS_CLANG
+-	default 0
+-
+-config AS_IS_GNU
+-	def_bool $(success,test "$(as-name)" = GNU)
+-
+-config AS_IS_LLVM
+-	def_bool $(success,test "$(as-name)" = LLVM)
+-
+-config AS_VERSION
+-	int
+-	# Use clang version if this is the integrated assembler
+-	default CLANG_VERSION if AS_IS_LLVM
+-	default $(as-version)
+-
+-config LD_IS_BFD
+-	def_bool $(success,test "$(ld-name)" = BFD)
+-
+-config LD_VERSION
+-	int
+-	default $(ld-version) if LD_IS_BFD
+-	default 0
+-
+-config LD_IS_LLD
+-	def_bool $(success,test "$(ld-name)" = LLD)
+-
+-config LLD_VERSION
+-	int
+-	default $(ld-version) if LD_IS_LLD
+-	default 0
+-
+-config RUSTC_VERSION
+-	int
+-	default $(rustc-version)
+-	help
+-	  It does not depend on `RUST` since that one may need to use the version
+-	  in a `depends on`.
+-
+-config RUST_IS_AVAILABLE
+-	def_bool $(success,$(srctree)/scripts/rust_is_available.sh)
+-	help
+-	  This shows whether a suitable Rust toolchain is available (found).
+-
+-	  Please see Documentation/rust/quick-start.rst for instructions on how
+-	  to satisfy the build requirements of Rust support.
+-
+-	  In particular, the Makefile target 'rustavailable' is useful to check
+-	  why the Rust toolchain is not being detected.
+-
+-config RUSTC_LLVM_VERSION
+-	int
+-	default $(rustc-llvm-version)
+-
+-config RUSTC_LLVM_MAJOR_VERSION
+-	int
+-	default $(shell,expr $(rustc-llvm-version) / 10000)
+-
+-config RUSTC_CLANG_LLVM_COMPATIBLE
+-	bool
+-	default y if CC_IS_CLANG && RUSTC_LLVM_MAJOR_VERSION = $(shell,expr $(cc-version) / 10000)
+-	help
+-	  This indicates whether Rust and Clang use LLVM of the same major
+-	  version.
+-
+-	  Operations involving handling LLVM IR or bitcode (e.g. cross-language
+-	  LTO) require the same LLVM major version to work properly. For best
+-	  compatibility it is recommended that the exact same LLVM is used.
+-
+-config ARCH_HAS_CC_CAN_LINK
+-	bool
+-
+-config CC_CAN_LINK
+-	bool
+-	default ARCH_CC_CAN_LINK if ARCH_HAS_CC_CAN_LINK
+-	default $(cc_can_link_user,$(m64-flag)) if 64BIT
+-	default $(cc_can_link_user,$(m32-flag))
+-
+-# Fixed in GCC 14, 13.3, 12.4 and 11.5
+-# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=113921
+-config GCC_ASM_GOTO_OUTPUT_BROKEN
+-	bool
+-	depends on CC_IS_GCC
+-	default y if GCC_VERSION < 110500
+-	default y if GCC_VERSION >= 120000 && GCC_VERSION < 120400
+-	default y if GCC_VERSION >= 130000 && GCC_VERSION < 130300
+-
+-config CC_HAS_ASM_GOTO_OUTPUT
+-	def_bool y
+-	depends on !GCC_ASM_GOTO_OUTPUT_BROKEN
+-	depends on $(success,echo 'int foo(int x) { asm goto ("": "=r"(x) ::: bar); return x; bar: return 0; }' | $(CC) -x c - -c -o /dev/null)
+-
+-config CC_HAS_ASM_GOTO_TIED_OUTPUT
+-	depends on CC_HAS_ASM_GOTO_OUTPUT
+-	# Detect buggy gcc and clang, fixed in gcc-11 clang-14.
+-	def_bool $(success,echo 'int foo(int *x) { asm goto (".long (%l[bar]) - .": "+m"(*x) ::: bar); return *x; bar: return 0; }' | $CC -x c - -c -o /dev/null)
+-
+-config TOOLS_SUPPORT_RELR
+-	def_bool $(success,env "CC=$(CC)" "LD=$(LD)" "NM=$(NM)" "OBJCOPY=$(OBJCOPY)" $(srctree)/scripts/tools-support-relr.sh)
+-
+-config CC_HAS_ASM_INLINE
+-	def_bool $(success,echo 'void foo(void) { asm inline (""); }' | $(CC) -x c - -c -o /dev/null)
+-
+-config CC_HAS_ASSUME
+-	bool
+-	# clang needs to be at least 19.1.0 since the meaning of the assume
+-	# attribute changed:
+-	# https://github.com/llvm/llvm-project/commit/c44fa3e8a9a44c2e9a575768a3c185354b9f6c17
+-	default y if CC_IS_CLANG && CLANG_VERSION >= 190100
+-	# supported since gcc 13.1.0
+-	# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=106654
+-	default y if CC_IS_GCC && GCC_VERSION >= 130100
+-
+-config CC_HAS_NO_PROFILE_FN_ATTR
+-	def_bool $(success,echo '__attribute__((no_profile_instrument_function)) int x();' | $(CC) -x c - -c -o /dev/null -Werror)
+-
+-config CC_HAS_COUNTED_BY
+-	bool
+-	# clang needs to be at least 20.1.0 to avoid potential crashes
+-	# when building structures that contain __counted_by
+-	# https://github.com/ClangBuiltLinux/linux/issues/2114
+-	# https://github.com/llvm/llvm-project/commit/160fb1121cdf703c3ef5e61fb26c5659eb581489
+-	default y if CC_IS_CLANG && CLANG_VERSION >= 200100
+-	# supported since gcc 15.1.0
+-	# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=108896
+-	default y if CC_IS_GCC && GCC_VERSION >= 150100
+-
+-config CC_HAS_COUNTED_BY_PTR
+-	bool
+-	# supported since clang 22
+-	default y if CC_IS_CLANG && CLANG_VERSION >= 220100
+-	# supported since gcc 16.0.0
+-	default y if CC_IS_GCC && GCC_VERSION >= 160000
+-
+-config CC_HAS_BROKEN_COUNTED_BY_REF
+-	bool
+-	# https://github.com/llvm/llvm-project/issues/182575
+-	default y if CC_IS_CLANG && CLANG_VERSION < 220100
+-
+-config CC_HAS_ALLOC_TOKEN
+-	def_bool $(cc-option,-falloc-token-max=123)
+-
+-config CC_HAS_MULTIDIMENSIONAL_NONSTRING
+-	def_bool $(success,echo 'char tag[][4] __attribute__((__nonstring__)) = { };' | $(CC) $(CLANG_FLAGS) -x c - -c -o /dev/null -Werror)
+-
+-config LD_CAN_USE_KEEP_IN_OVERLAY
+-	# ld.lld prior to 21.0.0 did not support KEEP within an overlay description
+-	# https://github.com/llvm/llvm-project/pull/130661
+-	def_bool LD_IS_BFD || LLD_VERSION >= 210000
+-
+-config RUSTC_HAS_SPAN_FILE
+-	def_bool RUSTC_VERSION >= 108800
+-
+-config RUSTC_HAS_UNNECESSARY_TRANSMUTES
+-	def_bool RUSTC_VERSION >= 108800
+-
+-config RUSTC_HAS_FILE_WITH_NUL
+-	def_bool RUSTC_VERSION >= 108900
+-
+-config RUSTC_HAS_FILE_AS_C_STR
+-	def_bool RUSTC_VERSION >= 109100
+-
+-config RUSTC_HAS_SUSPICIOUS_RUNTIME_SYMBOL_DEFINITIONS
+-	def_bool RUSTC_VERSION >= 109800
+-
+-config PAHOLE_VERSION
+-	int
+-	default "$(PAHOLE_VERSION)"
++source "init/Kconfig.toolchain"
+ 
+ config CONSTRUCTORS
+ 	bool
+diff --git b/init/Kconfig.toolchain b/init/Kconfig.toolchain
+new file mode 100644
+index 0000000..7a0438f
+--- /dev/null
++++ b/init/Kconfig.toolchain
+@@ -0,0 +1,272 @@
++# SPDX-License-Identifier: GPL-2.0-only
++config CC_VERSION_TEXT
++	string
++	default "$(CC_VERSION_TEXT)"
++	help
++	  This is used in unclear ways:
++
++	  - Re-run Kconfig when the compiler is updated
++	    The 'default' property references the environment variable,
++	    CC_VERSION_TEXT so it is recorded in include/config/auto.conf.cmd.
++	    When the compiler is updated, Kconfig will be invoked.
++
++	  - Ensure full rebuild when the compiler is updated
++	    include/linux/compiler-version.h contains this option in the comment
++	    line so fixdep adds include/config/CC_VERSION_TEXT into the
++	    auto-generated dependency. When the compiler is updated, syncconfig
++	    will touch it and then every file will be rebuilt.
++
++config CC_IS_GCC
++	def_bool $(success,test "$(cc-name)" = GCC)
++
++config GCC_VERSION
++	int
++	default $(cc-version) if CC_IS_GCC
++	default 0
++
++config CC_IS_CLANG
++	def_bool $(success,test "$(cc-name)" = Clang)
++
++config CLANG_VERSION
++	int
++	default $(cc-version) if CC_IS_CLANG
++	default 0
++
++config AS_IS_GNU
++	def_bool $(success,test "$(as-name)" = GNU)
++
++config AS_IS_LLVM
++	def_bool $(success,test "$(as-name)" = LLVM)
++
++config AS_VERSION
++	int
++	# Use clang version if this is the integrated assembler
++	default CLANG_VERSION if AS_IS_LLVM
++	default $(as-version)
++
++config LD_IS_BFD
++	def_bool $(success,test "$(ld-name)" = BFD)
++
++config LD_VERSION
++	int
++	default $(ld-version) if LD_IS_BFD
++	default 0
++
++config LD_IS_LLD
++	def_bool $(success,test "$(ld-name)" = LLD)
++
++config LLD_VERSION
++	int
++	default $(ld-version) if LD_IS_LLD
++	default 0
++
++config RUSTC_VERSION
++	int
++	default $(rustc-version)
++	help
++	  It does not depend on `RUST` since that one may need to use the version
++	  in a `depends on`.
++
++config RUST_IS_AVAILABLE
++	def_bool $(success,$(srctree)/scripts/rust_is_available.sh)
++	help
++	  This shows whether a suitable Rust toolchain is available (found).
++
++	  Please see Documentation/rust/quick-start.rst for instructions on how
++	  to satisfy the build requirements of Rust support.
++
++	  In particular, the Makefile target 'rustavailable' is useful to check
++	  why the Rust toolchain is not being detected.
++
++config RUSTC_LLVM_VERSION
++	int
++	default $(rustc-llvm-version)
++
++config RUSTC_LLVM_MAJOR_VERSION
++	int
++	default $(shell,expr $(rustc-llvm-version) / 10000)
++
++config RUSTC_CLANG_LLVM_COMPATIBLE
++	bool
++	default y if CC_IS_CLANG && RUSTC_LLVM_MAJOR_VERSION = $(shell,expr $(cc-version) / 10000)
++	help
++	  This indicates whether Rust and Clang use LLVM of the same major
++	  version.
++
++	  Operations involving handling LLVM IR or bitcode (e.g. cross-language
++	  LTO) require the same LLVM major version to work properly. For best
++	  compatibility it is recommended that the exact same LLVM is used.
++
++config ARCH_HAS_CC_CAN_LINK
++	bool
++
++config CC_CAN_LINK
++	bool
++	default ARCH_CC_CAN_LINK if ARCH_HAS_CC_CAN_LINK
++	default $(cc_can_link_user,$(m64-flag)) if 64BIT
++	default $(cc_can_link_user,$(m32-flag))
++
++# Fixed in GCC 14, 13.3, 12.4 and 11.5
++# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=113921
++config GCC_ASM_GOTO_OUTPUT_BROKEN
++	bool
++	depends on CC_IS_GCC
++	default y if GCC_VERSION < 110500
++	default y if GCC_VERSION >= 120000 && GCC_VERSION < 120400
++	default y if GCC_VERSION >= 130000 && GCC_VERSION < 130300
++
++config CC_HAS_ASM_GOTO_OUTPUT
++	def_bool y
++	depends on !GCC_ASM_GOTO_OUTPUT_BROKEN
++	depends on $(success,echo 'int foo(int x) { asm goto ("": "=r"(x) ::: bar); return x; bar: return 0; }' | $(CC) -x c - -c -o /dev/null)
++
++config CC_HAS_ASM_GOTO_TIED_OUTPUT
++	depends on CC_HAS_ASM_GOTO_OUTPUT
++	# Detect buggy gcc and clang, fixed in gcc-11 clang-14.
++	def_bool $(success,echo 'int foo(int *x) { asm goto (".long (%l[bar]) - .": "+m"(*x) ::: bar); return *x; bar: return 0; }' | $CC -x c - -c -o /dev/null)
++
++config TOOLS_SUPPORT_RELR
++	def_bool $(success,env "CC=$(CC)" "LD=$(LD)" "NM=$(NM)" "OBJCOPY=$(OBJCOPY)" $(srctree)/scripts/tools-support-relr.sh)
++
++config CC_HAS_ASM_INLINE
++	def_bool $(success,echo 'void foo(void) { asm inline (""); }' | $(CC) -x c - -c -o /dev/null)
++
++config CC_HAS_ASSUME
++	bool
++	# clang needs to be at least 19.1.0 since the meaning of the assume
++	# attribute changed:
++	# https://github.com/llvm/llvm-project/commit/c44fa3e8a9a44c2e9a575768a3c185354b9f6c17
++	default y if CC_IS_CLANG && CLANG_VERSION >= 190100
++	# supported since gcc 13.1.0
++	# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=106654
++	default y if CC_IS_GCC && GCC_VERSION >= 130100
++
++config CC_HAS_NO_PROFILE_FN_ATTR
++	def_bool $(success,echo '__attribute__((no_profile_instrument_function)) int x();' | $(CC) -x c - -c -o /dev/null -Werror)
++
 +config CC_HAS_ZERO_INIT_PADDING_BITS
 +	def_bool $(cc-option,-fzero-init-padding-bits=all)
-+
-+config CC_HAS_NO_STACK_CLASH_PROTECTION
-+	def_bool $(cc-option,-fno-stack-clash-protection)
 +
 +config CC_HAS_NO_ADDRSIG
 +	def_bool $(cc-option,-fno-addrsig)
@@ -448,27 +810,6 @@ index ef1d030..6069e6a 100644
 +config LD_HAS_NO_WARN_RWX_SEGMENTS
 +	def_bool $(ld-option,--no-warn-rwx-segments)
 +
- config CC_HAS_COUNTED_BY
- 	bool
- 	# clang needs to be at least 20.1.0 to avoid potential crashes
-@@ -193,6 +231,13 @@ config RUSTC_HAS_FILE_AS_C_STR
- config RUSTC_HAS_SUSPICIOUS_RUNTIME_SYMBOL_DEFINITIONS
- 	def_bool RUSTC_VERSION >= 109800
- 
-+# rustc's parallel front end: -j is the coming spelling, -Zthreads the current one
-+config RUSTC_HAS_JOBS
-+	def_bool $(rustc-option,-j8)
-+
-+config RUSTC_HAS_ZTHREADS
-+	def_bool $(rustc-option,-Zthreads=8)
-+
- config PAHOLE_VERSION
- 	int
- 	default "$(PAHOLE_VERSION)"
-@@ -1019,6 +1064,45 @@ config CC_STRINGOP_OVERFLOW
- 	bool
- 	default y if CC_IS_GCC && !CC_NO_STRINGOP_OVERFLOW
- 
 +config CC_HAS_WNO_ADDRESS_OF_PACKED_MEMBER
 +	def_bool $(cc-option,-Wno-address-of-packed-member)
 +
@@ -508,9 +849,58 @@ index ef1d030..6069e6a 100644
 +config CC_HAS_WNO_STRINGOP_TRUNCATION
 +	def_bool $(cc-option,-Wno-stringop-truncation)
 +
- #
- # For architectures that know their GCC __int128 support is sound
- #
++config CC_HAS_COUNTED_BY
++	bool
++	# clang needs to be at least 20.1.0 to avoid potential crashes
++	# when building structures that contain __counted_by
++	# https://github.com/ClangBuiltLinux/linux/issues/2114
++	# https://github.com/llvm/llvm-project/commit/160fb1121cdf703c3ef5e61fb26c5659eb581489
++	default y if CC_IS_CLANG && CLANG_VERSION >= 200100
++	# supported since gcc 15.1.0
++	# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=108896
++	default y if CC_IS_GCC && GCC_VERSION >= 150100
++
++config CC_HAS_COUNTED_BY_PTR
++	bool
++	# supported since clang 22
++	default y if CC_IS_CLANG && CLANG_VERSION >= 220100
++	# supported since gcc 16.0.0
++	default y if CC_IS_GCC && GCC_VERSION >= 160000
++
++config CC_HAS_BROKEN_COUNTED_BY_REF
++	bool
++	# https://github.com/llvm/llvm-project/issues/182575
++	default y if CC_IS_CLANG && CLANG_VERSION < 220100
++
++config CC_HAS_ALLOC_TOKEN
++	def_bool $(cc-option,-falloc-token-max=123)
++
++config CC_HAS_MULTIDIMENSIONAL_NONSTRING
++	def_bool $(success,echo 'char tag[][4] __attribute__((__nonstring__)) = { };' | $(CC) $(CLANG_FLAGS) -x c - -c -o /dev/null -Werror)
++
++config LD_CAN_USE_KEEP_IN_OVERLAY
++	# ld.lld prior to 21.0.0 did not support KEEP within an overlay description
++	# https://github.com/llvm/llvm-project/pull/130661
++	def_bool LD_IS_BFD || LLD_VERSION >= 210000
++
++config RUSTC_HAS_SPAN_FILE
++	def_bool RUSTC_VERSION >= 108800
++
++config RUSTC_HAS_UNNECESSARY_TRANSMUTES
++	def_bool RUSTC_VERSION >= 108800
++
++config RUSTC_HAS_FILE_WITH_NUL
++	def_bool RUSTC_VERSION >= 108900
++
++config RUSTC_HAS_FILE_AS_C_STR
++	def_bool RUSTC_VERSION >= 109100
++
++config RUSTC_HAS_SUSPICIOUS_RUNTIME_SYMBOL_DEFINITIONS
++	def_bool RUSTC_VERSION >= 109800
++
++config PAHOLE_VERSION
++	int
++	default "$(PAHOLE_VERSION)"
 diff --git a/rust/Makefile b/rust/Makefile
 index da1a740..74d21ae 100644
 --- a/rust/Makefile
@@ -696,6 +1086,22 @@ index 01a37ec..858fa79 100644
  
  # Add FORCE to the prerequisites of a target to force it to be always rebuilt.
  # ---------------------------------------------------------------------------
+diff --git a/scripts/Makefile.modinst b/scripts/Makefile.modinst
+index 9ba45e5..58dafec 100644
+--- a/scripts/Makefile.modinst
++++ b/scripts/Makefile.modinst
+@@ -145,8 +145,10 @@ endif
+ #
+ # Compression
+ #
++# Modules are compressed in parallel by make itself, so keep the compressor
++# single-threaded when it is pigz.
+ quiet_cmd_gzip = GZIP    $@
+-      cmd_gzip = $(KGZIP) -n -f $<
++      cmd_gzip = $(KGZIP) $(if $(filter pigz,$(notdir $(firstword $(KGZIP)))),-p 1) -n -f $<
+ quiet_cmd_xz = XZ      $@
+       cmd_xz = $(XZ) --check=crc32 --lzma2=dict=1MiB -f $<
+ quiet_cmd_zstd = ZSTD    $@
 diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
 index d7d4506..eecf5f5 100644
 --- a/scripts/Makefile.modpost
@@ -710,26 +1116,15 @@ index d7d4506..eecf5f5 100644
  
  # Step 3 is used to place certain information in the module's ELF
 diff --git a/scripts/Makefile.vmlinux b/scripts/Makefile.vmlinux
-index fcae1e4..1fc7a0c 100644
+index fcae1e4..8888182 100644
 --- a/scripts/Makefile.vmlinux
 +++ b/scripts/Makefile.vmlinux
-@@ -64,7 +64,8 @@ ARCH_POSTLINK := $(wildcard $(srctree)/arch/$(SRCARCH)/Makefile.postlink)
- 
- # Final link of vmlinux with optional arch pass after final link
- cmd_link_vmlinux =							\
--	$< "$(LD)" "$(KBUILD_LDFLAGS)" "$(LDFLAGS_vmlinux)" "$@";	\
-+	$< "$(LD)" "$(KBUILD_LDFLAGS)" "$(LDFLAGS_vmlinux)" "$@"	\
-+	   "$(LDFLAGS_vmlinux_relocs)";					\
- 	$(if $(ARCH_POSTLINK), $(MAKE) -f $(ARCH_POSTLINK) $@, true)
- 
- targets += vmlinux.unstripped .vmlinux.export.o
-@@ -89,11 +90,9 @@ remove-section-$(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS) += '.rel.*'
+@@ -89,11 +89,8 @@ remove-section-$(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS) += '.rel.*'
  
  remove-symbols := -w --strip-unneeded-symbol='__mod_device_table__*'
  
 -# To avoid warnings: "empty loadable segment detected at ..." from GNU objcopy,
 -# it is necessary to remove the PT_LOAD flag from the segment.
-+# none of the removed sections is allocated, so no segment is left empty
  quiet_cmd_strip_relocs = OBJCOPY $@
 -      cmd_strip_relocs = $(OBJCOPY) $(patsubst %,--set-section-flags %=noload,$(remove-section-y)) $< $@; \
 -                         $(OBJCOPY) $(addprefix --remove-section=,$(remove-section-y)) $(remove-symbols) $@
@@ -737,7 +1132,7 @@ index fcae1e4..1fc7a0c 100644
  
  targets += vmlinux
  vmlinux: vmlinux.unstripped FORCE
-@@ -102,21 +101,11 @@ vmlinux: vmlinux.unstripped FORCE
+@@ -102,21 +99,10 @@ vmlinux: vmlinux.unstripped FORCE
  # modules.builtin.modinfo
  # ---------------------------------------------------------------------------
  
@@ -750,7 +1145,6 @@ index fcae1e4..1fc7a0c 100644
 -#
 -# Strip the trailing padding bytes after extracting .modinfo to comply with
 -# what kmod expects to parse.
-+# use --dump-section to include non-allocated sections
  quiet_cmd_modules_builtin_modinfo = GEN     $@
 -      cmd_modules_builtin_modinfo = $(cmd_objcopy); \
 -                                    sed -i 's/\x00\+$$/\x00/g' $@; \
@@ -882,10 +1276,10 @@ index fb8e2c3..ff98780 100644
  # before running a Clang kernel build.
 diff --git b/scripts/basic/depcheck.c b/scripts/basic/depcheck.c
 new file mode 100644
-index 0000000..5f9bbdf
+index 0000000..ce5c456
 --- /dev/null
 +++ b/scripts/basic/depcheck.c
-@@ -0,0 +1,442 @@
+@@ -0,0 +1,443 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * depcheck - check the dependency timestamps of a directory's targets so that
@@ -1320,7 +1714,8 @@ index 0000000..5f9bbdf
 +	for (i = 2; i < argc; i++)
 +		process(out, argv[i]);
 +
-+	if (fclose(out) || rename(tmp_path, argv[1])) {
++	/* Write errors are latched in the stream, so one check at the end covers them all. */
++	if (ferror(out) || fclose(out) || rename(tmp_path, argv[1])) {
 +		perror(argv[1]);
 +		unlink(tmp_path);
 +		return 1;
@@ -1792,7 +2187,7 @@ index 0000000..64b2e11
 +	free(map);
 +}
 diff --git a/scripts/kallsyms.c b/scripts/kallsyms.c
-index 494852a..b383696 100644
+index 494852a..d996a43 100644
 --- a/scripts/kallsyms.c
 +++ b/scripts/kallsyms.c
 @@ -5,7 +5,15 @@
@@ -2037,24 +2432,10 @@ index 494852a..b383696 100644
  }
  
  static void output_label(const char *label)
-@@ -284,6 +317,40 @@ static void output_label(const char *label)
+@@ -284,6 +317,26 @@ static void output_label(const char *label)
  	printf("%s:\n", label);
  }
  
-+static void write_bin(FILE *file, const void *data, size_t len)
-+{
-+	if (fwrite(data, 1, len, file) == len)
-+		return;
-+
-+	perror("kallsyms: write");
-+	exit(EXIT_FAILURE);
-+}
-+
-+static void write_byte_bin(FILE *file, unsigned char byte)
-+{
-+	write_bin(file, &byte, 1);
-+}
-+
 +static long bin_pos(FILE *file)
 +{
 +	const long pos = ftell(file);
@@ -2078,7 +2459,7 @@ index 494852a..b383696 100644
  /* uncompress a compressed symbol. When this function is called, the best table
   * might still be compressed itself, so the function needs to be recursive */
  static int expand_symbol(const unsigned char *data, int len, char *result)
-@@ -317,7 +384,7 @@ static int compare_names(const void *a, const void *b)
+@@ -317,7 +370,7 @@ static int compare_names(const void *a, const void *b)
  	const struct sym_entry *sa = *(const struct sym_entry **)a;
  	const struct sym_entry *sb = *(const struct sym_entry **)b;
  
@@ -2087,7 +2468,7 @@ index 494852a..b383696 100644
  	if (!ret) {
  		if (sa->addr > sb->addr)
  			return 1;
-@@ -336,11 +403,12 @@ static void sort_symbols_by_name(void)
+@@ -336,11 +389,12 @@ static void sort_symbols_by_name(void)
  	qsort(table, table_cnt, sizeof(table[0]), compare_names);
  }
  
@@ -2102,7 +2483,7 @@ index 494852a..b383696 100644
  	char buf[KSYM_NAME_LEN];
  
  	printf("\t.section .rodata, \"a\"\n");
-@@ -355,6 +423,7 @@ static void write_src(void)
+@@ -355,6 +409,7 @@ static void write_src(void)
  	markers = xmalloc(sizeof(*markers) * markers_cnt);
  
  	output_label("kallsyms_names");
@@ -2110,25 +2491,25 @@ index 494852a..b383696 100644
  	off = 0;
  	for (i = 0; i < table_cnt; i++) {
  		if ((i & 0xFF) == 0)
-@@ -378,26 +447,24 @@ static void write_src(void)
+@@ -378,26 +433,24 @@ static void write_src(void)
  		/* Encode length with ULEB128. */
  		if (table[i]->len <= 0x7F) {
  			/* Most symbols use a single byte for the length. */
 -			printf("\t.byte 0x%02x", table[i]->len);
-+			write_byte_bin(out_bin_file, table[i]->len);
++			fputc(table[i]->len, out_bin_file);
  			off += table[i]->len + 1;
  		} else {
  			/* "Big" symbols use two bytes. */
 -			printf("\t.byte 0x%02x, 0x%02x",
 -				(table[i]->len & 0x7F) | 0x80,
 -				(table[i]->len >> 7) & 0x7F);
-+			write_byte_bin(out_bin_file, (table[i]->len & 0x7F) | 0x80);
-+			write_byte_bin(out_bin_file, (table[i]->len >> 7) & 0x7F);
++			fputc((table[i]->len & 0x7F) | 0x80, out_bin_file);
++			fputc((table[i]->len >> 7) & 0x7F, out_bin_file);
  			off += table[i]->len + 2;
  		}
 -		for (k = 0; k < table[i]->len; k++)
 -			printf(", 0x%02x", table[i]->sym[k]);
-+		write_bin(out_bin_file, table[i]->sym, table[i]->len);
++		fwrite(table[i]->sym, 1, table[i]->len, out_bin_file);
  
  		/*
  		 * Now that we wrote out the compressed symbol name, restore the
@@ -2143,7 +2524,7 @@ index 494852a..b383696 100644
  	printf(".size kallsyms_names, . - kallsyms_names\n");
  	printf("\n");
  
-@@ -410,13 +477,15 @@ static void write_src(void)
+@@ -410,13 +463,15 @@ static void write_src(void)
  	free(markers);
  
  	output_label("kallsyms_token_table");
@@ -2153,14 +2534,14 @@ index 494852a..b383696 100644
  		best_idx[i] = off;
  		expand_symbol(best_table[i], best_table_len[i], buf);
 -		printf("\t.asciz\t\"%s\"\n", buf);
-+		write_bin(out_bin_file, buf, strlen(buf) + 1);
++		fwrite(buf, 1, strlen(buf) + 1, out_bin_file);
  		off += strlen(buf) + 1;
  	}
 +	write_incbin(out_bin_name, bin_start, bin_pos(out_bin_file));
  	printf(".size kallsyms_token_table, . - kallsyms_token_table\n");
  	printf("\n");
  
-@@ -449,15 +518,25 @@ static void write_src(void)
+@@ -449,15 +504,25 @@ static void write_src(void)
  
  	sort_symbols_by_name();
  	output_label("kallsyms_seqs_of_names");
@@ -2172,9 +2553,9 @@ index 494852a..b383696 100644
 -		       table[i]->sym);
 +	bin_start = bin_pos(out_bin_file);
 +	for (i = 0; i < table_cnt; i++) {
-+		write_byte_bin(out_bin_file, table[i]->seq >> 16);
-+		write_byte_bin(out_bin_file, table[i]->seq >> 8);
-+		write_byte_bin(out_bin_file, table[i]->seq >> 0);
++		fputc(table[i]->seq >> 16, out_bin_file);
++		fputc(table[i]->seq >> 8, out_bin_file);
++		fputc(table[i]->seq >> 0, out_bin_file);
 +	}
 +	write_incbin(out_bin_name, bin_start, bin_pos(out_bin_file));
  	printf("\n");
@@ -2192,7 +2573,7 @@ index 494852a..b383696 100644
  
  /* table lookup compression functions */
  
-@@ -467,7 +546,7 @@ static void learn_symbol(const unsigned char *symbol, int len)
+@@ -467,7 +532,7 @@ static void learn_symbol(const unsigned char *symbol, int len)
  	int i;
  
  	for (i = 0; i < len - 1; i++)
@@ -2201,7 +2582,7 @@ index 494852a..b383696 100644
  }
  
  /* decrease the count for all the possible tokens in a symbol */
-@@ -476,16 +555,76 @@ static void forget_symbol(const unsigned char *symbol, int len)
+@@ -476,16 +541,76 @@ static void forget_symbol(const unsigned char *symbol, int len)
  	int i;
  
  	for (i = 0; i < len - 1; i++)
@@ -2280,7 +2661,7 @@ index 494852a..b383696 100644
  }
  
  static unsigned char *find_token(unsigned char *str, int len,
-@@ -502,27 +641,30 @@ static unsigned char *find_token(unsigned char *str, int len,
+@@ -502,27 +627,30 @@ static unsigned char *find_token(unsigned char *str, int len,
  
  /* replace a given token in all the valid symbols. Use the sampled symbols
   * to update the counts */
@@ -2319,7 +2700,7 @@ index 494852a..b383696 100644
  			p2++;
  			size -= (p2 - p1);
  			memmove(p2, p2 + 1, size);
-@@ -536,11 +678,14 @@ static void compress_symbols(const unsigned char *str, int idx)
+@@ -536,11 +664,14 @@ static void compress_symbols(const unsigned char *str, int idx)
  
  		} while (p2);
  
@@ -2337,7 +2718,7 @@ index 494852a..b383696 100644
  }
  
  /* search the token with the maximum profit */
-@@ -615,7 +760,7 @@ static void optimize_token_table(void)
+@@ -615,7 +746,7 @@ static void optimize_token_table(void)
  /* guess for "linker script provide" symbol */
  static int may_be_linker_script_provide_symbol(const struct sym_entry *se)
  {
@@ -2346,7 +2727,7 @@ index 494852a..b383696 100644
  	int len = se->len - 1;
  
  	if (len < 8)
-@@ -672,8 +817,8 @@ static int compare_symbols(const void *a, const void *b)
+@@ -672,8 +803,8 @@ static int compare_symbols(const void *a, const void *b)
  		return wa - wb;
  
  	/* sort by the number of prefix underscores */
@@ -2357,7 +2738,7 @@ index 494852a..b383696 100644
  	if (wa != wb)
  		return wa - wb;
  
-@@ -688,10 +833,14 @@ static void sort_symbols(void)
+@@ -688,10 +819,14 @@ static void sort_symbols(void)
  
  int main(int argc, char **argv)
  {
@@ -2372,7 +2753,7 @@ index 494852a..b383696 100644
  			{},
  		};
  
-@@ -699,18 +848,54 @@ int main(int argc, char **argv)
+@@ -699,18 +834,55 @@ int main(int argc, char **argv)
  
  		if (c == -1)
  			break;
@@ -2424,7 +2805,8 @@ index 494852a..b383696 100644
 -	write_src();
 +	write_src(out_bin_file, out_bin_name);
 +
-+	if (fclose(out_bin_file)) {
++	/* Write errors are latched in the stream, so one check at the end covers them all. */
++	if (ferror(out_bin_file) || fclose(out_bin_file)) {
 +		perror(out_bin_name);
 +		exit(EXIT_FAILURE);
 +	}
@@ -2482,30 +2864,22 @@ index 0000000..1209697
 +
 +#endif /* KALLSYMS_H */
 diff --git a/scripts/link-vmlinux.sh b/scripts/link-vmlinux.sh
-index ab0b812..7e9d067 100755
+index ab0b812..c520741 100755
 --- a/scripts/link-vmlinux.sh
 +++ b/scripts/link-vmlinux.sh
-@@ -32,6 +32,7 @@ LD="$1"
- KBUILD_LDFLAGS="$2"
- LDFLAGS_vmlinux="$3"
- VMLINUX="$4"
-+LDFLAGS_vmlinux_relocs="$5"
- 
- is_enabled() {
- 	grep -q "^$1=y" include/config/auto.conf
-@@ -96,6 +97,11 @@ vmlinux_link()
+@@ -96,6 +96,11 @@ vmlinux_link()
  		ldflags="${ldflags} ${wl}--strip-debug"
  	fi
  
 +	# Only the final link actually requires the relocations.
-+	if [ "${output}" = "${VMLINUX}" ] && [ -n "${LDFLAGS_vmlinux_relocs}" ]; then
-+		ldflags="${ldflags} ${wl}${LDFLAGS_vmlinux_relocs}"
++	if [ "${output}" = "${VMLINUX}" ] && is_enabled CONFIG_ARCH_VMLINUX_NEEDS_RELOCS; then
++		ldflags="${ldflags} ${wl}--emit-relocs"
 +	fi
 +
  	if [ -n "${generate_map}" ];  then
  		ldflags="${ldflags} ${wl}-Map=vmlinux.map"
  	fi
-@@ -118,11 +124,15 @@ kallsymso_changed()
+@@ -118,11 +123,15 @@ kallsymso_changed()
  	! cmp -s "${kallsymso_prev}.sym" "${kallsymso}.sym"
  }
  
@@ -2522,7 +2896,7 @@ index ab0b812..7e9d067 100755
  	if is_enabled CONFIG_KALLSYMS_ALL; then
  		kallsymopt="${kallsymopt} --all-symbols"
  	fi
-@@ -132,7 +142,7 @@ kallsyms()
+@@ -132,7 +141,7 @@ kallsyms()
  	fi
  
  	info KSYMS "${2}.S"
@@ -2531,7 +2905,7 @@ index ab0b812..7e9d067 100755
  
  	info AS "${2}.o"
  	${CC} ${NOSTDINC_FLAGS} ${LINUXINCLUDE} ${KBUILD_CPPFLAGS} \
-@@ -145,23 +155,20 @@ kallsyms()
+@@ -145,23 +154,20 @@ kallsyms()
  # Perform kallsyms for the given temporary vmlinux.
  sysmap_and_kallsyms()
  {
@@ -2559,6 +2933,106 @@ index ab0b812..7e9d067 100755
  	${objtree}/scripts/sorttable -s .tmp_vmlinux.nm-sort ${1}
  }
  
+diff --git a/scripts/mksysmap a/scripts/mksysmap
+deleted file mode 100755
+index 856b26b..0000000
+--- a/scripts/mksysmap
++++ /dev/null
+@@ -1,94 +0,0 @@
+-#!/bin/sed -f
+-# SPDX-License-Identifier: GPL-2.0-only
+-#
+-# sed script to filter out symbols that are not needed for System.map,
+-# or not suitable for kallsyms. The input should be 'nm -n <file>'.
+-#
+-# System.map is used by module-init tools and some debugging
+-# tools to retrieve the actual addresses of symbols in the kernel.
+-#
+-# readprofile starts reading symbols when _stext is found, and
+-# continue until it finds a symbol which is not either of 'T', 't',
+-# 'W' or 'w'.
+-#
+-# ---------------------------------------------------------------------------
+-# Ignored symbol types
+-#
+-
+-# a: local absolute symbols
+-# N: debugging symbols
+-# U: undefined global symbols
+-# w: local weak symbols
+-/ [aNUw] /d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored prefixes
+-#  (do not forget a space before each pattern)
+-
+-# local symbols for ARM, MIPS, etc.
+-/ \$/d
+-
+-# local labels, .LBB, .Ltmpxxx, .L__unnamed_xx, .LASANPC, etc.
+-/ \.L/d
+-
+-# arm64 EFI stub namespace
+-/ __efistub_/d
+-
+-# arm64 local symbols in PIE namespace
+-/ __pi_\$/d
+-/ __pi_\.L/d
+-
+-# arm64 local symbols in non-VHE KVM namespace
+-/ __kvm_nvhe_\$/d
+-/ __kvm_nvhe_\.L/d
+-
+-# lld arm/aarch64/mips thunks
+-/ __[[:alnum:]]*Thunk_/d
+-
+-# CFI type identifiers
+-/ __kcfi_typeid_/d
+-/ __kvm_nvhe___kcfi_typeid_/d
+-/ __pi___kcfi_typeid_/d
+-
+-# CRC from modversions
+-/ __crc_/d
+-
+-# EXPORT_SYMBOL (symbol name)
+-/ __kstrtab_/d
+-
+-# EXPORT_SYMBOL (namespace)
+-/ __kstrtabns_/d
+-
+-# MODULE_DEVICE_TABLE (symbol name)
+-/ __mod_device_table__/d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored suffixes
+-#  (do not forget '$' after each pattern)
+-
+-# arm
+-/_from_arm$/d
+-/_from_thumb$/d
+-/_veneer$/d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored symbols (exact match)
+-#  (do not forget a space before and '$' after each pattern)
+-
+-# for LoongArch?
+-/ L0$/d
+-
+-# ppc
+-/ _SDA_BASE_$/d
+-/ _SDA2_BASE_$/d
+-
+-# MODULE_INFO()
+-/ __UNIQUE_ID_modinfo_[0-9]*$/d
+-
+-# ---------------------------------------------------------------------------
+-# Ignored patterns
+-#  (symbols that contain the pattern are ignored)
+-
+-# ppc stub
+-/\.long_branch\./d
+-/\.plt_branch\./d
 diff --git a/scripts/mod/.gitignore b/scripts/mod/.gitignore
 index 0465ec3..620ab43 100644
 --- a/scripts/mod/.gitignore
@@ -2571,18 +3045,10 @@ index 0465ec3..620ab43 100644
  /mk_elfconfig
  /modpost
 diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
-index c729bc9..fdd4861 100644
+index c729bc9..fbd5099 100644
 --- a/scripts/mod/Makefile
 +++ b/scripts/mod/Makefile
-@@ -5,6 +5,7 @@ hostprogs-always-y	+= modpost mk_elfconfig
- always-y		+= empty.o
- 
- modpost-objs	:= modpost.o file2alias.o sumversion.o symsearch.o
-+HOSTLDLIBS_modpost := -lpthread
- 
- devicetable-offsets-file := devicetable-offsets.h
- 
-@@ -13,10 +14,18 @@ $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
+@@ -13,10 +13,18 @@ $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
  
  targets += $(devicetable-offsets-file) devicetable-offsets.s
  
@@ -2602,18 +3068,10 @@ index c729bc9..fdd4861 100644
  quiet_cmd_elfconfig = MKELF   $@
        cmd_elfconfig = $(obj)/mk_elfconfig < $< > $@
 diff --git a/scripts/mod/modpost.c b/scripts/mod/modpost.c
-index 75374c6..882169e 100644
+index 75374c6..b4550b5 100644
 --- a/scripts/mod/modpost.c
 +++ b/scripts/mod/modpost.c
-@@ -16,6 +16,7 @@
- #include <fnmatch.h>
- #include <stdio.h>
- #include <ctype.h>
-+#include <pthread.h>
- #include <string.h>
- #include <limits.h>
- #include <stdbool.h>
-@@ -26,6 +27,7 @@
+@@ -26,6 +26,7 @@
  #include <list.h>
  #include <xalloc.h>
  #include "modpost.h"
@@ -2621,7 +3079,7 @@ index 75374c6..882169e 100644
  #include "../../include/linux/license.h"
  
  #define MODULE_NS_PREFIX "module:"
-@@ -1155,12 +1157,67 @@ static void check_export_symbol(struct module *mod, struct elf_info *elf,
+@@ -1155,12 +1156,67 @@ static void check_export_symbol(struct module *mod, struct elf_info *elf,
  			 name);
  }
  
@@ -2690,7 +3148,7 @@ index 75374c6..882169e 100644
  	const struct sectioncheck *mismatch;
  
  	if (module_enabled && elf->export_symbol_secndx == fsecndx) {
-@@ -1168,7 +1225,7 @@ static void check_section_mismatch(struct module *mod, struct elf_info *elf,
+@@ -1168,7 +1224,7 @@ static void check_section_mismatch(struct module *mod, struct elf_info *elf,
  		return;
  	}
  
@@ -2699,7 +3157,7 @@ index 75374c6..882169e 100644
  	if (!mismatch)
  		return;
  
-@@ -1445,6 +1502,8 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
+@@ -1445,6 +1501,8 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
  {
  	int i;
  
@@ -2708,7 +3166,7 @@ index 75374c6..882169e 100644
  	/* Walk through all sections */
  	for (i = 0; i < elf->num_sections; i++) {
  		Elf_Shdr *sechdr = &elf->sechdrs[i];
-@@ -1461,6 +1520,9 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
+@@ -1461,6 +1519,9 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
  			if (match(secname, section_white_list))
  				continue;
  
@@ -2718,7 +3176,7 @@ index 75374c6..882169e 100644
  			start = sym_get_data_by_offset(elf, i, 0);
  			stop = start + sechdr->sh_size;
  
-@@ -1472,6 +1534,8 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
+@@ -1472,6 +1533,8 @@ static void check_sec_ref(struct module *mod, struct elf_info *elf)
  					    start, stop);
  		}
  	}
@@ -2727,90 +3185,7 @@ index 75374c6..882169e 100644
  }
  
  static char *remove_dot(char *s)
-@@ -1654,8 +1718,7 @@ static void read_symbols(const char *modname)
- 	if (!mod->is_vmlinux) {
- 		version = get_modinfo(&info, "version");
- 		if (version || all_versions)
--			get_src_version(mod->name, mod->srcversion,
--					sizeof(mod->srcversion) - 1);
-+			mod->need_srcversion = true;
- 	}
- 
- 	parse_elf_finish(&info);
-@@ -1673,6 +1736,72 @@ static void read_symbols(const char *modname)
- 	}
- }
- 
-+static struct module **srcversion_mods;
-+static unsigned int nr_srcversion_mods, next_srcversion_mod;
-+
-+static bool get_next_src_version(void)
-+{
-+	struct module *mod;
-+	unsigned int idx;
-+
-+	idx = __sync_fetch_and_add(&next_srcversion_mod, 1);
-+	if (idx >= nr_srcversion_mods)
-+		return false;
-+	mod = srcversion_mods[idx];
-+
-+	get_src_version(mod->name, mod->srcversion,
-+			sizeof(mod->srcversion) - 1);
-+	return true;
-+}
-+
-+static void *srcversion_worker(void *arg)
-+{
-+	while (get_next_src_version())
-+		;
-+
-+	return NULL;
-+}
-+
-+static void hash_srcversions(void)
-+{
-+	unsigned int i = 0;
-+	struct module *mod;
-+	pthread_t *threads;
-+	long nr_threads;
-+
-+	list_for_each_entry(mod, &modules, list)
-+		if (mod->need_srcversion)
-+			nr_srcversion_mods++;
-+
-+	if (!nr_srcversion_mods)
-+		return;
-+
-+	srcversion_mods = xmalloc(nr_srcversion_mods * sizeof(*srcversion_mods));
-+
-+	list_for_each_entry(mod, &modules, list)
-+		if (mod->need_srcversion)
-+			srcversion_mods[i++] = mod;
-+
-+	nr_threads = sysconf(_SC_NPROCESSORS_ONLN);
-+	nr_threads = nr_threads < 1 ? 1 : nr_threads; /* On error assume 1. */
-+	if (nr_threads > nr_srcversion_mods)
-+		nr_threads = nr_srcversion_mods;
-+
-+	sumversion_init();
-+	threads = xmalloc(nr_threads * sizeof(*threads));
-+	for (i = 0; i < nr_threads; i++) {
-+		if (pthread_create(&threads[i], NULL, srcversion_worker, NULL)) {
-+			perror("pthread_create");
-+			exit(1);
-+		}
-+	}
-+	for (i = 0; i < nr_threads; i++)
-+		pthread_join(threads[i], NULL);
-+
-+	free(threads);
-+	free(srcversion_mods);
-+}
-+
- static void read_symbols_from_files(const char *filename)
- {
- 	FILE *in = stdin;
-@@ -1858,39 +1987,6 @@ static void check_modname_len(struct module *mod)
+@@ -1858,39 +1921,6 @@ static void check_modname_len(struct module *mod)
  		mod_error(mod, "module name is too long\n");
  }
  
@@ -2850,7 +3225,7 @@ index 75374c6..882169e 100644
  static void add_exported_symbols(struct buffer *buf, struct module *mod)
  {
  	struct symbol *sym;
-@@ -1928,123 +2024,6 @@ static void add_exported_symbols(struct buffer *buf, struct module *mod)
+@@ -1928,123 +1958,6 @@ static void add_exported_symbols(struct buffer *buf, struct module *mod)
  	}
  }
  
@@ -2974,7 +3349,7 @@ index 75374c6..882169e 100644
  static void write_buf(struct buffer *b, const char *fname)
  {
  	FILE *file;
-@@ -2129,30 +2108,465 @@ static void write_vmlinux_export_c_file(struct module *mod)
+@@ -2129,30 +2042,483 @@ static void write_vmlinux_export_c_file(struct module *mod)
  	free(buf.p);
  }
  
@@ -3130,19 +3505,23 @@ index 75374c6..882169e 100644
 +static void asm_skip_to(struct buffer *buf, unsigned int *pos,
 +			unsigned int offset)
 +{
++	if (offset < *pos)
++		fatal("__this_module field at offset %u overlaps the previous one\n",
++		      offset);
 +	if (offset > *pos)
 +		buf_printf(buf, "\t.skip %u\n", offset - *pos);
 +
 +	*pos = offset;
 +}
 +
-+/* A pointer field of __this_module: its offset and an assembler expression. */
++/* A non-zero field of __this_module: its offset and the name or symbol in it. */
 +struct this_module_field {
 +	unsigned int offset;
++	bool is_name;
 +	const char *value;
 +};
 +
-+#define THIS_MODULE_MAX_FIELDS	4
++#define THIS_MODULE_MAX_FIELDS	5
 +
 +static int compare_field_offsets(const void *ptr_a, const void *ptr_b)
 +{
@@ -3154,29 +3533,48 @@ index 75374c6..882169e 100644
 +	return 0;
 +}
 +
-+/* The fields of __this_module which are not zero, in offset order. */
++/*
++ * The fields of __this_module which are not zero, in offset order. The order
++ * is only known from module-offsets.h, CONFIG_RANDSTRUCT shuffles struct module.
++ */
 +static unsigned int get_this_module_fields(const struct module *mod,
++					   const char *modname,
 +					   struct this_module_field *fields)
 +{
 +	unsigned int nr_fields = 0;
 +
++	fields[nr_fields++] = (struct this_module_field)
++		{ MOD_OFF_module_name, true, modname };
 +	if (mod->has_init)
 +		fields[nr_fields++] = (struct this_module_field)
-+			{ MOD_OFF_module_init, MOD_FUNC_PREFIX "init_module" };
++			{ MOD_OFF_module_init, false, MOD_FUNC_PREFIX "init_module" };
 +#ifdef MOD_OFF_module_exit
 +	if (mod->has_cleanup)
 +		fields[nr_fields++] = (struct this_module_field)
-+			{ MOD_OFF_module_exit, MOD_FUNC_PREFIX "cleanup_module" };
++			{ MOD_OFF_module_exit, false, MOD_FUNC_PREFIX "cleanup_module" };
 +#endif
 +#ifdef MOD_OFF_module_arch_fixup_start
 +	fields[nr_fields++] = (struct this_module_field)
-+		{ MOD_OFF_module_arch_fixup_start, "__start_fixup" };
++		{ MOD_OFF_module_arch_fixup_start, false, "__start_fixup" };
 +	fields[nr_fields++] = (struct this_module_field)
-+		{ MOD_OFF_module_arch_fixup_end, "__stop_fixup" };
++		{ MOD_OFF_module_arch_fixup_end, false, "__stop_fixup" };
 +#endif
 +	qsort(fields, nr_fields, sizeof(*fields), compare_field_offsets);
 +
 +	return nr_fields;
++}
++
++/* Emit one field of __this_module, returning its size. */
++static unsigned int add_asm_this_module_field(struct buffer *buf,
++					      const struct this_module_field *field)
++{
++	if (field->is_name) {
++		buf_printf(buf, "\t.ascii \"%s\"\n", field->value);
++		return strlen(field->value);
++	}
++
++	buf_printf(buf, "\t" MOD_PTR_DIRECTIVE " %s\n", field->value);
++	return MOD_SIZEOF_LONG;
 +}
 +
 +/*
@@ -3192,7 +3590,7 @@ index 75374c6..882169e 100644
 +				const char *modname)
 +{
 +	struct this_module_field fields[THIS_MODULE_MAX_FIELDS];
-+	const unsigned int nr_fields = get_this_module_fields(mod, fields);
++	const unsigned int nr_fields = get_this_module_fields(mod, modname, fields);
 +	unsigned int pos = 0, i;
 +
 +	buf_printf(buf, "\n\t.section .gnu.linkonce.this_module,\"aw\",%%progbits\n");
@@ -3202,14 +3600,9 @@ index 75374c6..882169e 100644
 +	buf_printf(buf, "\t.size __this_module, %d\n", MOD_SIZEOF_struct_module);
 +	buf_printf(buf, "__this_module:\n");
 +
-+	asm_skip_to(buf, &pos, MOD_OFF_module_name);
-+	buf_printf(buf, "\t.ascii \"%s\"\n", modname);
-+	pos += strlen(modname);
-+
 +	for (i = 0; i < nr_fields; i++) {
 +		asm_skip_to(buf, &pos, fields[i].offset);
-+		buf_printf(buf, "\t" MOD_PTR_DIRECTIVE " %s\n", fields[i].value);
-+		pos += MOD_SIZEOF_LONG;
++		pos += add_asm_this_module_field(buf, &fields[i]);
 +	}
 +
 +	asm_skip_to(buf, &pos, MOD_SIZEOF_struct_module);
@@ -3455,7 +3848,7 @@ index 75374c6..882169e 100644
  	if (ret >= sizeof(fname)) {
  		error("%s: too long path was truncated\n", fname);
  		goto free;
-@@ -2161,6 +2575,7 @@ static void write_mod_c_file(struct module *mod)
+@@ -2161,6 +2527,7 @@ static void write_mod_c_file(struct module *mod)
  	write_if_changed(&buf, fname);
  
  free:
@@ -3463,16 +3856,7 @@ index 75374c6..882169e 100644
  	free(buf.p);
  }
  
-@@ -2380,6 +2795,8 @@ int main(int argc, char **argv)
- 	if (files_source)
- 		read_symbols_from_files(files_source);
- 
-+	hash_srcversions();
-+
- 	list_for_each_entry(mod, &modules, list) {
- 		keep_no_trim_symbols(mod);
- 
-@@ -2400,7 +2817,7 @@ int main(int argc, char **argv)
+@@ -2400,7 +2767,7 @@ int main(int argc, char **argv)
  		if (mod->is_vmlinux)
  			write_vmlinux_export_c_file(mod);
  		else
@@ -3481,26 +3865,6 @@ index 75374c6..882169e 100644
  	}
  
  	if (missing_namespace_deps)
-diff --git a/scripts/mod/modpost.h b/scripts/mod/modpost.h
-index d5f6d82..10d5f8f 100644
---- a/scripts/mod/modpost.h
-+++ b/scripts/mod/modpost.h
-@@ -127,6 +127,7 @@ struct module {
- 	bool has_init;
- 	bool has_cleanup;
- 	char	     srcversion[25];
-+	bool need_srcversion;
- 	// Missing namespace dependencies
- 	struct list_head missing_namespaces;
- 	// Actual imported namespaces
-@@ -213,6 +214,7 @@ void handle_moddevtable(struct module *mod, struct elf_info *info,
- 			Elf_Sym *sym, const char *symname);
- 
- /* sumversion.c */
-+void sumversion_init(void);
- void get_src_version(const char *modname, char sum[], unsigned sumlen);
- 
- /* from modpost.c */
 diff --git b/scripts/mod/module-offsets.c b/scripts/mod/module-offsets.c
 new file mode 100644
 index 0000000..a336dd4
@@ -3542,118 +3906,6 @@ index 0000000..a336dd4
 +
 +	return 0;
 +}
-diff --git a/scripts/mod/sumversion.c b/scripts/mod/sumversion.c
-index 3dd28b4..4521b92 100644
---- a/scripts/mod/sumversion.c
-+++ b/scripts/mod/sumversion.c
-@@ -224,19 +224,11 @@ static void md4_final_ascii(struct md4_ctx *mctx, char *out, unsigned int len)
- 		 mctx->hash[0], mctx->hash[1], mctx->hash[2], mctx->hash[3]);
- }
- 
--static inline void add_char(unsigned char c, struct md4_ctx *md)
--{
--	md4_update(md, &c, 1);
--}
--
--static int parse_string(const char *file, unsigned long len,
--			struct md4_ctx *md)
-+static int parse_string(const char *file, unsigned long len)
- {
- 	unsigned long i;
- 
--	add_char(file[0], md);
- 	for (i = 1; i < len; i++) {
--		add_char(file[i], md);
- 		if (file[i] == '"' && file[i-1] != '\\')
- 			break;
- 	}
-@@ -255,15 +247,44 @@ static int parse_comment(const char *file, unsigned long len)
- }
- 
- /* FIXME: Handle .s files differently (eg. # starts comments) --RR */
-+static bool stop_char[256];
-+
-+void sumversion_init(void)
-+{
-+	static bool done;
-+	int chr;
-+
-+	if (done)
-+		return;
-+
-+	for (chr = 0; chr < 256; chr++)
-+		if (chr == '\\' || chr == '"' || chr == '/' || isspace(chr))
-+			stop_char[chr] = true;
-+
-+	done = true;
-+}
-+
- static int parse_file(const char *fname, struct md4_ctx *md)
- {
-+	unsigned long i, len, n = 0;
-+	unsigned char *buf;
- 	char *file;
--	unsigned long i, len;
- 
- 	file = read_text_file(fname);
- 	len = strlen(file);
-+	if (!len)
-+		goto out_file;
-+	sumversion_init();
-+	buf = xmalloc(len); /* File output buffer. */
- 
- 	for (i = 0; i < len; i++) {
-+		const unsigned char chr = file[i];
-+
-+		if (!stop_char[chr]) {
-+			buf[n++] = file[i];
-+			continue;
-+		}
-+
- 		/* Collapse and ignore \ and CR. */
- 		if (file[i] == '\\' && (i+1 < len) && file[i+1] == '\n') {
- 			i++;
-@@ -276,7 +297,14 @@ static int parse_file(const char *fname, struct md4_ctx *md)
- 
- 		/* Handle strings as whole units */
- 		if (file[i] == '"') {
--			i += parse_string(file+i, len - i, md);
-+			unsigned long slen = parse_string(file+i, len - i);
-+
-+			/* Closing quote is included if there is one. */
-+			if (slen < len - i)
-+				slen++;
-+			memcpy(buf + n, file + i, slen);
-+			n += slen;
-+			i += slen - 1;
- 			continue;
- 		}
- 
-@@ -286,11 +314,15 @@ static int parse_file(const char *fname, struct md4_ctx *md)
- 			continue;
- 		}
- 
--		add_char(file[i], md);
-+		buf[n++] = file[i];
- 	}
-+	md4_update(md, buf, n);
-+	free(buf);
-+out_file:
- 	free(file);
- 	return 1;
- }
-+
- /* Check whether the file is a static library or not */
- static bool is_static_library(const char *objfile)
- {
-@@ -370,7 +402,6 @@ static int parse_source_files(const char *objfile, struct md4_ctx *md)
- 				     line, strerror(errno));
- 				goto out_file;
- 			}
--
- 		}
- 
- 	}
 diff --git a/scripts/tags.sh b/scripts/tags.sh
 index 41e38df..c33d0f5 100755
 --- a/scripts/tags.sh
@@ -3684,7 +3936,7 @@ index 5424e93..bdf1cad 100644
  # Allow old libelf to be used:
  elfshdr := $(shell echo '$(pound)include <libelf.h>' | $(HOSTCC) $(OBJTOOL_CFLAGS) -x c -E - 2>/dev/null | grep elf_getshdr)
 diff --git a/tools/objtool/check.c b/tools/objtool/check.c
-index 464f6c9..b092cf8 100644
+index 464f6c9..a7499f2 100644
 --- a/tools/objtool/check.c
 +++ b/tools/objtool/check.c
 @@ -7,6 +7,9 @@
@@ -3749,24 +4001,7 @@ index 464f6c9..b092cf8 100644
  }
  
  struct instruction *next_insn_same_func(struct objtool_file *file,
-@@ -305,7 +318,15 @@ static bool __dead_end_function(struct objtool_file *file, struct symbol *func,
- 
- static bool dead_end_function(struct objtool_file *file, struct symbol *func)
- {
--	return __dead_end_function(file, func, 0);
-+	if (!func)
-+		return false;
-+
-+	if (!func->dead_end_known) {
-+		func->dead_end = __dead_end_function(file, func, 0);
-+		func->dead_end_known = 1;
-+	}
-+
-+	return func->dead_end;
- }
- 
- static void init_cfi_state(struct cfi_state *cfi)
-@@ -403,21 +424,391 @@ static void *cfi_hash_alloc(unsigned long size)
+@@ -403,21 +416,391 @@ static void *cfi_hash_alloc(unsigned long size)
  static unsigned long nr_insns;
  static unsigned long nr_insns_visited;
  
@@ -3860,7 +4095,7 @@ index 464f6c9..b092cf8 100644
 +static void insn_hash_add(struct objtool_file *file, struct instruction *insn)
 +{
 +	struct hlist_head *head = insn_hash_head(file, insn->sec, insn->offset);
-+	struct hlist_node *first = head->first;
++	struct hlist_node *first = READ_ONCE(head->first);
 +
 +	insn->hash.pprev = &head->first;
 +	do {
@@ -4163,7 +4398,7 @@ index 464f6c9..b092cf8 100644
  
  		if (!is_text_sec(sec))
  			continue;
-@@ -442,41 +833,20 @@ static int decode_instructions(struct objtool_file *file)
+@@ -442,41 +825,20 @@ static int decode_instructions(struct objtool_file *file)
  		if (!strcmp(sec->name, ".init.text") && !opts.module)
  			sec->init = true;
  
@@ -4216,7 +4451,7 @@ index 464f6c9..b092cf8 100644
  
  		sec_for_each_sym(sec, func) {
  			if (!is_notype_sym(func) && !is_func_sym(func))
-@@ -1519,133 +1889,147 @@ static bool is_first_func_insn(struct objtool_file *file,
+@@ -1519,133 +1881,147 @@ static bool is_first_func_insn(struct objtool_file *file,
  /*
   * Find the destination instructions for all jumps.
   */
@@ -4467,7 +4702,7 @@ index 464f6c9..b092cf8 100644
  static struct symbol *find_call_destination(struct section *sec, unsigned long offset)
  {
  	struct symbol *call_dest;
-@@ -1660,64 +2044,79 @@ static struct symbol *find_call_destination(struct section *sec, unsigned long o
+@@ -1660,59 +2036,82 @@ static struct symbol *find_call_destination(struct section *sec, unsigned long o
  /*
   * Find the destination instructions for all calls.
   */
@@ -4564,11 +4799,11 @@ index 464f6c9..b092cf8 100644
 +	} else {
 +		if (add_call_dest(file, insn, reloc->sym, false))
 +			return -1;
- 	}
- 
- 	return 0;
- }
- 
++	}
++
++	return 0;
++}
++
 +static int add_call_destinations_range(struct objtool_file *file,
 +				       struct insn_range *range)
 +{
@@ -4582,14 +4817,17 @@ index 464f6c9..b092cf8 100644
 +	return 0;
 +}
 +
++/* Serial: annotating a call site rewrites instructions the dead end walks read. */
 +static int add_call_destinations(struct objtool_file *file)
 +{
-+	return run_insn_ranges(file, add_call_destinations_range);
-+}
++	unsigned int i;
 +
- /*
-  * The .alternatives section requires some extra special care over and above
-  * other special sections because alternatives are patched in place.
++	for (i = 0; i < nr_decode_ranges; i++) {
++		if (add_call_destinations_range(file, &decode_ranges[i]))
++			return -1;
+ 	}
+ 
+ 	return 0;
 @@ -2681,6 +3080,8 @@ int decode_file(struct objtool_file *file)
  	if (read_annotate(file, __annotate_late))
  		return -1;
@@ -4599,8 +4837,18 @@ index 464f6c9..b092cf8 100644
  	return 0;
  }
  
+@@ -4802,6 +5203,9 @@ void free_insns(struct objtool_file *file)
+ 
+ 	for (chunk = chunks; chunk; chunk = chunk->next)
+ 		free(chunk->addr);
++
++	free(file->insn_hash);
++	file->insn_hash = NULL;
+ }
+ 
+ const char *objtool_disas_insn(struct instruction *insn)
 diff --git a/tools/objtool/elf.c b/tools/objtool/elf.c
-index a791f4e..13073dc 100644
+index a791f4e..5ee1130 100644
 --- a/tools/objtool/elf.c
 +++ b/tools/objtool/elf.c
 @@ -316,18 +316,117 @@ struct symbol *find_global_symbol_by_name(const struct elf *elf, const char *nam
@@ -4924,16 +5172,27 @@ index a791f4e..13073dc 100644
  static int elf_alloc_reloc(struct elf *elf, struct section *rsec)
  {
  	struct reloc *old_relocs, *old_relocs_end, *new_relocs;
-@@ -1592,6 +1799,7 @@ static int elf_alloc_reloc(struct elf *elf, struct section *rsec)
+@@ -1686,6 +1893,8 @@ struct section *elf_create_rela_section(struct elf *elf, struct section *sec,
+ 
+ 	sec->rsec = rsec;
+ 	rsec->base = sec;
++	/* Relocations objtool creates are looked up through the hash. */
++	rsec->hashed = true;
+ 
+ 	return rsec;
+ }
+@@ -1708,6 +1917,9 @@ struct reloc *elf_create_reloc(struct elf *elf, struct section *sec,
+ 		return NULL;
  	}
  
- 	rsec->nr_alloc_relocs = nr_alloc;
-+	copy_reloc_cache_to_hash(elf, rsec, nr_relocs_old);
++	/* A section read from the file is indexed, once grown it is hashed. */
++	copy_reloc_cache_to_hash(elf, rsec, sec_num_entries(rsec));
++
+ 	if (elf_alloc_reloc(elf, rsec))
+ 		return NULL;
  
- 	old_relocs = rsec->relocs;
- 	new_relocs = calloc(nr_alloc, sizeof(struct reloc));
 diff --git a/tools/objtool/include/objtool/elf.h b/tools/objtool/include/objtool/elf.h
-index a82517a..0d61ddf 100644
+index a82517a..946b411 100644
 --- a/tools/objtool/include/objtool/elf.h
 +++ b/tools/objtool/include/objtool/elf.h
 @@ -59,6 +59,8 @@ struct section {
@@ -4945,15 +5204,6 @@ index a82517a..0d61ddf 100644
  	struct reloc *relocs;
  	unsigned long nr_alloc_relocs;
  	struct section *twin;
-@@ -98,6 +100,8 @@ struct symbol {
- 	u8 klp		     : 1;
- 	u8 dont_correlate    : 1;
- 	u8 fake		     : 1;
-+	u8 dead_end_known    : 1;
-+	u8 dead_end	     : 1;
- 	struct list_head pv_target;
- 	struct reloc *relocs;
- 	struct section *group_sec;
 diff --git a/tools/objtool/include/objtool/objtool.h b/tools/objtool/include/objtool/objtool.h
 index 6dc12a5..79fe82b 100644
 --- a/tools/objtool/include/objtool/objtool.h
@@ -4969,10 +5219,18 @@ index 6dc12a5..79fe82b 100644
  	struct list_head return_thunk_list;
  	struct list_head static_call_list;
 diff --git a/tools/objtool/objtool.c b/tools/objtool/objtool.c
-index a4e139d..71e048f 100644
+index a4e139d..f472dfe 100644
 --- a/tools/objtool/objtool.c
 +++ b/tools/objtool/objtool.c
-@@ -29,7 +29,6 @@ struct objtool_file *objtool_open_read(const char *filename)
+@@ -8,6 +8,7 @@
+ #include <string.h>
+ #include <stdlib.h>
+ #include <unistd.h>
++#include <pthread.h>
+ #include <subcmd/exec-cmd.h>
+ #include <subcmd/pager.h>
+ #include <linux/kernel.h>
+@@ -29,7 +30,6 @@ struct objtool_file *objtool_open_read(const char *filename)
  	if (!file.elf)
  		return NULL;
  
@@ -4980,3 +5238,33 @@ index a4e139d..71e048f 100644
  	INIT_LIST_HEAD(&file.retpoline_call_list);
  	INIT_LIST_HEAD(&file.return_thunk_list);
  	INIT_LIST_HEAD(&file.static_call_list);
+@@ -42,6 +42,8 @@ struct objtool_file *objtool_open_read(const char *filename)
+ 	return &file;
+ }
+ 
++static pthread_mutex_t pv_ops_lock = PTHREAD_MUTEX_INITIALIZER;
++
+ int objtool_pv_add(struct objtool_file *f, int idx, struct symbol *func)
+ {
+ 	if (!opts.noinstr)
+@@ -60,12 +62,15 @@ int objtool_pv_add(struct objtool_file *f, int idx, struct symbol *func)
+ 	    !strcmp(func->name, "_paravirt_ident_64"))
+ 		return 0;
+ 
+-	/* already added this function */
+-	if (!list_empty(&func->pv_target))
+-		return 0;
++	pthread_mutex_lock(&pv_ops_lock);
+ 
+-	list_add(&func->pv_target, &f->pv_ops[idx].targets);
+-	f->pv_ops[idx].clean = false;
++	/* already added this function */
++	if (list_empty(&func->pv_target)) {
++		list_add(&func->pv_target, &f->pv_ops[idx].targets);
++		f->pv_ops[idx].clean = false;
++	}
++
++	pthread_mutex_unlock(&pv_ops_lock);
+ 	return 0;
+ }
+ 

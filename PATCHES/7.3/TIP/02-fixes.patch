@@ -64,7 +64,7 @@ index df22113..3b0ed46 100644
  	/* With PTI, we unconditionally serialize before running user code. */
  	if (cpu_feature_enabled(X86_FEATURE_PTI))
 diff --git a/arch/x86/kernel/cpu/amd.c b/arch/x86/kernel/cpu/amd.c
-index 54e14ed..0befde2 100644
+index e5279bc..f188283 100644
 --- a/arch/x86/kernel/cpu/amd.c
 +++ b/arch/x86/kernel/cpu/amd.c
 @@ -1044,11 +1044,8 @@ static const struct x86_cpu_id zen5_rdseed_microcode[] = {
@@ -103,6 +103,24 @@ index 002b9f9..bad6327 100644
  	{ USB_DEVICE(0x13d3, 0x3585), .driver_info = BTUSB_MEDIATEK |
  						     BTUSB_WIDEBAND_SPEECH },
  	{ USB_DEVICE(0x13d3, 0x3610), .driver_info = BTUSB_MEDIATEK |
+diff --git a/drivers/gpu/drm/gud/gud_connector.c b/drivers/gpu/drm/gud/gud_connector.c
+index 8141c3a..5c0065c 100644
+--- a/drivers/gpu/drm/gud/gud_connector.c
++++ b/drivers/gpu/drm/gud/gud_connector.c
+@@ -399,11 +399,8 @@ static int gud_connector_add_tv_mode(struct gud_device *gdrm, struct drm_connect
+ 	for (i = 0; i < num_modes; i++) {
+ 		char *mode = &buf[i * GUD_CONNECTOR_TV_MODE_NAME_LEN];
+ 
+-		if (!memchr(mode, '\0', GUD_CONNECTOR_TV_MODE_NAME_LEN)) {
+-			ret = -EIO;
+-			goto free;
+-		}
+-
++		/* The device is not trusted to NUL-terminate the name */
++		mode[GUD_CONNECTOR_TV_MODE_NAME_LEN - 1] = '\0';
+ 		modes[i] = mode;
+ 	}
+ 
 diff --git a/drivers/gpu/drm/i915/gt/intel_rc6.c b/drivers/gpu/drm/i915/gt/intel_rc6.c
 index e91e5cd..a0361f8 100644
 --- a/drivers/gpu/drm/i915/gt/intel_rc6.c
@@ -177,23 +195,6 @@ index 2df6643..7db7554 100644
  	/*
  	 * Don't transmit during firmware restart. The firmware is dead,
  	 * so iwl_trans_tx() would return -EIO for each frame. Avoid the
-diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
-index de9bbcc..7cbdbdd 100644
---- a/drivers/pci/quirks.c
-+++ b/drivers/pci/quirks.c
-@@ -108,7 +108,11 @@ int pcie_failed_link_retrain(struct pci_dev *dev)
- 
- 	pcie_capability_read_word(dev, PCI_EXP_LNKSTA, &lnksta);
- 	pcie_capability_read_word(dev, PCI_EXP_LNKCTL2, &oldlnkctl2);
--	if (!(lnksta & PCI_EXP_LNKSTA_DLLLA) && pcie_lbms_seen(dev, lnksta)) {
-+	if (lnksta & PCI_EXP_LNKSTA_DLLLA) {
-+		;
-+	} else if (PCIE_LNKCTL2_TLS2SPEED(oldlnkctl2) == PCIE_SPEED_2_5GT) {
-+		return ret;
-+	} else if (pcie_lbms_seen(dev, lnksta)) {
- 		pci_info(dev, "broken device, retraining non-functional downstream link at 2.5GT/s\n");
- 		ret = pcie_set_target_speed(dev, PCIE_SPEED_2_5GT, false);
- 		if (ret)
 diff --git a/drivers/usb/core/message.c b/drivers/usb/core/message.c
 index 75e2bfd..1d83f8b 100644
 --- a/drivers/usb/core/message.c
