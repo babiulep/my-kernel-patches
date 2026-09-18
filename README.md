@@ -4,6 +4,7 @@
 - [README 2025](README2025.md) 
 
 ## 2026-09-18
+- NEXT: add patches
 - TIP: The third revision is a set of 20 patches sent out by Lorenzo Stoakes  
        for significantly speeding up kernel build times
 - TIP: offset fixes

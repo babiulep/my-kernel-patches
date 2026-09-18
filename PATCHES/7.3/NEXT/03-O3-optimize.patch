@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index ddcc6dc..b8f6fe5 100644
+index 8fbe4b0..aeee839 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -930,10 +930,14 @@ endif # need-config

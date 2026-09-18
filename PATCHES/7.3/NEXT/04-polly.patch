@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index 3da540a..c1b1bf1 100644
+index aeee839..248dcac 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -946,6 +946,22 @@ endif
@@ -26,7 +26,7 @@ index 3da540a..c1b1bf1 100644
  ifdef CONFIG_CC_IS_GCC
  # gcc-10 renamed --param=allow-store-data-races=0 to
 diff --git a/init/Kconfig b/init/Kconfig
-index 3b141ba..8053cf6 100644
+index 15421e6..4867ddc 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
 @@ -320,6 +320,19 @@ config BUILD_SALT
