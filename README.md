@@ -4,6 +4,10 @@
 - [README 2025](README2025.md) 
 
 ## 2026-09-18
+- NVIDIA NEXT 610.57.04:  
+  Switch to drm_atomic_helper_crtc_create_state  
+  and remove drm_atomic_helper_crtc_reset
+- NVIDIA: create NEXT patches
 - NEXT: add patches
 - TIP: The third revision is a set of 20 patches sent out by Lorenzo Stoakes  
        for significantly speeding up kernel build times

@@ -1,0 +1,40 @@
+diff --git a/nvidia-drm/nvidia-drm-crtc.c b/nvidia-drm/nvidia-drm-crtc.c
+index 37a4deb..7bc4615 100644
+--- a/nvidia-drm/nvidia-drm-crtc.c
++++ b/nvidia-drm/nvidia-drm-crtc.c
+@@ -2065,7 +2065,7 @@ static void nv_drm_plane_atomic_reset(struct drm_plane *plane)
+         return;
+     }
+ 
+-    drm_atomic_helper_plane_reset(plane);
++    drm_atomic_helper_plane_create_state(plane);
+ 
+     /*
+      * The drm atomic helper function allocates a state object that is the wrong
+@@ -2197,7 +2197,7 @@ static const struct drm_plane_funcs nv_plane_funcs = {
+     .update_plane           = drm_atomic_helper_update_plane,
+     .disable_plane          = drm_atomic_helper_disable_plane,
+     .destroy                = nv_drm_plane_destroy,
+-    .reset                  = nv_drm_plane_atomic_reset,
++    .atomic_create_state    = drm_atomic_helper_plane_create_state,
+     .atomic_get_property    = nv_drm_plane_atomic_get_property,
+     .atomic_set_property    = nv_drm_plane_atomic_set_property,
+     .atomic_duplicate_state = nv_drm_plane_atomic_duplicate_state,
+@@ -2298,8 +2298,6 @@ static void nv_drm_atomic_crtc_reset(struct drm_crtc *crtc)
+         return;
+     }
+ 
+-    drm_atomic_helper_crtc_reset(crtc);
+-
+     /*
+      * The drm atomic helper function allocates a state object that is the wrong
+      * size. Copy its contents into the one we allocated above and replace the
+@@ -2459,7 +2457,7 @@ static bool nv_drm_crtc_get_vblank_timestamp(
+ static struct drm_crtc_funcs nv_crtc_funcs = {
+     .set_config             = drm_atomic_helper_set_config,
+     .page_flip              = drm_atomic_helper_page_flip,
+-    .reset                  = nv_drm_atomic_crtc_reset,
++    .atomic_create_state    = drm_atomic_helper_crtc_create_state,
+     .destroy                = nv_drm_crtc_destroy,
+     .atomic_get_property    = nv_drm_atomic_crtc_get_property,
+     .atomic_set_property    = nv_drm_atomic_crtc_set_property,
