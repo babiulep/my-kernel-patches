@@ -860,7 +860,7 @@ index 0000000..7475ae0
 + * -ENODEV if the swap device is not found.
 + * -EBUSY  if the new device is already pinned by another context.
 + */
-+int repin_hibernation_swap_type(int old_type, dev_t device, sector_t offset)
++static int repin_hibernation_swap_type(int old_type, dev_t device, sector_t offset)
 +{
 +	struct swap_info_struct *old_si, *new_si;
 +	int new_type;

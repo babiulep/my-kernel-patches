@@ -153,7 +153,7 @@ index 581f80e..e669a27 100644
 +}
 +#endif
 diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
-index 5a84998..b153659 100644
+index a47a6be..f3351b7 100644
 --- a/arch/x86/Kconfig
 +++ b/arch/x86/Kconfig
 @@ -109,6 +109,7 @@ config X86
@@ -2685,7 +2685,7 @@ index 1e1a316..5843d48 100644
  ifdef CONFIG_FUNCTION_TRACER
  # Do not trace internal ftrace files
 diff --git a/kernel/fork.c b/kernel/fork.c
-index a5934a3..0a761d2 100644
+index 5ef4133..49b7e78 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -2193,7 +2193,8 @@ __latent_entropy struct task_struct *copy_process(
@@ -2713,7 +2713,7 @@ index a5934a3..0a761d2 100644
  		.flags		= flags,
  		.fn		= fn,
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 91f059a..a88db48 100644
+index 319ae9f..2f5f2f8 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -96,6 +96,8 @@
@@ -2725,7 +2725,7 @@ index 91f059a..a88db48 100644
  #include "../smpboot.h"
  #include "../locking/mutex.h"
  
-@@ -5685,6 +5687,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
+@@ -5692,6 +5694,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
   * In case the task is currently running, return the runtime plus current's
   * pending runtime that have not been accounted yet.
   */
@@ -2764,7 +2764,7 @@ index 91f059a..a88db48 100644
  unsigned long long task_sched_runtime(struct task_struct *p)
  {
  	struct rq_flags rf;
-@@ -7339,6 +7373,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
+@@ -7346,6 +7380,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
  		wq_worker_sleeping(tsk);
  	else if (task_flags & PF_IO_WORKER)
  		io_wq_worker_sleeping(tsk);

@@ -11,22 +11,24 @@ index 9875120..00fc262 100644
  *.o.*
  *.patch
 diff --git a/Documentation/kbuild/kbuild.rst b/Documentation/kbuild/kbuild.rst
-index 5a9013b..ebfc294 100644
+index 5a9013b..e71a692 100644
 --- a/Documentation/kbuild/kbuild.rst
 +++ b/Documentation/kbuild/kbuild.rst
-@@ -110,6 +110,21 @@ HOSTLDLIBS
+@@ -110,6 +110,23 @@ HOSTLDLIBS
  ----------
  Additional libraries to link against when building host programs.
  
 +KGZIP
 +-----
-+The gzip compressor used for the compressed kernel image, compressed
-+modules and packaging.
++The gzip program used for compressed modules, packaging and the embedded
++kernel configuration. Defaults to gzip.
 +
-+Defaults to pigz (a parallel implementation of gzip) if it is available,
-+otherwise gzip. Set ``KGZIP=`` on the make command line to use another
-+program. Modules are compressed one per make job, so pigz is limited to a
-+single thread there.
++KPGZIP
++------
++The gzip program used for the compressed kernel image. Defaults to pigz (a
++parallel implementation of gzip), run under scripts/jobserver-exec so that it
++uses the job slots make has free, if pigz is installed, otherwise to
++``KGZIP``. Set ``KPGZIP=`` on the make command line to use another program.
 +
 +KBZIP2, KLZOP, LZMA, LZ4, XZ, ZSTD
 +----------------------------------
@@ -36,46 +38,31 @@ index 5a9013b..ebfc294 100644
  .. _userkbuildflags:
  
  USERCFLAGS
-@@ -134,6 +149,13 @@ See make help for the full list.
+diff --git a/Documentation/process/changes.rst b/Documentation/process/changes.rst
+index 0aa232b..28f2ca6 100644
+--- a/Documentation/process/changes.rst
++++ b/Documentation/process/changes.rst
+@@ -55,6 +55,7 @@ nfs-utils              1.0.5            showmount --version
+ openssl & libcrypto    1.0.0            openssl version
+ pahole                 1.26             pahole --version
+ pcmciautils            004              pccardctl -V
++pigz (optional)        2.4              pigz --version
+ PPP                    2.4.0            pppd --version
+ procps                 3.2.0            ps --version
+ Python                 3.9.x            python3 --version
+@@ -206,6 +207,13 @@ GNU AWK
+ GNU AWK is needed if you want kernel builds to generate address range data for
+ builtin modules (CONFIG_BUILTIN_MODULE_RANGES).
  
- Setting "V=..." takes precedence over KBUILD_VERBOSE.
- 
-+KBUILD_RUST_THREADS
-+-------------------
-+The number of threads rustc's parallel front end may use, passed to it as
-+``-Zthreads``. Unset by default, as the parallel front end is not yet
-+stable and its output is not reproducible. The gain levels off at 8
-+threads.
++pigz (optional)
++---------------
 +
- KBUILD_EXTMOD
- -------------
- Set the directory to look for the kernel source when building external
-diff --git a/Documentation/kbuild/reproducible-builds.rst b/Documentation/kbuild/reproducible-builds.rst
-index bc1eb82..ec0135d 100644
---- a/Documentation/kbuild/reproducible-builds.rst
-+++ b/Documentation/kbuild/reproducible-builds.rst
-@@ -76,6 +76,22 @@ include generated files.  You should ensure the source tree is
- pristine by running ``make mrproper`` or ``git clean -d -f -x`` before
- building a source package.
- 
-+Compression tools
-+-----------------
++pigz is a parallel implementation of gzip. If it is installed the compressed
++kernel image is produced with it rather than with gzip, see ``KPGZIP`` in
++Documentation/kbuild/kbuild.rst.
 +
-+The compressed kernel image, compressed modules and packages are produced
-+using the program named by the make variable ``KGZIP`` (described in
-+Documentation/kbuild/kbuild.rst).
-+
-+It defaults to ``pigz`` if installed (a parallel implementation of gzip),
-+or ``gzip`` otherwise.
-+
-+The generated output between two invocations of identical builds with
-+either of the default tools will be byte-for-byte equivalent.
-+
-+However, for reproducible builds, ensure the same tool is used on all build
-+hosts, as different tools may generate different output from one another.
-+
- Module signing
- --------------
+ System utilities
+ ****************
  
 diff --git a/Kbuild b/Kbuild
 index a6a0192..9670556 100644
@@ -91,19 +78,29 @@ index a6a0192..9670556 100644
 +$(KBUILD_RUST_DIRS): | rust
 +endif
 diff --git a/Makefile b/Makefile
-index 28da54b..15606b1 100644
+index 28da54b..47fd12e 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -561,7 +561,7 @@ PERL		= perl
- PYTHON3		= python3
- CHECK		= sparse
- BASH		= bash
--KGZIP		= gzip
-+KGZIP		:= $(if $(shell command -v pigz 2>/dev/null),pigz,gzip)
- KBZIP2		= bzip2
- KLZOP		= lzop
- LZMA		= lzma
-@@ -966,8 +966,8 @@ endif
+@@ -568,6 +568,9 @@ LZMA		= lzma
+ LZ4		= lz4
+ XZ		= xz
+ ZSTD		= zstd
++# The kernel image is compressed with pigz, on the job slots make has free,
++# if it is installed. Everything else uses KGZIP.
++KPGZIP		:= $(if $(shell command -v pigz 2>/dev/null),$(PYTHON3) $(abs_srctree)/scripts/jobserver-exec pigz -p %PARALLELISM%,$(KGZIP))
+ TAR		= tar
+ 
+ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
+@@ -648,7 +651,7 @@ export RUSTC RUSTDOC RUSTFMT RUSTC_OR_CLIPPY_QUIET RUSTC_OR_CLIPPY BINDGEN LLVM_
+ export HOSTRUSTC KBUILD_HOSTRUSTFLAGS
+ export CPP AR NM STRIP OBJCOPY OBJDUMP READELF PAHOLE RESOLVE_BTFIDS LEX YACC AWK INSTALLKERNEL
+ export PERL PYTHON3 CHECK CHECKFLAGS MAKE UTS_MACHINE HOSTCXX
+-export KGZIP KBZIP2 KLZOP LZMA LZ4 XZ ZSTD TAR
++export KGZIP KPGZIP KBZIP2 KLZOP LZMA LZ4 XZ ZSTD TAR
+ export KBUILD_HOSTCXXFLAGS KBUILD_HOSTLDFLAGS KBUILD_HOSTLDLIBS KBUILD_PROCMACROLDFLAGS LDFLAGS_MODULE
+ export KBUILD_USERCFLAGS KBUILD_USERLDFLAGS
+ 
+@@ -966,8 +969,8 @@ endif
  ifdef CONFIG_CC_IS_GCC
  # gcc-10 renamed --param=allow-store-data-races=0 to
  # -fno-allow-store-data-races.
@@ -114,7 +111,7 @@ index 28da54b..15606b1 100644
  endif
  
  ifdef CONFIG_READABLE_ASM
-@@ -1031,18 +1031,20 @@ endif
+@@ -1031,18 +1034,20 @@ endif
  endif
  
  # Explicitly clear padding bits during variable initialization
@@ -138,7 +135,7 @@ index 28da54b..15606b1 100644
  
  # Clear used registers at func exit (to reduce data lifetime and ROP gadgets).
  ifdef CONFIG_ZERO_CALL_USED_REGS
-@@ -1053,7 +1055,7 @@ ifdef CONFIG_FUNCTION_TRACER
+@@ -1053,7 +1058,7 @@ ifdef CONFIG_FUNCTION_TRACER
  ifdef CONFIG_FTRACE_MCOUNT_USE_CC
    CC_FLAGS_FTRACE	+= -mrecord-mcount
    ifdef CONFIG_HAVE_NOP_MCOUNT
@@ -147,7 +144,7 @@ index 28da54b..15606b1 100644
        CC_FLAGS_FTRACE	+= -mnop-mcount
        CC_FLAGS_USING	+= -DCC_USING_NOP_MCOUNT
      endif
-@@ -1071,8 +1073,7 @@ ifdef CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT
+@@ -1071,8 +1076,7 @@ ifdef CONFIG_FTRACE_MCOUNT_USE_RECORDMCOUNT
    endif
  endif
  ifdef CONFIG_HAVE_FENTRY
@@ -157,7 +154,7 @@ index 28da54b..15606b1 100644
      CC_FLAGS_FTRACE	+= -mfentry
      CC_FLAGS_USING	+= -DCC_USING_FENTRY
    endif
-@@ -1180,7 +1181,7 @@ NOSTDINC_FLAGS += -nostdinc
+@@ -1180,7 +1184,7 @@ NOSTDINC_FLAGS += -nostdinc
  # the kernel uses only C99 flexible arrays for dynamically sized trailing
  # arrays. Enforce this for everything that may examine structure sizes and
  # perform bounds checking.
@@ -166,18 +163,7 @@ index 28da54b..15606b1 100644
  
  # disable invalid "can't wrap" optimizations for signed / pointers
  KBUILD_CFLAGS	+= -fno-strict-overflow
-@@ -1225,6 +1226,10 @@ KBUILD_RUSTFLAGS += --remap-path-prefix=$(srcroot)/= --remap-path-scope=macro
- endif
- endif
- 
-+ifneq ($(KBUILD_RUST_THREADS),)
-+KBUILD_RUSTFLAGS += -Zthreads=$(KBUILD_RUST_THREADS)
-+endif
-+
- # include additional Makefiles when needed
- include-y			:= scripts/Makefile.warn
- include-$(CONFIG_DEBUG_INFO)	+= scripts/Makefile.debug
-@@ -1260,11 +1265,11 @@ LDFLAGS_vmlinux += --build-id=sha1
+@@ -1260,11 +1264,11 @@ LDFLAGS_vmlinux += --build-id=sha1
  # COMDAT-deduplicated sections. Use --force-group-allocation to resolve these
  # groups when linking modules. The option is available from ld.bfd 2.29 and
  # ld.lld 19.1.0.
@@ -191,7 +177,7 @@ index 28da54b..15606b1 100644
  endif
  
  ifeq ($(CONFIG_STRIP_ASM_SYMS),y)
-@@ -1283,7 +1288,7 @@ LDFLAGS_vmlinux += --orphan-handling=$(CONFIG_LD_ORPHAN_WARN_LEVEL)
+@@ -1283,7 +1287,7 @@ LDFLAGS_vmlinux += --orphan-handling=$(CONFIG_LD_ORPHAN_WARN_LEVEL)
  endif
  
  ifneq ($(CONFIG_ARCH_VMLINUX_NEEDS_RELOCS),)
@@ -200,7 +186,7 @@ index 28da54b..15606b1 100644
  endif
  
  # Align the architecture of userspace programs with the kernel
-@@ -1441,14 +1446,17 @@ archprepare: outputmakefile archheaders archscripts scripts include/config/kerne
+@@ -1441,14 +1445,17 @@ archprepare: outputmakefile archheaders archscripts scripts include/config/kerne
  	include/generated/rustc_cfg remove-stale-files
  
  prepare0: archprepare
@@ -220,20 +206,22 @@ index 28da54b..15606b1 100644
  endif
  
  PHONY += remove-stale-files
-@@ -1775,6 +1783,12 @@ modules: modules_prepare
+@@ -1775,6 +1782,14 @@ modules: modules_prepare
  # Target to prepare building external modules
  modules_prepare: prepare
  	$(Q)$(MAKE) $(build)=scripts scripts/module.lds
 +ifdef CONFIG_RUST
-+# Ensure rust/ is built before any external rust module which will rely upon it.
++# Avoid two instances of rust/ being built at any one time.
 +ifneq ($(filter modules_prepare,$(MAKECMDGOALS)),)
++ifeq ($(filter all vmlinux modules %Image% dtbs rustdoc rusttest,$(MAKECMDGOALS)),)
 +	$(Q)$(MAKE) $(build)=rust
++endif
 +endif
 +endif
  
  endif # CONFIG_MODULES
  
-@@ -2257,13 +2271,14 @@ clean: $(clean-dirs)
+@@ -2257,13 +2272,14 @@ clean: $(clean-dirs)
  	$(call cmd,rmfiles)
  	@find . $(RCS_FIND_IGNORE) \
  		\( -name '*.[aios]' -o -name '*.rsi' -o -name '*.ko' -o -name '.*.cmd' \
@@ -276,7 +264,7 @@ index bc098ed..e0ed7ca 100644
  # Disable LTO
  KBUILD_CFLAGS	:= $(filter-out $(CC_FLAGS_LTO), $(KBUILD_CFLAGS))
 diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
-index b153659..4090b6e 100644
+index f3351b7..96ebc41 100644
 --- a/arch/x86/Kconfig
 +++ b/arch/x86/Kconfig
 @@ -2364,6 +2364,23 @@ config CC_HAS_KCFI_ARITY
@@ -901,6 +889,25 @@ index 0000000..7a0438f
 +config PAHOLE_VERSION
 +	int
 +	default "$(PAHOLE_VERSION)"
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 5843d48..9d5de8a 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -154,9 +154,13 @@ obj-$(CONFIG_SCF_TORTURE_TEST) += scftorture.o
+ 
+ $(obj)/configs.o: $(obj)/config_data.gz
+ 
++# .config is small, so it is compressed with gzip rather than the image compressor.
++quiet_cmd_gzip_config = GZIP    $@
++      cmd_gzip_config = cat $(real-prereqs) | $(KGZIP) -n -f -9 > $@
++
+ targets += config_data config_data.gz
+ $(obj)/config_data.gz: $(obj)/config_data FORCE
+-	$(call if_changed,gzip)
++	$(call if_changed,gzip_config)
+ 
+ filechk_cat = cat $<
+ 
 diff --git a/rust/Makefile b/rust/Makefile
 index da1a740..74d21ae 100644
 --- a/rust/Makefile
@@ -1000,7 +1007,7 @@ index 4349108..77351d6 100644
  # Create directories for object files if they do not exist
  obj-dirs := $(sort $(patsubst %/,%, $(dir $(targets))))
 diff --git a/scripts/Makefile.lib b/scripts/Makefile.lib
-index 0a4fdd8..2f447bc 100644
+index 0a4fdd8..8936925 100644
 --- a/scripts/Makefile.lib
 +++ b/scripts/Makefile.lib
 @@ -2,8 +2,7 @@
@@ -1024,11 +1031,25 @@ index 0a4fdd8..2f447bc 100644
  quiet_modtag = $(if $(part-of-module),[M],   )
  
  modkern_cflags =                                          \
+@@ -333,11 +332,11 @@ quiet_cmd_ar = AR      $@
+ quiet_cmd_objcopy = OBJCOPY $@
+ cmd_objcopy = $(OBJCOPY) $(OBJCOPYFLAGS) $(OBJCOPYFLAGS_$(@F)) $< $@
+ 
+-# Gzip
++# Gzip, for the kernel image
+ # ---------------------------------------------------------------------------
+ 
+ quiet_cmd_gzip = GZIP    $@
+-      cmd_gzip = cat $(real-prereqs) | $(KGZIP) -n -f -9 > $@
++      cmd_gzip = cat $(real-prereqs) | $(KPGZIP) -n -f -9 > $@
+ 
+ # Bzip2
+ # ---------------------------------------------------------------------------
 diff --git a/scripts/Makefile.modfinal b/scripts/Makefile.modfinal
-index 01a37ec..858fa79 100644
+index 01a37ec..4d5e6e1 100644
 --- a/scripts/Makefile.modfinal
 +++ b/scripts/Makefile.modfinal
-@@ -13,17 +13,42 @@ include $(srctree)/scripts/Makefile.lib
+@@ -13,20 +13,48 @@ include $(srctree)/scripts/Makefile.lib
  # find all modules listed in modules.order
  modules := $(call read-file, modules.order)
  
@@ -1068,40 +1089,31 @@ index 01a37ec..858fa79 100644
 +# needs only the assembler and no dependency tracking.
 +quiet_cmd_as_mod_o = AS [M]  $@
 +      cmd_as_mod_o = $(CC) $(_a_flags) $(modkern_aflags) -c -o $@ $<
-+
+ 
 +%.mod.o: %.mod.S FORCE
 +	$(call if_changed,as_mod_o)
- 
++
++# Built by the top-level instance alone, the chunks take it as a plain file.
++ifndef modfinal-first
  .module-common.o: $(srctree)/scripts/module-common.c FORCE
  	$(call if_changed_rule,cc_o_c)
-@@ -54,7 +79,10 @@ ifdef CONFIG_DEBUG_INFO_BTF_MODULES
++endif
+ 
+ ifneq ($(WARN_ON_UNUSED_TRACEPOINTS),)
+ cmd_check_tracepoint = $(objtree)/scripts/tracepoint-update --module $<;
+@@ -54,7 +82,11 @@ ifdef CONFIG_DEBUG_INFO_BTF_MODULES
  endif
  	+$(call cmd,check_tracepoint)
  
 -targets += $(modules:%.o=%.ko) $(modules:%.o=%.mod.o) .module-common.o
-+targets += .module-common.o
 +ifdef modfinal-first
 +targets += $(modules:%.o=%.ko) $(modules:%.o=%.mod.o)
++else
++targets += .module-common.o
 +endif
  
  # Add FORCE to the prerequisites of a target to force it to be always rebuilt.
  # ---------------------------------------------------------------------------
-diff --git a/scripts/Makefile.modinst b/scripts/Makefile.modinst
-index 9ba45e5..58dafec 100644
---- a/scripts/Makefile.modinst
-+++ b/scripts/Makefile.modinst
-@@ -145,8 +145,10 @@ endif
- #
- # Compression
- #
-+# Modules are compressed in parallel by make itself, so keep the compressor
-+# single-threaded when it is pigz.
- quiet_cmd_gzip = GZIP    $@
--      cmd_gzip = $(KGZIP) -n -f $<
-+      cmd_gzip = $(KGZIP) $(if $(filter pigz,$(notdir $(firstword $(KGZIP)))),-p 1) -n -f $<
- quiet_cmd_xz = XZ      $@
-       cmd_xz = $(XZ) --check=crc32 --lzma2=dict=1MiB -f $<
- quiet_cmd_zstd = ZSTD    $@
 diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
 index d7d4506..eecf5f5 100644
 --- a/scripts/Makefile.modpost
@@ -1276,10 +1288,10 @@ index fb8e2c3..ff98780 100644
  # before running a Clang kernel build.
 diff --git b/scripts/basic/depcheck.c b/scripts/basic/depcheck.c
 new file mode 100644
-index 0000000..ce5c456
+index 0000000..622101c
 --- /dev/null
 +++ b/scripts/basic/depcheck.c
-@@ -0,0 +1,443 @@
+@@ -0,0 +1,441 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * depcheck - check the dependency timestamps of a directory's targets so that
@@ -1571,17 +1583,15 @@ index 0000000..ce5c456
 +	const char *slash = strrchr(cmd_path, '/');
 +	const char *base = slash ? slash + 1 : cmd_path;
 +	const size_t dir_len = base - cmd_path;
-+	size_t name_len;
++	const size_t affix_len = strlen(".") + strlen(CMD_SUFFIX);
++	const size_t base_len = strlen(base);
 +
-+	if (base[0] != '.' || !str_ends_with(base, CMD_SUFFIX))
-+		return false;
-+
-+	name_len = strlen(base) - strlen(".") - strlen(CMD_SUFFIX);
-+	if (!name_len)
++	if (base[0] != '.' || !str_ends_with(base, CMD_SUFFIX) ||
++	    base_len <= affix_len)
 +		return false;
 +
 +	return snprintf(target, size, "%.*s%.*s", (int)dir_len, cmd_path,
-+			(int)name_len, base + 1) < (int)size;
++			(int)(base_len - affix_len), base + 1) < (int)size;
 +}
 +
 +/*
@@ -1911,6 +1921,20 @@ index f4411e0..453286e 100644
  void elf_unmap(void *addr, size_t size);
  int elf_map_machine(void *addr);
  int elf_map_long_size(void *addr);
+diff --git a/scripts/jobserver-exec b/scripts/jobserver-exec
+index 21b319e..89119ac 100755
+--- a/scripts/jobserver-exec
++++ b/scripts/jobserver-exec
+@@ -4,7 +4,8 @@
+ """
+ Determines how many parallel tasks "make" is expecting, as it is
+ not exposed via any special variables, reserves them all, runs a subprocess
+-with PARALLELISM environment variable set, and releases the jobs back again.
++with PARALLELISM environment variable set and any %PARALLELISM% in its
++arguments replaced by the count, and releases the jobs back again.
+ 
+ See:
+     https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html#POSIX-Jobserver
 diff --git b/scripts/kallsyms-sysmap.c b/scripts/kallsyms-sysmap.c
 new file mode 100644
 index 0000000..64b2e11
@@ -3922,6 +3946,49 @@ index 41e38df..c33d0f5 100755
  
  # ignore arbitrary directories
  if [ -n "${IGNORE_DIRS}" ]; then
+diff --git a/tools/lib/python/jobserver.py b/tools/lib/python/jobserver.py
+index 0b1ffdf..7e94635 100755
+--- a/tools/lib/python/jobserver.py
++++ b/tools/lib/python/jobserver.py
+@@ -29,6 +29,10 @@ $claim child to do the actual work.
+ The end goal here is to keep the total number of build tasks under the
+ limit established by the initial ``make -j$n_proc`` call.
+ 
++A command that takes its thread count on the command line rather than from
++the environment can use the ``%PARALLELISM%`` token in its arguments, which
++is replaced by the count, or by 1 when there is no jobserver.
++
+ See:
+     https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html#POSIX-Jobserver
+ """
+@@ -38,6 +42,8 @@ import os
+ import subprocess
+ import sys
+ 
++PARALLELISM_TOKEN = "%PARALLELISM%"
++
+ def warn(text, *args):
+     print(f'WARNING: {text}', *args, file = sys.stderr)
+ 
+@@ -182,6 +188,9 @@ class JobserverExec:
+         Run a command setting PARALLELISM env variable to the number of
+         available job slots (claim) + 1, e.g. it will reserve claim slots
+         to do the actual build work, plus one to monitor its children.
++
++        Any %PARALLELISM% in the command's arguments is replaced by the same
++        number, or by 1 when there is no jobserver.
+         """
+         self.open()             # Ensure that self.claim is set
+ 
+@@ -192,4 +201,8 @@ class JobserverExec:
+         if self.claim:
+             os.environ["PARALLELISM"] = str(self.claim)
+ 
++        if not isinstance(cmd, str):
++            parallelism = str(self.claim or 1)
++            cmd = [arg.replace(PARALLELISM_TOKEN, parallelism) for arg in cmd]
++
+         return subprocess.call(cmd, *args, **pwargs)
 diff --git a/tools/objtool/Makefile b/tools/objtool/Makefile
 index 5424e93..bdf1cad 100644
 --- a/tools/objtool/Makefile
@@ -3936,7 +4003,7 @@ index 5424e93..bdf1cad 100644
  # Allow old libelf to be used:
  elfshdr := $(shell echo '$(pound)include <libelf.h>' | $(HOSTCC) $(OBJTOOL_CFLAGS) -x c -E - 2>/dev/null | grep elf_getshdr)
 diff --git a/tools/objtool/check.c b/tools/objtool/check.c
-index 464f6c9..a7499f2 100644
+index 464f6c9..52af91e 100644
 --- a/tools/objtool/check.c
 +++ b/tools/objtool/check.c
 @@ -7,6 +7,9 @@
@@ -4001,11 +4068,11 @@ index 464f6c9..a7499f2 100644
  }
  
  struct instruction *next_insn_same_func(struct objtool_file *file,
-@@ -403,21 +416,391 @@ static void *cfi_hash_alloc(unsigned long size)
+@@ -403,21 +416,394 @@ static void *cfi_hash_alloc(unsigned long size)
  static unsigned long nr_insns;
  static unsigned long nr_insns_visited;
  
-+/* Only an object this large, e.g. vmlinux.o, is decoded on several threads. */
++/* Only the vmlinux.o link, and only if it is this large, runs on several threads. */
 +#define DECODE_THREADED_MIN_TEXT	SZ_8M
 +/* Only decoding and the branch passes are threaded, so more gains nothing. */
 +#define DECODE_MAX_THREADS		16
@@ -4352,6 +4419,9 @@ index 464f6c9..a7499f2 100644
 +{
 +	const long nr_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 +
++	/* Modules are processed inside the parallel build, on one thread. */
++	if (!opts.link || opts.module)
++		return 1;
 +	if (text_size < DECODE_THREADED_MIN_TEXT || nr_cpus < 2)
 +		return 1;
 +
@@ -4398,7 +4468,7 @@ index 464f6c9..a7499f2 100644
  
  		if (!is_text_sec(sec))
  			continue;
-@@ -442,41 +825,20 @@ static int decode_instructions(struct objtool_file *file)
+@@ -442,41 +828,20 @@ static int decode_instructions(struct objtool_file *file)
  		if (!strcmp(sec->name, ".init.text") && !opts.module)
  			sec->init = true;
  
@@ -4451,7 +4521,7 @@ index 464f6c9..a7499f2 100644
  
  		sec_for_each_sym(sec, func) {
  			if (!is_notype_sym(func) && !is_func_sym(func))
-@@ -1519,133 +1881,147 @@ static bool is_first_func_insn(struct objtool_file *file,
+@@ -1519,133 +1884,147 @@ static bool is_first_func_insn(struct objtool_file *file,
  /*
   * Find the destination instructions for all jumps.
   */
@@ -4702,7 +4772,7 @@ index 464f6c9..a7499f2 100644
  static struct symbol *find_call_destination(struct section *sec, unsigned long offset)
  {
  	struct symbol *call_dest;
-@@ -1660,59 +2036,82 @@ static struct symbol *find_call_destination(struct section *sec, unsigned long o
+@@ -1660,59 +2039,82 @@ static struct symbol *find_call_destination(struct section *sec, unsigned long o
  /*
   * Find the destination instructions for all calls.
   */
@@ -4828,7 +4898,7 @@ index 464f6c9..a7499f2 100644
  	}
  
  	return 0;
-@@ -2681,6 +3080,8 @@ int decode_file(struct objtool_file *file)
+@@ -2681,6 +3083,8 @@ int decode_file(struct objtool_file *file)
  	if (read_annotate(file, __annotate_late))
  		return -1;
  
@@ -4837,7 +4907,7 @@ index 464f6c9..a7499f2 100644
  	return 0;
  }
  
-@@ -4802,6 +5203,9 @@ void free_insns(struct objtool_file *file)
+@@ -4802,6 +5206,9 @@ void free_insns(struct objtool_file *file)
  
  	for (chunk = chunks; chunk; chunk = chunk->next)
  		free(chunk->addr);
@@ -4848,21 +4918,20 @@ index 464f6c9..a7499f2 100644
  
  const char *objtool_disas_insn(struct instruction *insn)
 diff --git a/tools/objtool/elf.c b/tools/objtool/elf.c
-index a791f4e..5ee1130 100644
+index a791f4e..8524d28 100644
 --- a/tools/objtool/elf.c
 +++ b/tools/objtool/elf.c
-@@ -316,18 +316,117 @@ struct symbol *find_global_symbol_by_name(const struct elf *elf, const char *nam
+@@ -316,35 +316,160 @@ struct symbol *find_global_symbol_by_name(const struct elf *elf, const char *nam
  	return NULL;
  }
  
 -/* If there are multiple matches, return the first one in the range */
--struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *sec,
 +static bool is_dwarf_section(struct section *sec)
 +{
 +	return !strncmp(sec->name, ".debug_", 7);
 +}
 +
-+/* Cache relocations at a 64 byte granularity. */
++/* Index the first relocation at or after each 64 byte window of the base. */
 +#define RELOC_CACHE_INDEX_SHIFT	6
 +
 +static unsigned long reloc_cache_index(unsigned long offset)
@@ -4870,128 +4939,125 @@ index a791f4e..5ee1130 100644
 +	return offset >> RELOC_CACHE_INDEX_SHIFT;
 +}
 +
-+static unsigned int reloc_cache_nr_windows(const struct section *rsec)
++static void reloc_cache_free(struct section *rsec)
 +{
-+	const unsigned long size = sec_size(rsec->base);
++	free(rsec->reloc_cache);
++	rsec->reloc_cache = NULL;
++	rsec->nr_cache_windows = 0;
++	rsec->nr_indexed = 0;
++	rsec->sorted = false;
++}
 +
-+	return (size >> RELOC_CACHE_INDEX_SHIFT) + 1;
++/* Grow the index to cover the base section, new windows start past the end. */
++static int reloc_cache_resize(struct section *rsec)
++{
++	const unsigned int nr_windows = reloc_cache_index(sec_size(rsec->base)) + 1;
++	unsigned int *cache;
++
++	if (nr_windows <= rsec->nr_cache_windows)
++		return 0;
++
++	cache = realloc(rsec->reloc_cache, nr_windows * sizeof(*cache));
++	if (!cache) {
++		ERROR_GLIBC("realloc");
++		return -1;
++	}
++
++	while (rsec->nr_cache_windows < nr_windows)
++		cache[rsec->nr_cache_windows++] = rsec->nr_indexed;
++	rsec->reloc_cache = cache;
++
++	return 0;
++}
++
++/*
++ * Index the next relocation. It must follow the previous one in position and
++ * offset, otherwise the section is scanned from now on.
++ */
++static int reloc_cache_add(struct section *rsec, unsigned int reloc_idx)
++{
++	const unsigned long offset = reloc_offset(&rsec->relocs[reloc_idx]);
++	const unsigned long window = reloc_cache_index(offset);
++	unsigned long first_window = 0;
++
++	if (reloc_idx != rsec->nr_indexed)
++		goto unsorted;
++
++	if (reloc_idx) {
++		const unsigned long prev = reloc_offset(&rsec->relocs[reloc_idx - 1]);
++
++		if (offset < prev)
++			goto unsorted;
++		first_window = reloc_cache_index(prev) + 1;
++	}
++
++	if (reloc_cache_resize(rsec))
++		return -1;
++	if (window >= rsec->nr_cache_windows)
++		goto unsorted;
++
++	while (first_window <= window)
++		rsec->reloc_cache[first_window++] = reloc_idx;
++	rsec->nr_indexed = reloc_idx + 1;
++
++	return 0;
++
++unsorted:
++	reloc_cache_free(rsec);
++	return 0;
 +}
 +
 +static int init_reloc_cache(struct section *rsec)
 +{
 +	const unsigned int nr_relocs = sec_num_entries(rsec);
-+	const unsigned int nr_windows = reloc_cache_nr_windows(rsec);
-+	unsigned int reloc_idx, next_cache_idx = 0;
-+
-+	rsec->reloc_cache = malloc(nr_windows * sizeof(unsigned int));
-+	if (!rsec->reloc_cache) {
-+		ERROR_GLIBC("malloc");
-+		return -1;
-+	}
-+
-+	/* Populate relocation indexes reloc cache index -> reloc index. */
-+	for (reloc_idx = 0; reloc_idx < nr_relocs; reloc_idx++) {
-+		struct reloc *reloc = &rsec->relocs[reloc_idx];
-+		const unsigned long offset = reloc_offset(reloc);
-+		const unsigned long cache_idx = reloc_cache_index(offset);
-+
-+		if (cache_idx >= nr_windows)
-+			break;
-+
-+		while (next_cache_idx <= cache_idx)
-+			rsec->reloc_cache[next_cache_idx++] = reloc_idx;
-+	}
-+
-+	while (next_cache_idx < nr_windows)
-+		rsec->reloc_cache[next_cache_idx++] = nr_relocs;
++	unsigned int reloc_idx;
 +
 +	rsec->sorted = true;
++	for (reloc_idx = 0; reloc_idx < nr_relocs; reloc_idx++) {
++		if (reloc_cache_add(rsec, reloc_idx))
++			return -1;
++		if (!rsec->sorted)
++			break;
++	}
++
 +	return 0;
 +}
 +
-+static void free_reloc_cache(struct section *rsec)
++static bool reloc_in_range(struct reloc *reloc, unsigned long offset,
++			   unsigned int len)
 +{
-+	free(rsec->reloc_cache);
-+	rsec->reloc_cache = NULL;
-+	rsec->sorted = false;
++	return reloc_offset(reloc) >= offset && reloc_offset(reloc) < offset + len;
 +}
 +
++/* The index gives a lower bound, scan on from there. */
 +static struct reloc *find_reloc_sorted(struct section *rsec,
- 				       unsigned long offset, unsigned int len)
- {
--	struct reloc *reloc, *r = NULL;
--	struct section *rsec;
--	unsigned long o;
-+	struct reloc *relocs = rsec->relocs;
-+	const unsigned int nr_relocs = sec_num_entries(rsec);
++				       unsigned long offset, unsigned int len)
++{
 +	const unsigned long cache_idx = reloc_cache_index(offset);
-+	unsigned int reloc_idx, i;
- 
--	rsec = sec->rsec;
--	if (!rsec)
-+	if (cache_idx >= reloc_cache_nr_windows(rsec))
- 		return NULL;
- 
-+	reloc_idx = rsec->reloc_cache[cache_idx];
++	unsigned int reloc_idx;
 +
-+	/*
-+	 * Scan through all relocations covered by cache entry to find the
-+	 * first at or after offset. Relocations are sorted by offset.
-+	 */
-+	for (i = reloc_idx; i < nr_relocs; i++) {
-+		struct reloc *reloc = &relocs[i];
-+		const unsigned long curr_offset = reloc_offset(reloc);
-+
-+		if (curr_offset >= offset)
-+			break;
-+
-+		reloc_idx++;
-+	}
-+
-+	/* Nothing found, or the first candidate lies beyond the range. */
-+	if (reloc_idx >= nr_relocs ||
-+	    reloc_offset(&relocs[reloc_idx]) >= offset + len)
++	if (cache_idx >= rsec->nr_cache_windows)
 +		return NULL;
 +
-+	/* If there are duplicate entries, return the last. */
-+	for (i = reloc_idx; i < nr_relocs - 1; i++) {
-+		struct reloc *reloc = &relocs[i];
-+		struct reloc *next_reloc = &relocs[i + 1];
++	for (reloc_idx = rsec->reloc_cache[cache_idx];
++	     reloc_idx < rsec->nr_indexed; reloc_idx++) {
++		struct reloc *reloc = &rsec->relocs[reloc_idx];
 +
-+		if (reloc_offset(next_reloc) != reloc_offset(reloc))
-+			break;
-+		reloc_idx++;
++		if (reloc_offset(reloc) >= offset)
++			return reloc_in_range(reloc, offset, len) ? reloc : NULL;
 +	}
 +
-+	return &relocs[reloc_idx];
++	return NULL;
 +}
 +
-+/* Not indexed, so look it up in the hash. */
-+static struct reloc *find_reloc_hash(const struct elf *elf, struct section *rsec,
-+				     unsigned long offset, unsigned int len)
-+{
-+	unsigned long o;
-+	struct reloc *reloc, *r = NULL;
-+
- 	for_offset_range(o, offset, offset + len) {
- 		elf_hash_for_each_possible(elf, reloc, reloc, hash,
- 					   sec_offset_hash(rsec, o)) {
-@@ -347,16 +446,50 @@ struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *se
- 	return r;
- }
- 
-+/* Should never be invoked, provided as a backstop. */
++/* Out of order sections, only ever DWARF or one objtool grew that way. */
 +static struct reloc *find_reloc_linear(struct section *rsec,
 +				       unsigned long offset, unsigned int len)
 +{
 +	struct reloc *reloc, *first = NULL;
 +
-+	WARN("%s: linear scan for sec %s with %u relocs at offset %lu len %u",
-+	     __func__, rsec->name, sec_num_entries(rsec), offset, len);
-+
 +	for_each_reloc(rsec, reloc) {
-+		if (reloc_offset(reloc) < offset ||
-+		    reloc_offset(reloc) >= offset + len)
++		if (!reloc->sec || !reloc_in_range(reloc, offset, len))
 +			continue;
 +
 +		if (!first || reloc_offset(reloc) < reloc_offset(first))
@@ -5002,25 +5068,42 @@ index a791f4e..5ee1130 100644
 +}
 +
 +/* If there are multiple matches, return the first one in the range. */
-+struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *sec,
-+				       unsigned long offset, unsigned int len)
-+{
+ struct reloc *find_reloc_by_dest_range(const struct elf *elf, struct section *sec,
+ 				       unsigned long offset, unsigned int len)
+ {
+-	struct reloc *reloc, *r = NULL;
+-	struct section *rsec;
+-	unsigned long o;
 +	struct section *rsec = sec->rsec;
-+
-+	if (!rsec)
-+		return NULL;
-+
+ 
+-	rsec = sec->rsec;
+ 	if (!rsec)
+ 		return NULL;
+ 
+-	for_offset_range(o, offset, offset + len) {
+-		elf_hash_for_each_possible(elf, reloc, reloc, hash,
+-					   sec_offset_hash(rsec, o)) {
+-			if (reloc->sec != rsec)
+-				continue;
 +	if (rsec->sorted)
 +		return find_reloc_sorted(rsec, offset, len);
-+
-+	if (rsec->hashed)
-+		return find_reloc_hash(elf, rsec, offset, len);
-+
+ 
+-			if (reloc_offset(reloc) >= offset &&
+-			    reloc_offset(reloc) < offset + len) {
+-				if (!r || reloc_offset(reloc) < reloc_offset(r))
+-					r = reloc;
+-			}
+-		}
+-		if (r && (reloc_offset(r) & OFFSET_STRIDE_MASK) == o)
+-			return r;
+-	}
+-
+-	return r;
 +	return find_reloc_linear(rsec, offset, len);
-+}
-+
+ }
+ 
  struct reloc *find_reloc_by_dest(const struct elf *elf, struct section *sec, unsigned long offset)
- {
+@@ -352,11 +477,6 @@ struct reloc *find_reloc_by_dest(const struct elf *elf, struct section *sec, uns
  	return find_reloc_by_dest_range(elf, sec, offset, 1);
  }
  
@@ -5032,57 +5115,26 @@ index a791f4e..5ee1130 100644
  static int read_sections(struct elf *elf)
  {
  	Elf_Scn *s = NULL;
-@@ -1071,7 +1204,8 @@ struct reloc *elf_init_reloc(struct elf *elf, struct section *rsec,
+@@ -1071,7 +1191,8 @@ struct reloc *elf_init_reloc(struct elf *elf, struct section *rsec,
  	set_reloc_type(elf, reloc, type);
  	set_reloc_addend(elf, reloc, addend);
  
 -	elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
-+	if (rsec->hashed)
-+		elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
++	if (rsec->sorted && reloc_cache_add(rsec, reloc_idx))
++		return NULL;
  	set_sym_next_reloc(reloc, sym->relocs);
  	sym->relocs = reloc;
  
-@@ -1123,18 +1257,44 @@ struct reloc *elf_init_reloc_data_sym(struct elf *elf, struct section *sec,
- 			      elf_data_rela_type(elf));
- }
+@@ -1125,16 +1246,13 @@ struct reloc *elf_init_reloc_data_sym(struct elf *elf, struct section *sec,
  
-+static u64 raw_reloc_offset(const struct section *rsec, unsigned int idx)
-+{
-+	const void *entry = rsec->data->d_buf + idx * rsec->sh.sh_entsize;
-+
-+	if (rsec->sh.sh_entsize < sizeof(Elf64_Rel))
-+		return ((const Elf32_Rela *)entry)->r_offset;
-+
-+	return ((const Elf64_Rela *)entry)->r_offset;
-+}
-+
-+static bool reloc_sec_in_order(struct section *rsec)
-+{
-+	const unsigned int nr_relocs = sec_num_entries(rsec);
-+	u64 prev_offset = 0;
-+	unsigned int i;
-+
-+	for (i = 0; i < nr_relocs; i++) {
-+		/* Called before relocs exist, so look at raw entry. */
-+		const u64 offset = raw_reloc_offset(rsec, i);
-+
-+		if (offset < prev_offset)
-+			return false;
-+		prev_offset = offset;
-+	}
-+
-+	return true;
-+}
-+
  static int read_relocs(struct elf *elf)
  {
 -	unsigned long nr_reloc, max_reloc = 0;
-+	unsigned long nr_reloc, max_reloc = 0, nr_hashed = 0;
++	unsigned long nr_reloc, max_reloc = 0, nr_linear = 0;
  	struct section *rsec;
  	struct reloc *reloc;
  	unsigned int symndx;
  	struct symbol *sym;
-+	bool hashed;
  	int i;
  
 -	if (!elf_alloc_hash(reloc, elf->num_relocs))
@@ -5091,42 +5143,11 @@ index a791f4e..5ee1130 100644
  	list_for_each_entry(rsec, &elf->sections, list) {
  		if (!is_reloc_sec(rsec))
  			continue;
-@@ -1147,6 +1307,28 @@ static int read_relocs(struct elf *elf)
- 
- 		rsec->base->rsec = rsec;
- 
-+		/* DWARF relocs are never looked up. */
-+		if (is_dwarf_section(rsec->base))
-+			continue;
-+		if (reloc_sec_in_order(rsec)) {
-+			rsec->sorted = true;
-+			continue;
-+		}
-+
-+		rsec->hashed = true;
-+		nr_hashed += sec_num_entries(rsec);
-+	}
-+
-+	/* Read mostly, so avoid collisions and keep the hash sparse. */
-+	if (!elf_alloc_hash(reloc, nr_hashed * OFFSET_STRIDE))
-+		return -1;
-+
-+	list_for_each_entry(rsec, &elf->sections, list) {
-+		if (!is_reloc_sec(rsec))
-+			continue;
-+
-+		hashed = rsec->hashed;
-+
- 		/* nr_alloc_relocs=0: libelf owns d_buf */
- 		rsec->nr_alloc_relocs = 0;
- 
-@@ -1168,18 +1350,23 @@ static int read_relocs(struct elf *elf)
+@@ -1168,19 +1286,26 @@ static int read_relocs(struct elf *elf)
  				return -1;
  			}
  
 -			elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
-+			if (hashed)
-+				elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
  			set_sym_next_reloc(reloc, sym->relocs);
  			sym->relocs = reloc;
  
@@ -5134,76 +5155,104 @@ index a791f4e..5ee1130 100644
  		}
  		max_reloc = max(max_reloc, nr_reloc);
 +
-+		if (rsec->sorted && init_reloc_cache(rsec))
++		/* DWARF relocs are never looked up, so are not worth indexing. */
++		if (is_dwarf_section(rsec->base))
++			continue;
++		if (init_reloc_cache(rsec))
 +			return -1;
++		if (!rsec->sorted)
++			nr_linear += nr_reloc;
  	}
  
  	if (opts.stats) {
  		printf("max_reloc: %lu\n", max_reloc);
  		printf("num_relocs: %lu\n", elf->num_relocs);
-+		printf("num_relocs_hashed: %lu\n", nr_hashed);
- 		printf("reloc_bits: %d\n", elf->reloc_bits);
+-		printf("reloc_bits: %d\n", elf->reloc_bits);
++		printf("num_relocs_linear: %lu\n", nr_linear);
  	}
  
-@@ -1541,6 +1728,26 @@ add:
- 	return sec;
- }
- 
-+/* A relocation was appended, abandon relocation cache and use hash instead. */
-+static void copy_reloc_cache_to_hash(struct elf *elf, struct section *rsec,
-+				     unsigned int nr_relocs)
-+{
-+	unsigned int i;
-+
-+	if (rsec->hashed)
-+		return;
-+
-+	if (rsec->sorted)
-+		free_reloc_cache(rsec);
-+
-+	for (i = 0; i < nr_relocs; i++) {
-+		struct reloc *reloc = &rsec->relocs[i];
-+
-+		elf_hash_add(reloc, &reloc->hash, reloc_hash(reloc));
-+	}
-+	rsec->hashed = true;
-+}
-+
- static int elf_alloc_reloc(struct elf *elf, struct section *rsec)
- {
- 	struct reloc *old_relocs, *old_relocs_end, *new_relocs;
-@@ -1686,6 +1893,8 @@ struct section *elf_create_rela_section(struct elf *elf, struct section *sec,
- 
- 	sec->rsec = rsec;
- 	rsec->base = sec;
-+	/* Relocations objtool creates are looked up through the hash. */
-+	rsec->hashed = true;
- 
- 	return rsec;
- }
-@@ -1708,6 +1917,9 @@ struct reloc *elf_create_reloc(struct elf *elf, struct section *sec,
+ 	return 0;
+@@ -1327,8 +1452,7 @@ struct elf *elf_create_file(GElf_Ehdr *ehdr, const char *name)
+ 	if (!elf_alloc_hash(section,		1000) ||
+ 	    !elf_alloc_hash(section_name,	1000) ||
+ 	    !elf_alloc_hash(symbol,		10000) ||
+-	    !elf_alloc_hash(symbol_name,	10000) ||
+-	    !elf_alloc_hash(reloc,		100000))
++	    !elf_alloc_hash(symbol_name,	10000))
  		return NULL;
+ 
+ 	null		= elf_create_section(elf, NULL, 0, 0, SHT_NULL, 0, 0);
+@@ -1508,6 +1632,8 @@ struct section *elf_create_section(struct elf *elf, const char *name,
+ 	sec->sh.sh_type = type;
+ 	sec->sh.sh_addralign = align;
+ 	sec->sh.sh_flags = flags;
++	/* Relocations objtool adds are indexed as they come. */
++	sec->sorted = type == SHT_RELA;
+ 
+ 	if (name) {
+ 		sec->name = strdup(name);
+@@ -1633,16 +1759,6 @@ static int elf_alloc_reloc(struct elf *elf, struct section *rsec)
  	}
  
-+	/* A section read from the file is indexed, once grown it is hashed. */
-+	copy_reloc_cache_to_hash(elf, rsec, sec_num_entries(rsec));
-+
- 	if (elf_alloc_reloc(elf, rsec))
- 		return NULL;
- 
+ 	memcpy(new_relocs, old_relocs, nr_relocs_old * sizeof(struct reloc));
+-
+-	for (int i = 0; i < nr_relocs_old; i++) {
+-		struct reloc *old = &old_relocs[i];
+-		struct reloc *new = &new_relocs[i];
+-		u32 key = reloc_hash(old);
+-
+-		elf_hash_del(reloc, &old->hash, key);
+-		elf_hash_add(reloc, &new->hash, key);
+-	}
+-
+ 	free(old_relocs);
+ done:
+ 	rsec->relocs = new_relocs;
 diff --git a/tools/objtool/include/objtool/elf.h b/tools/objtool/include/objtool/elf.h
-index a82517a..946b411 100644
+index a82517a..ba18e18 100644
 --- a/tools/objtool/include/objtool/elf.h
 +++ b/tools/objtool/include/objtool/elf.h
 @@ -59,6 +59,8 @@ struct section {
  	const char *name;
  	int idx;
  	bool _changed, text, rodata, noinstr, init, truncate;
-+	bool hashed, sorted;
-+	unsigned int *reloc_cache;
++	bool sorted;
++	unsigned int *reloc_cache, nr_cache_windows, nr_indexed;
  	struct reloc *relocs;
  	unsigned long nr_alloc_relocs;
  	struct section *twin;
+@@ -106,7 +108,6 @@ struct symbol {
+ };
+ 
+ struct reloc {
+-	struct elf_hash_node hash;
+ 	struct section *sec;
+ 	struct symbol *sym;
+ 	unsigned long _sym_next_reloc;
+@@ -127,13 +128,11 @@ struct elf {
+ 	int symbol_name_bits;
+ 	int section_bits;
+ 	int section_name_bits;
+-	int reloc_bits;
+ 
+ 	struct elf_hash_node **symbol_hash;
+ 	struct elf_hash_node **symbol_name_hash;
+ 	struct elf_hash_node **section_hash;
+ 	struct elf_hash_node **section_name_hash;
+-	struct elf_hash_node **reloc_hash;
+ 
+ 	struct section *section_data;
+ 	struct symbol *symbol_data;
+@@ -575,9 +574,4 @@ static inline u32 sec_offset_hash(struct section *sec, unsigned long offset)
+ 	return ol;
+ }
+ 
+-static inline u32 reloc_hash(struct reloc *reloc)
+-{
+-	return sec_offset_hash(reloc->sec, reloc_offset(reloc));
+-}
+-
+ #endif /* _OBJTOOL_ELF_H */
 diff --git a/tools/objtool/include/objtool/objtool.h b/tools/objtool/include/objtool/objtool.h
 index 6dc12a5..79fe82b 100644
 --- a/tools/objtool/include/objtool/objtool.h
