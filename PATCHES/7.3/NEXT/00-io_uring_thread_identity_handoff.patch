@@ -2712,7 +2712,7 @@ index 39be510..098a901 100644
  		.flags		= flags,
  		.fn		= fn,
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 16f8ea9..5b5e319 100644
+index 57dad4f..db06b3f 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -97,6 +97,8 @@
@@ -2724,7 +2724,7 @@ index 16f8ea9..5b5e319 100644
  #include "../smpboot.h"
  #include "../locking/mutex.h"
  
-@@ -5686,6 +5688,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
+@@ -5693,6 +5695,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
   * In case the task is currently running, return the runtime plus current's
   * pending runtime that have not been accounted yet.
   */
@@ -2763,7 +2763,7 @@ index 16f8ea9..5b5e319 100644
  unsigned long long task_sched_runtime(struct task_struct *p)
  {
  	struct rq_flags rf;
-@@ -7341,6 +7375,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
+@@ -7348,6 +7382,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
  		wq_worker_sleeping(tsk);
  	else if (task_flags & PF_IO_WORKER)
  		io_wq_worker_sleeping(tsk);

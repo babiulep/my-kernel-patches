@@ -18,10 +18,10 @@ index 33cd309..1b4a966 100644
  	hibernate.compressor= 	[HIBERNATION] Compression algorithm to be
  				used with hibernation.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 3b2eb2a..a2b1ae9 100644
+index 6609759..5cd5b21 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -17404,6 +17404,7 @@ F:	include/linux/swapfile.h
+@@ -17405,6 +17405,7 @@ F:	include/linux/swapfile.h
  F:	include/linux/swapops.h
  F:	mm/page_io.c
  F:	mm/swap.h
@@ -462,7 +462,7 @@ index c78f159..f2fc849 100644
   */
 diff --git b/mm/swap_hibernate.c b/mm/swap_hibernate.c
 new file mode 100644
-index 0000000..7475ae0
+index 0000000..ec81702
 --- /dev/null
 +++ b/mm/swap_hibernate.c
 @@ -0,0 +1,547 @@

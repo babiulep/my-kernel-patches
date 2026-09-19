@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-19
+- TIP: add [fs-open.patch](https://www.phoronix.com/news/Linux-7.4-Faster-Do-Open)
+- TIP+NEXT: offset fixes
+
 ## 2026-09-18
 - NVIDIA NEXT 610.57.04:  
   Switch to drm_atomic_helper_crtc_create_state  
