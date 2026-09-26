@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-26
+- TIP: update patches
+
 ## 2026-09-19
 - TIP: add [fs-open.patch](https://www.phoronix.com/news/Linux-7.4-Faster-Do-Open)
 - TIP+NEXT: offset fixes

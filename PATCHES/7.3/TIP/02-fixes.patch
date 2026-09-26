@@ -226,10 +226,10 @@ index 75e2bfd..1d83f8b 100644
  		dev_dbg(&dev->dev,
  			"wrong descriptor type %02x for string %d (\"%s\")\n",
 diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
-index 7cc2345..a44ec61 100644
+index 7797ce2..f36b306 100644
 --- a/include/linux/perf_event.h
 +++ b/include/linux/perf_event.h
-@@ -1655,7 +1655,7 @@ static inline void perf_event_task_migrate(struct task_struct *task)
+@@ -1638,7 +1638,7 @@ static inline void perf_event_task_migrate(struct task_struct *task)
  		task->sched_migrated = 1;
  }
  
@@ -381,7 +381,7 @@ index 82825e7..ce83fc7 100644
  	if (vtime_accounting_enabled_this_cpu())
  		vtime_task_switch_generic(prev);
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 2f5f2f8..e263a75 100644
+index 64e357b..fd28b9c 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -5100,7 +5100,7 @@ static inline void prepare_task(struct task_struct *next)
@@ -439,10 +439,10 @@ index 2f5f2f8..e263a75 100644
  {
  	struct rq *rq = this_rq();
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index 4d0b944..7af4143 100644
+index 0e279a7..89e8ad2 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -13531,12 +13531,15 @@ redo:
+@@ -13773,12 +13773,15 @@ redo:
  		 * still unbalanced. ld_moved simply stays zero, so it is
  		 * correctly treated as an imbalance.
  		 */
@@ -461,10 +461,10 @@ index 4d0b944..7af4143 100644
  		 * cur_ld_moved - load moved in current iteration
  		 * ld_moved     - cumulative load moved across iterations
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index 6c3ad70..931eb6e 100644
+index b98084e..8978698 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
-@@ -1482,12 +1482,12 @@ static inline struct cpumask *sched_group_span(struct sched_group *sg);
+@@ -1481,12 +1481,12 @@ static inline struct cpumask *sched_group_span(struct sched_group *sg);
  
  DECLARE_STATIC_KEY_FALSE(__sched_core_enabled);
  
@@ -479,7 +479,7 @@ index 6c3ad70..931eb6e 100644
  {
  	return !static_branch_unlikely(&__sched_core_enabled);
  }
-@@ -1496,7 +1496,7 @@ static inline bool sched_core_disabled(void)
+@@ -1495,7 +1495,7 @@ static inline bool sched_core_disabled(void)
   * Be careful with this function; not for general use. The return value isn't
   * stable unless you actually hold a relevant rq->__lock.
   */
@@ -488,7 +488,7 @@ index 6c3ad70..931eb6e 100644
  {
  	if (sched_core_enabled(rq))
  		return &rq->core->__lock;
-@@ -1504,7 +1504,7 @@ static inline raw_spinlock_t *rq_lockp(struct rq *rq)
+@@ -1503,7 +1503,7 @@ static inline raw_spinlock_t *rq_lockp(struct rq *rq)
  	return &rq->__lock;
  }
  
@@ -497,7 +497,7 @@ index 6c3ad70..931eb6e 100644
  	__returns_ctx_lock(rq_lockp(rq)) /* alias them */
  {
  	if (rq->core_enabled)
-@@ -1607,12 +1607,12 @@ static inline bool sched_core_disabled(void)
+@@ -1606,12 +1606,12 @@ static inline bool sched_core_disabled(void)
  	return true;
  }
  
@@ -512,7 +512,7 @@ index 6c3ad70..931eb6e 100644
  	__returns_ctx_lock(rq_lockp(rq)) /* alias them */
  {
  	return &rq->__lock;
-@@ -1672,33 +1672,33 @@ extern void raw_spin_rq_lock_nested(struct rq *rq, int subclass)
+@@ -1671,33 +1671,33 @@ extern void raw_spin_rq_lock_nested(struct rq *rq, int subclass)
  extern bool raw_spin_rq_trylock(struct rq *rq)
  	__cond_acquires(true, __rq_lockp(rq));
  
@@ -551,7 +551,7 @@ index 6c3ad70..931eb6e 100644
  	__acquires(__rq_lockp(rq))
  {
  	unsigned long flags;
-@@ -1709,7 +1709,7 @@ static inline unsigned long _raw_spin_rq_lock_irqsave(struct rq *rq)
+@@ -1708,7 +1708,7 @@ static inline unsigned long _raw_spin_rq_lock_irqsave(struct rq *rq)
  	return flags;
  }
  
