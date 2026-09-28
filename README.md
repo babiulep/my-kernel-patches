@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-09-28
+- TIP: update patches
+- TIP: add POC selector + latest fixes from Piotr Gorski
+
 ## 2026-09-26
 - TIP: update patches
 

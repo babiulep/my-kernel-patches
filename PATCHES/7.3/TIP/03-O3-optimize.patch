@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index ddcc6dc..b8f6fe5 100644
+index 9de4350..b95b34c 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -930,10 +930,14 @@ endif # need-config
+@@ -933,10 +933,14 @@ endif # need-config
  KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
  
  ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
@@ -13,7 +13,7 @@ index ddcc6dc..b8f6fe5 100644
 +ifneq ($(findstring clang,$(CC_VERSION_TEXT)),)
  KBUILD_CFLAGS += -Os
 +else
-+KBUILD_CFLAGS += -Oz
++KBUILD_CFLAGS += -Oz -Wno-constant-logical-operand
 +endif
  KBUILD_RUSTFLAGS += -Copt-level=s
  endif

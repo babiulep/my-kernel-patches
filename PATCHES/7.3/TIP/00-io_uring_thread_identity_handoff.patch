@@ -153,7 +153,7 @@ index 581f80e..e669a27 100644
 +}
 +#endif
 diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
-index a47a6be..f3351b7 100644
+index 644ad02..4765b86 100644
 --- a/arch/x86/Kconfig
 +++ b/arch/x86/Kconfig
 @@ -109,6 +109,7 @@ config X86
@@ -474,10 +474,10 @@ index 39629ee..dadbe36 100644
  
  struct io_tw_req {
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index dac15ec..b54e75c 100644
+index c10fafb..840ec5c 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1817,7 +1817,7 @@ extern struct pid __rcu *cad_pid;
+@@ -1818,7 +1818,7 @@ extern struct pid __rcu *cad_pid;
  						 * I am cleaning dirty pages from some other bdi. */
  #define PF_KTHREAD		0x00200000	/* I am a kernel thread */
  #define PF_RANDOMIZE		0x00400000	/* Randomize virtual address space */
@@ -694,10 +694,10 @@ index 34b31a8..6043c5d 100644
  
  /* This part must be outside protection */
 diff --git a/init/Kconfig b/init/Kconfig
-index 8583d9f..b376f80 100644
+index 352601b..ac321f0 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1957,9 +1957,20 @@ config AIO
+@@ -1762,9 +1762,20 @@ config AIO
  	  by some high performance threaded applications. Disabling
  	  this option saves about 7k.
  
@@ -2673,7 +2673,7 @@ index 726a659..ba36a55 100644
  			return;
  		io_req_complete_defer(req);
 diff --git a/kernel/Makefile b/kernel/Makefile
-index 1e1a316..5843d48 100644
+index c64c82c..9d5de8a 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -14,6 +14,7 @@ obj-y     = fork.o exec_domain.o exec_state.o panic.o \
@@ -2713,7 +2713,7 @@ index 10f2d05..37a197e 100644
  		.flags		= flags,
  		.fn		= fn,
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 1cbaa05..64e357b 100644
+index 84313c9..2e109bf 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -96,6 +96,8 @@
@@ -2725,7 +2725,7 @@ index 1cbaa05..64e357b 100644
  #include "../smpboot.h"
  #include "../locking/mutex.h"
  
-@@ -5692,6 +5694,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
+@@ -5738,6 +5740,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
   * In case the task is currently running, return the runtime plus current's
   * pending runtime that have not been accounted yet.
   */
@@ -2764,7 +2764,7 @@ index 1cbaa05..64e357b 100644
  unsigned long long task_sched_runtime(struct task_struct *p)
  {
  	struct rq_flags rf;
-@@ -7344,6 +7378,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
+@@ -7425,6 +7459,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
  		wq_worker_sleeping(tsk);
  	else if (task_flags & PF_IO_WORKER)
  		io_wq_worker_sleeping(tsk);

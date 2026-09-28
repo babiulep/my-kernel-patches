@@ -1,5 +1,5 @@
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index c6d636b..3688cb7 100644
+index e75344f..179d325 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
 @@ -1983,6 +1983,14 @@ Kernel parameters
@@ -18,7 +18,7 @@ index c6d636b..3688cb7 100644
  	hibernate.compressor= 	[HIBERNATION] Compression algorithm to be
  				used with hibernation.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index bf6e77b..0fc113e 100644
+index d51bc73..9dd276e 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -17409,6 +17409,7 @@ F:	include/linux/swapfile.h
@@ -80,7 +80,7 @@ index 5658a16..0d1a72d 100644
  static inline void put_swap_device(struct swap_info_struct *si)
  {
 diff --git a/kernel/power/hibernate.c b/kernel/power/hibernate.c
-index d2479c6..225fe55 100644
+index c13f68a..e89fac5 100644
 --- a/kernel/power/hibernate.c
 +++ b/kernel/power/hibernate.c
 @@ -41,6 +41,8 @@
@@ -119,7 +119,7 @@ index d2479c6..225fe55 100644
  /**
   * hibernation_set_ops - Set the global hibernate operations.
   * @ops: Hibernation operations to use in subsequent hibernation transitions.
-@@ -857,8 +879,12 @@ int hibernate(void)
+@@ -859,8 +881,12 @@ int hibernate(void)
  	if (snapshot_test) {
  		pm_pr_dbg("Checking hibernation image\n");
  		error = swsusp_check(false);
@@ -133,7 +133,7 @@ index d2479c6..225fe55 100644
  	}
  	thaw_processes();
  
-@@ -1433,6 +1459,10 @@ static int __init hibernate_setup(char *str)
+@@ -1435,6 +1461,10 @@ static int __init hibernate_setup(char *str)
  	} else if (IS_ENABLED(CONFIG_STRICT_KERNEL_RWX)
  		   && !strncmp(str, "protect_image", 13)) {
  		enable_restore_image_protection();
