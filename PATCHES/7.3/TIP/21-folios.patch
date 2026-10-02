@@ -1,3 +1,232 @@
+diff --git a/fs/fuse/dev.c b/fs/fuse/dev.c
+index 4fec31fc0..6da77dfe8 100644
+--- a/fs/fuse/dev.c
++++ b/fs/fuse/dev.c
+@@ -1252,31 +1252,10 @@ static int fuse_ref_folio(struct fuse_copy_state *cs, struct folio *folio,
+  * done atomically
+  */
+ int fuse_copy_folio(struct fuse_copy_state *cs, struct folio **foliop,
+-		    unsigned offset, unsigned count, int zeroing)
++		    unsigned offset, unsigned count)
+ {
+ 	int err;
+ 	struct folio *folio = *foliop;
+-	size_t size;
+-
+-	if (folio) {
+-		size = folio_size(folio);
+-		if (zeroing && count < size) {
+-			/*
+-			 * When the copy is skipped the folio already holds the
+-			 * payload, so only the bytes outside [offset, offset +
+-			 * count) may be zeroed.
+-			 *
+-			 * Otherwise, the whole folio is cleared first so that a
+-			 * failed copy leaves zeros rather than stale folio
+-			 * contents.
+-			 */
+-			if (cs->skip_folio_copy)
+-				folio_zero_segments(folio, 0, offset,
+-						    offset + count, size);
+-			else
+-				folio_zero_range(folio, 0, size);
+-		}
+-	}
+ 
+ 	while (!cs->skip_folio_copy && count) {
+ 		if (cs->write && cs->pipebufs && folio) {
+@@ -1293,7 +1272,7 @@ int fuse_copy_folio(struct fuse_copy_state *cs, struct folio **foliop,
+ 			}
+ 		} else if (!cs->len) {
+ 			if (cs->move_folios && folio &&
+-			    offset == 0 && count == size) {
++			    offset == 0 && count == folio_size(folio)) {
+ 				err = fuse_try_move_folio(cs, foliop);
+ 				if (err <= 0)
+ 					return err;
+@@ -1309,7 +1288,8 @@ int fuse_copy_folio(struct fuse_copy_state *cs, struct folio **foliop,
+ 			unsigned int copy = count;
+ 			unsigned int bytes_copied;
+ 
+-			if (folio_test_highmem(folio) && count > PAGE_SIZE - offset_in_page(offset))
++			if (folio_test_partial_kmap(folio) &&
++			    count > PAGE_SIZE - offset_in_page(offset))
+ 				copy = PAGE_SIZE - offset_in_page(offset);
+ 
+ 			bytes_copied = fuse_copy_do(cs, &buf, &copy);
+@@ -1334,10 +1314,25 @@ static int fuse_copy_folios(struct fuse_copy_state *cs, unsigned nbytes,
+ 
+ 	for (i = 0; i < ap->num_folios && (nbytes || zeroing); i++) {
+ 		int err;
++		struct folio *folio = ap->folios[i];
+ 		unsigned int offset = ap->descs[i].offset;
+-		unsigned int count = min(nbytes, ap->descs[i].length);
++		unsigned int length = ap->descs[i].length;
++		unsigned int count = min(nbytes, length);
+ 
+-		err = fuse_copy_folio(cs, &ap->folios[i], offset, count, zeroing);
++		/*
++		 * The reply may be shorter than what was asked for. The full
++		 * descs[i].length is reported as read, so the tail bytes the
++		 * server did not send are about to be marked uptodate and need
++		 * to be zeroed.
++		 *
++		 * Only [offset, offset + length) can be touched since the
++		 * rest of the folio can hold blocks that are already uptodate
++		 * or dirty, and clearing those would lose data.
++		 */
++		if (folio && zeroing && count < length)
++			folio_zero_range(folio, offset + count, length - count);
++
++		err = fuse_copy_folio(cs, &ap->folios[i], offset, count);
+ 		if (err)
+ 			return err;
+ 
+diff --git a/fs/fuse/dev.h b/fs/fuse/dev.h
+index 8d25378c0..f6c47ae03 100644
+--- a/fs/fuse/dev.h
++++ b/fs/fuse/dev.h
+@@ -90,7 +90,7 @@ int fuse_backing_close(struct fuse_conn *fc, int backing_id);
+ 
+ int fuse_copy_one(struct fuse_copy_state *cs, void *val, unsigned size);
+ int fuse_copy_folio(struct fuse_copy_state *cs, struct folio **foliop,
+-		    unsigned offset, unsigned count, int zeroing);
++		    unsigned offset, unsigned count);
+ void fuse_copy_finish(struct fuse_copy_state *cs);
+ 
+ #ifdef CONFIG_FUSE_IO_URING
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index 9a36d0329..a05c55b10 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -864,18 +864,29 @@ static int fuse_do_readfolio(struct file *file, struct folio *folio,
+ 
+ 	attr_ver = fuse_get_attr_version(fm->fc);
+ 
+-	/* Don't overflow end offset */
+-	if (pos + (desc.length - 1) == LLONG_MAX)
+-		desc.length--;
++	/*
++	 * Don't overflow end offset.
++	 *
++	 * Ask the server for len - 1 bytes. desc.length still holds the full
++	 * length. When the reply comes back, it will be one byte shorter than
++	 * desc.length and fuse_copy_folios() will zero that last byte.
++	 *
++	 * For this reason, desc.length must not be decremented too. The caller
++	 * reports the full length to iomap_finish_folio_read(), which marks
++	 * every block it covers uptodate. Shortening the descriptor would
++	 * suppress zeroing and leave the last byte holding stale data.
++	 */
++	if (pos + (len - 1) == LLONG_MAX)
++		len--;
+ 
+-	fuse_read_args_fill(&ia, file, pos, desc.length, FUSE_READ);
++	fuse_read_args_fill(&ia, file, pos, len, FUSE_READ);
+ 	res = fuse_simple_request(fm, &ia.ap.args);
+ 	if (res < 0)
+ 		return res;
+ 	/*
+ 	 * Short read means EOF.  If file size is larger, truncate it
+ 	 */
+-	if (res < desc.length)
++	if (res < len)
+ 		fuse_short_read(inode, attr_ver, res, &ia.ap);
+ 
+ 	return 0;
+@@ -1068,11 +1079,20 @@ static void fuse_send_readpages(struct fuse_io_args *ia, struct file *file,
+ 	ap->args.page_zeroing = true;
+ 	ap->args.page_replace = true;
+ 
+-	/* Don't overflow end offset */
+-	if (pos + (count - 1) == LLONG_MAX) {
++	/*
++	 * Don't overflow end offset.
++	 *
++	 * Ask the server for count - 1 bytes. The reply is then one byte
++	 * shorter than what the descriptor lengths add up to, so
++	 * fuse_copy_folios() zeroes the last byte when it walks the folios.
++	 *
++	 * ap->descs[] must not be decremented here. It is what
++	 * fuse_readpages_end() reports back to iomap_finish_folio_read(), and
++	 * iomap has already accounted the full descriptor length, so shortening
++	 * it would leave ifs->read_bytes_pending nonzero and the folio locked.
++	 */
++	if (pos + (count - 1) == LLONG_MAX)
+ 		count--;
+-		ap->descs[ap->num_folios - 1].length--;
+-	}
+ 	WARN_ON((loff_t) (pos + count) < 0);
+ 
+ 	fuse_read_args_fill(ia, file, pos, count, FUSE_READ);
+@@ -2978,14 +2998,16 @@ static ssize_t __fuse_copy_file_range(struct file *file_in, loff_t pos_in,
+ 
+ 	/*
+ 	 * Write out dirty pages in the destination file before sending the COPY
+-	 * request to userspace.  After the request is completed, truncate off
+-	 * pages (including partial ones) from the cache that have been copied,
+-	 * since these contain stale data at that point.
++	 * request to userspace.  After the request is completed, drop the
++	 * folios covering the copied range from the cache, since these contain
++	 * stale data at that point.
+ 	 *
+-	 * This should be mostly correct, but if the COPY writes to partial
+-	 * pages (at the start or end) and the parts not covered by the COPY are
++	 * This should be mostly correct, but if the COPY writes to a partial
++	 * folio (at the start or end) and the parts not covered by the COPY are
+ 	 * written through a memory map after calling fuse_writeback_range(),
+-	 * then these partial page modifications will be lost on truncation.
++	 * then that folio is laundered before it is dropped, so the memory map
++	 * modifications are written back over the range the server just copied
++	 * into and the copied data is lost.
+ 	 *
+ 	 * It is unlikely that someone would rely on such mixed style
+ 	 * modifications.  Yet this does give less guarantees than if the
+@@ -3038,9 +3060,10 @@ static ssize_t __fuse_copy_file_range(struct file *file_in, loff_t pos_in,
+ 		goto out;
+ 	}
+ 
+-	truncate_inode_pages_range(inode_out->i_mapping,
+-				   ALIGN_DOWN(pos_out, PAGE_SIZE),
+-				   ALIGN(pos_out + bytes_copied, PAGE_SIZE) - 1);
++	if (bytes_copied)
++               invalidate_inode_pages2_range(inode_out->i_mapping,
++					     pos_out >> PAGE_SHIFT,
++					    (pos_out + bytes_copied - 1) >> PAGE_SHIFT);
+ 
+ 	file_update_time(file_out);
+ 	fuse_write_update_attr(inode_out, pos_out + bytes_copied, bytes_copied);
+diff --git a/fs/fuse/notify.c b/fs/fuse/notify.c
+index 1ba763705..4b262928e 100644
+--- a/fs/fuse/notify.c
++++ b/fs/fuse/notify.c
+@@ -190,7 +190,7 @@ static int fuse_notify_store(struct fuse_conn *fc, unsigned int size,
+ 		folio_offset = offset_in_folio(folio, pos);
+ 		nr_bytes = min(num, folio_size(folio) - folio_offset);
+ 
+-		err = fuse_copy_folio(cs, &folio, folio_offset, nr_bytes, 0);
++		err = fuse_copy_folio(cs, &folio, folio_offset, nr_bytes);
+ 		if (!folio_test_uptodate(folio) && !err && folio_offset == 0 &&
+ 		    (nr_bytes == folio_size(folio) || file_size == end)) {
+ 			folio_zero_segment(folio, nr_bytes, folio_size(folio));
+diff --git a/fs/fuse/virtio_fs.c b/fs/fuse/virtio_fs.c
+index f15e516eb..61ab7cb30 100644
+--- a/fs/fuse/virtio_fs.c
++++ b/fs/fuse/virtio_fs.c
+@@ -798,9 +798,11 @@ static void virtio_fs_request_complete(struct fuse_req *req,
+ 		for (i = 0; i < ap->num_folios; i++) {
+ 			thislen = ap->descs[i].length;
+ 			if (len < thislen) {
+-				WARN_ON(ap->descs[i].offset);
++				unsigned int offset = ap->descs[i].offset;
++
+ 				folio = ap->folios[i];
+-				folio_zero_segment(folio, len, thislen);
++				folio_zero_segment(folio, offset + len,
++						   offset + thislen);
+ 				len = 0;
+ 			} else {
+ 				len -= thislen;
 diff --git a/fs/fuse/file.c b/fs/fuse/file.c
 index 9a36d03..5226001 100644
 --- a/fs/fuse/file.c
