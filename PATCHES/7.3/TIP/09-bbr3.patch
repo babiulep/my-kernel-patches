@@ -38,7 +38,7 @@ index 433c2df..ce51146 100644
  
  #define ICSK_TIME_RETRANS	1	/* Retransmit timer */
 diff --git a/include/net/tcp.h b/include/net/tcp.h
-index 436495f..c7e63de 100644
+index 4416cdf..6828726 100644
 --- a/include/net/tcp.h
 +++ b/include/net/tcp.h
 @@ -428,6 +428,8 @@ static inline void tcp_dec_quickack_mode(struct sock *sk)
@@ -2993,7 +2993,7 @@ index 8e83ef8..50e6c89 100644
  		icsk->icsk_ca_ops->init(sk);
  	if (tcp_ca_needs_ecn(sk))
 diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
-index 0f60a1d..606875d 100644
+index 99baf14..52339da 100644
 --- a/net/ipv4/tcp_input.c
 +++ b/net/ipv4/tcp_input.c
 @@ -358,7 +358,7 @@ static void tcp_data_ecn_check(struct sock *sk, const struct sk_buff *skb)
@@ -3151,7 +3151,7 @@ index 0f60a1d..606875d 100644
  	return 1;
  
  old_ack:
-@@ -6121,13 +6149,14 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
+@@ -6127,13 +6155,14 @@ static void __tcp_ack_snd_check(struct sock *sk, int ofo_possible)
  
  	    /* More than one full frame received... */
  	if (((tp->rcv_nxt - tp->rcv_wup) > inet_csk(sk)->icsk_ack.rcv_mss &&
@@ -3182,7 +3182,7 @@ index 0ddfd5a..72c2780 100644
  		const struct tcp_congestion_ops *ca;
  
 diff --git a/net/ipv4/tcp_output.c b/net/ipv4/tcp_output.c
-index d960e3d..bce7ab2 100644
+index e0c392e..f52dc51 100644
 --- a/net/ipv4/tcp_output.c
 +++ b/net/ipv4/tcp_output.c
 @@ -365,7 +365,8 @@ static void tcp_ecn_send(struct sock *sk, struct sk_buff *skb,

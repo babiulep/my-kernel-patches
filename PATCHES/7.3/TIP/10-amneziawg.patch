@@ -48468,7 +48468,7 @@ diff --git a/drivers/net/wireguard/queueing.h b/net/wireguard/queueing.h
 similarity index 91%
 rename from a/drivers/net/wireguard/queueing.h
 rename to b/net/wireguard/queueing.h
-index 79b6d70..f868b42 100644
+index 663b19b..50ddb60 100644
 --- a/drivers/net/wireguard/queueing.h
 +++ b/net/wireguard/queueing.h
 @@ -61,7 +61,10 @@ struct packet_cb {
@@ -48482,9 +48482,9 @@ index 79b6d70..f868b42 100644
  };
  
  #define PACKET_CB(skb) ((struct packet_cb *)((skb)->cb))
-@@ -79,7 +82,13 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
- 	u8 sw_hash = skb->sw_hash;
+@@ -80,7 +83,13 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
  	u32 hash = skb->hash;
+ 	u8 tstamp_type = skb->tstamp_type;
  	skb_scrub_packet(skb, true);
 +#ifdef COMPAT_SKB_HAS_SKB_START
 +	memset(&skb->headers_start, 0,
@@ -48496,7 +48496,7 @@ index 79b6d70..f868b42 100644
  	if (encapsulating) {
  		skb->l4_hash = l4_hash;
  		skb->sw_hash = sw_hash;
-@@ -104,11 +113,16 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
+@@ -106,11 +115,16 @@ static inline void wg_reset_packet(struct sk_buff *skb, bool encapsulating)
  
  static inline int wg_cpumask_choose_online(int *stored_cpu, unsigned int id)
  {

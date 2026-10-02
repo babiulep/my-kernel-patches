@@ -82,10 +82,10 @@ index 840ec5c..645cccb 100644
  	struct sched_dl_entity		dl;
  	struct sched_dl_entity		*dl_server;
 diff --git a/init/Kconfig b/init/Kconfig
-index ef6bdd8..effa5ab 100644
+index ef1d030..005c540 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1319,6 +1319,19 @@ config SCHED_AUTOGROUP
+@@ -1514,6 +1514,19 @@ config SCHED_AUTOGROUP
  	  desktop applications.  Task group autogeneration is currently based
  	  upon task session.
  
