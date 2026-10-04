@@ -26,10 +26,10 @@ index 7527b48..8c73fe7 100644
  ifdef CONFIG_CC_IS_GCC
  # gcc-10 renamed --param=allow-store-data-races=0 to
 diff --git a/init/Kconfig b/init/Kconfig
-index b376f80..ef1d030 100644
+index 5be000d..d6b719e 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -319,6 +319,19 @@ config BUILD_SALT
+@@ -324,6 +324,19 @@ config BUILD_SALT
  	  This is mostly useful for distributions which want to ensure the
  	  build is unique between builds. It's safe to leave the default.
  

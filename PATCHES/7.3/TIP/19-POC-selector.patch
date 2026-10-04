@@ -41,7 +41,7 @@ index f96812d..91bedca 100644
  
  struct sched_domain {
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 840ec5c..645cccb 100644
+index 75bc419..bbcf226 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
 @@ -815,6 +815,26 @@ struct wake_q_node {
@@ -82,10 +82,10 @@ index 840ec5c..645cccb 100644
  	struct sched_dl_entity		dl;
  	struct sched_dl_entity		*dl_server;
 diff --git a/init/Kconfig b/init/Kconfig
-index ef1d030..005c540 100644
+index d6b719e..34b7ccf 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1514,6 +1514,19 @@ config SCHED_AUTOGROUP
+@@ -1519,6 +1519,19 @@ config SCHED_AUTOGROUP
  	  desktop applications.  Task group autogeneration is currently based
  	  upon task session.
  
@@ -106,10 +106,10 @@ index ef1d030..005c540 100644
  	bool "Kernel->user space relay support (formerly relayfs)"
  	select IRQ_WORK
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 49ce56d..ab7b27d 100644
+index 652d4cb..7f44a61 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -4645,6 +4645,10 @@ static void __sched_fork(u64 clone_flags, struct task_struct *p)
+@@ -4648,6 +4648,10 @@ static void __sched_fork(u64 clone_flags, struct task_struct *p)
  	p->se.vlag			= 0;
  	p->se.rel_deadline		= 0;
  	INIT_LIST_HEAD(&p->se.group_node);
@@ -146,7 +146,7 @@ index aed5286..7f0ab45 100644
  		sch->ops.name, scx_switched_all() ? "" : " (partial)");
  	kobject_uevent(&sch->kobj, KOBJ_ADD);
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index b2633c0..bb59759 100644
+index 1d3ee08..8b21691 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
 @@ -1316,7 +1316,7 @@ static bool update_deadline(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -180,7 +180,7 @@ index b2633c0..bb59759 100644
  	if (!p->se.sched_delayed)
  		util_est_dequeue(&rq->cfs, p);
  
-@@ -8828,6 +8836,20 @@ unlock:
+@@ -8857,6 +8865,20 @@ unlock:
  	rcu_read_unlock();
  }
  
@@ -201,7 +201,7 @@ index b2633c0..bb59759 100644
  /*
   * Scan the entire LLC domain for idle cores; this dynamically switches off if
   * there are no idle cores left in the system; tracked through
-@@ -9155,16 +9177,55 @@ static inline bool asym_fits_cpu(unsigned long util,
+@@ -9184,16 +9206,55 @@ static inline bool asym_fits_cpu(unsigned long util,
  	return true;
  }
  
@@ -258,19 +258,13 @@ index b2633c0..bb59759 100644
  	/*
  	 * On asymmetric system, update task utilization because we will check
  	 * that the task fits with CPU's capacity.
-@@ -9181,23 +9242,15 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+@@ -9210,25 +9271,15 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
  	 */
  	lockdep_assert_irqs_disabled();
  
 -	if (choose_idle_cpu(target, p) &&
 -	    asym_fits_cpu(task_util, util_min, util_max, target))
-+#ifdef CONFIG_SCHED_POC_SELECTOR
-+	if (static_branch_likely(&poc_selector_active) &&
-+	    is_idle_core(target) &&
-+	    asym_fits_cpu(task_util, util_min, util_max, target)) {
-+		poc_count(POC_LV1T);
-+		poc_commit_cpu(target);
- 		return target;
+-		goto select_smt_priority;
 -
 -	/*
 -	 * If the previous CPU is cache affine and idle, don't be stupid:
@@ -280,17 +274,26 @@ index b2633c0..bb59759 100644
 -	    asym_fits_cpu(task_util, util_min, util_max, prev)) {
 -
 -		if (!static_branch_unlikely(&sched_cluster_active) ||
--		    cpus_share_resources(prev, target))
--			return prev;
+-		    cpus_share_resources(prev, target)) {
+-			target = prev;
+-			goto select_smt_priority;
+-		}
 -
 -		prev_aff = prev;
++#ifdef CONFIG_SCHED_POC_SELECTOR
++	if (static_branch_likely(&poc_selector_active) &&
++	    is_idle_core(target) &&
++	    asym_fits_cpu(task_util, util_min, util_max, target)) {
++		poc_count(POC_LV1T);
++		poc_commit_cpu(target);
++		return target;
  	}
 +#endif
  
  	/*
  	 * Allow a per-cpu kthread to stack with the wakee if the
-@@ -9215,24 +9268,6 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
- 		return prev;
+@@ -9247,26 +9298,6 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+ 		goto select_smt_priority;
  	}
  
 -	/* Check a recently used CPU as a potential idle candidate: */
@@ -304,8 +307,10 @@ index b2633c0..bb59759 100644
 -	    asym_fits_cpu(task_util, util_min, util_max, recent_used_cpu)) {
 -
 -		if (!static_branch_unlikely(&sched_cluster_active) ||
--		    cpus_share_resources(recent_used_cpu, target))
--			return recent_used_cpu;
+-		    cpus_share_resources(recent_used_cpu, target)) {
+-			target = recent_used_cpu;
+-			goto select_smt_priority;
+-		}
 -
 -	} else {
 -		recent_used_cpu = -1;
@@ -314,7 +319,7 @@ index b2633c0..bb59759 100644
  	/*
  	 * For asymmetric CPU capacity systems, our domain of interest is
  	 * sd_asym_cpucapacity rather than sd_llc.
-@@ -9257,6 +9292,46 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+@@ -9295,6 +9326,46 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
  	if (!sd)
  		return target;
  
@@ -361,9 +366,9 @@ index b2633c0..bb59759 100644
  	if (sched_smt_active()) {
  		has_idle_core = test_idle_cores(target);
  
-@@ -9271,6 +9346,9 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
- 	if ((unsigned)i < nr_cpumask_bits)
- 		return i;
+@@ -9313,6 +9384,9 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+ 		goto select_smt_priority;
+ 	}
  
 +#ifdef CONFIG_SCHED_POC_SELECTOR
 +give_up:
@@ -371,18 +376,18 @@ index b2633c0..bb59759 100644
  	/*
  	 * For cluster machines which have lower sharing cache like L2 or
  	 * LLC Tag, we tend to find an idle CPU in the target's cluster
-@@ -9282,6 +9360,9 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
- 	if ((unsigned int)recent_used_cpu < nr_cpumask_bits)
- 		return recent_used_cpu;
+@@ -9328,6 +9402,9 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+ 		goto select_smt_priority;
+ 	}
  
 +#ifdef CONFIG_SCHED_POC_SELECTOR
 +	target = poc_last_resort(prev, target);
 +#endif
  	return target;
- }
  
-@@ -9963,8 +10044,13 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int wake_flags)
- 		return sched_balance_find_dst_cpu(sd, p, cpu, prev_cpu, sd_flag);
+ select_smt_priority:
+@@ -10014,8 +10091,13 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int wake_flags)
+ 	}
  
  	/* Fast path */
 -	if (wake_flags & WF_TTWU)
@@ -397,7 +402,7 @@ index b2633c0..bb59759 100644
  
  	return new_cpu;
  }
-@@ -10124,6 +10210,10 @@ static void wakeup_preempt_fair(struct rq *rq, struct task_struct *p, int wake_f
+@@ -10175,6 +10257,10 @@ static void wakeup_preempt_fair(struct rq *rq, struct task_struct *p, int wake_f
  	struct sched_entity *nse, *se = &donor->se, *pse = &p->se;
  	struct cfs_rq *cfs_rq = &rq->cfs;
  	int cse_is_idle, pse_is_idle;
@@ -408,7 +413,7 @@ index b2633c0..bb59759 100644
  
  	/*
  	 * XXX Getting preempted by higher class, try and find idle CPU?
-@@ -10132,6 +10222,10 @@ static void wakeup_preempt_fair(struct rq *rq, struct task_struct *p, int wake_f
+@@ -10183,6 +10269,10 @@ static void wakeup_preempt_fair(struct rq *rq, struct task_struct *p, int wake_f
  	    donor->sched_class != &fair_sched_class)
  		return;
  
@@ -3024,10 +3029,10 @@ index 174d77c..7e2f363 100644
  {
  	set_task_rq(p, cpu);
 diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index 3dab025..9f3e587 100644
+index 919d0fb..6319f1c 100644
 --- a/kernel/sched/topology.c
 +++ b/kernel/sched/topology.c
-@@ -3170,6 +3170,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
+@@ -3188,6 +3188,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
  
  		if (sd->flags & SD_SHARE_LLC) {
  			init_sched_domain_shared(&d, sd, SD_SHARE_LLC);

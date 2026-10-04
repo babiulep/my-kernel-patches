@@ -3,6 +3,10 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-10-04
+- TIP: update patches
+- TIP: attempt to fix POC selector for latest tip branch
+
 ## 2026-10-02
 - TIP: update patches
 - TIP: add kernel compile speedup patch + large folios patch (planned for 7.4)

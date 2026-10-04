@@ -1,5 +1,5 @@
 diff --git a/fs/fuse/dev.c b/fs/fuse/dev.c
-index 4fec31fc0..6da77dfe8 100644
+index 4fec31f..6da77df 100644
 --- a/fs/fuse/dev.c
 +++ b/fs/fuse/dev.c
 @@ -1252,31 +1252,10 @@ static int fuse_ref_folio(struct fuse_copy_state *cs, struct folio *folio,
@@ -83,7 +83,7 @@ index 4fec31fc0..6da77dfe8 100644
  			return err;
  
 diff --git a/fs/fuse/dev.h b/fs/fuse/dev.h
-index 8d25378c0..f6c47ae03 100644
+index 8d25378..f6c47ae 100644
 --- a/fs/fuse/dev.h
 +++ b/fs/fuse/dev.h
 @@ -90,7 +90,7 @@ int fuse_backing_close(struct fuse_conn *fc, int backing_id);
@@ -96,7 +96,7 @@ index 8d25378c0..f6c47ae03 100644
  
  #ifdef CONFIG_FUSE_IO_URING
 diff --git a/fs/fuse/file.c b/fs/fuse/file.c
-index 9a36d0329..a05c55b10 100644
+index 9a36d03..3ad5d0a 100644
 --- a/fs/fuse/file.c
 +++ b/fs/fuse/file.c
 @@ -864,18 +864,29 @@ static int fuse_do_readfolio(struct file *file, struct folio *folio,
@@ -182,7 +182,7 @@ index 9a36d0329..a05c55b10 100644
  	 *
  	 * It is unlikely that someone would rely on such mixed style
  	 * modifications.  Yet this does give less guarantees than if the
-@@ -3038,9 +3060,10 @@ static ssize_t __fuse_copy_file_range(struct file *file_in, loff_t pos_in,
+@@ -3038,9 +3060,10 @@ fallback:
  		goto out;
  	}
  
@@ -196,42 +196,7 @@ index 9a36d0329..a05c55b10 100644
  
  	file_update_time(file_out);
  	fuse_write_update_attr(inode_out, pos_out + bytes_copied, bytes_copied);
-diff --git a/fs/fuse/notify.c b/fs/fuse/notify.c
-index 1ba763705..4b262928e 100644
---- a/fs/fuse/notify.c
-+++ b/fs/fuse/notify.c
-@@ -190,7 +190,7 @@ static int fuse_notify_store(struct fuse_conn *fc, unsigned int size,
- 		folio_offset = offset_in_folio(folio, pos);
- 		nr_bytes = min(num, folio_size(folio) - folio_offset);
- 
--		err = fuse_copy_folio(cs, &folio, folio_offset, nr_bytes, 0);
-+		err = fuse_copy_folio(cs, &folio, folio_offset, nr_bytes);
- 		if (!folio_test_uptodate(folio) && !err && folio_offset == 0 &&
- 		    (nr_bytes == folio_size(folio) || file_size == end)) {
- 			folio_zero_segment(folio, nr_bytes, folio_size(folio));
-diff --git a/fs/fuse/virtio_fs.c b/fs/fuse/virtio_fs.c
-index f15e516eb..61ab7cb30 100644
---- a/fs/fuse/virtio_fs.c
-+++ b/fs/fuse/virtio_fs.c
-@@ -798,9 +798,11 @@ static void virtio_fs_request_complete(struct fuse_req *req,
- 		for (i = 0; i < ap->num_folios; i++) {
- 			thislen = ap->descs[i].length;
- 			if (len < thislen) {
--				WARN_ON(ap->descs[i].offset);
-+				unsigned int offset = ap->descs[i].offset;
-+
- 				folio = ap->folios[i];
--				folio_zero_segment(folio, len, thislen);
-+				folio_zero_segment(folio, offset + len,
-+						   offset + thislen);
- 				len = 0;
- 			} else {
- 				len -= thislen;
-diff --git a/fs/fuse/file.c b/fs/fuse/file.c
-index 9a36d03..5226001 100644
---- a/fs/fuse/file.c
-+++ b/fs/fuse/file.c
-@@ -3113,6 +3113,7 @@ void fuse_init_file_inode(struct inode *inode, unsigned int flags)
+@@ -3113,6 +3136,7 @@ void fuse_init_file_inode(struct inode *inode, unsigned int flags)
  {
  	struct fuse_inode *fi = get_fuse_inode(inode);
  	struct fuse_conn *fc = get_fuse_conn(inode);
@@ -239,7 +204,7 @@ index 9a36d03..5226001 100644
  
  	inode->i_fop = &fuse_file_operations;
  	inode->i_data.a_ops = &fuse_file_aops;
-@@ -3128,4 +3129,18 @@ void fuse_init_file_inode(struct inode *inode, unsigned int flags)
+@@ -3128,4 +3152,18 @@ void fuse_init_file_inode(struct inode *inode, unsigned int flags)
  
  	if (IS_ENABLED(CONFIG_FUSE_DAX))
  		fuse_dax_inode_init(inode, flags);
@@ -258,3 +223,34 @@ index 9a36d03..5226001 100644
 +		mapping_set_folio_order_range(inode->i_mapping, 0,
 +					      ilog2(max_folio_pages));
  }
+diff --git a/fs/fuse/notify.c b/fs/fuse/notify.c
+index 1ba7637..4b26292 100644
+--- a/fs/fuse/notify.c
++++ b/fs/fuse/notify.c
+@@ -190,7 +190,7 @@ static int fuse_notify_store(struct fuse_conn *fc, unsigned int size,
+ 		folio_offset = offset_in_folio(folio, pos);
+ 		nr_bytes = min(num, folio_size(folio) - folio_offset);
+ 
+-		err = fuse_copy_folio(cs, &folio, folio_offset, nr_bytes, 0);
++		err = fuse_copy_folio(cs, &folio, folio_offset, nr_bytes);
+ 		if (!folio_test_uptodate(folio) && !err && folio_offset == 0 &&
+ 		    (nr_bytes == folio_size(folio) || file_size == end)) {
+ 			folio_zero_segment(folio, nr_bytes, folio_size(folio));
+diff --git a/fs/fuse/virtio_fs.c b/fs/fuse/virtio_fs.c
+index f15e516..61ab7cb 100644
+--- a/fs/fuse/virtio_fs.c
++++ b/fs/fuse/virtio_fs.c
+@@ -798,9 +798,11 @@ static void virtio_fs_request_complete(struct fuse_req *req,
+ 		for (i = 0; i < ap->num_folios; i++) {
+ 			thislen = ap->descs[i].length;
+ 			if (len < thislen) {
+-				WARN_ON(ap->descs[i].offset);
++				unsigned int offset = ap->descs[i].offset;
++
+ 				folio = ap->folios[i];
+-				folio_zero_segment(folio, len, thislen);
++				folio_zero_segment(folio, offset + len,
++						   offset + thislen);
+ 				len = 0;
+ 			} else {
+ 				len -= thislen;

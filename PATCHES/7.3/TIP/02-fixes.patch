@@ -215,7 +215,7 @@ index 2df6643..7db7554 100644
  	 * Don't transmit during firmware restart. The firmware is dead,
  	 * so iwl_trans_tx() would return -EIO for each frame. Avoid the
 diff --git a/drivers/usb/core/message.c b/drivers/usb/core/message.c
-index 75e2bfd..1d83f8b 100644
+index 0cd6dd2..0636986 100644
 --- a/drivers/usb/core/message.c
 +++ b/drivers/usb/core/message.c
 @@ -1052,6 +1052,25 @@ int usb_string(struct usb_device *dev, int index, char *buf, size_t size)
@@ -245,10 +245,10 @@ index 75e2bfd..1d83f8b 100644
  		dev_dbg(&dev->dev,
  			"wrong descriptor type %02x for string %d (\"%s\")\n",
 diff --git a/include/linux/perf_event.h b/include/linux/perf_event.h
-index 7797ce2..f36b306 100644
+index eb3f7ba..64c29a9 100644
 --- a/include/linux/perf_event.h
 +++ b/include/linux/perf_event.h
-@@ -1638,7 +1638,7 @@ static inline void perf_event_task_migrate(struct task_struct *task)
+@@ -1639,7 +1639,7 @@ static inline void perf_event_task_migrate(struct task_struct *task)
  		task->sched_migrated = 1;
  }
  
@@ -400,10 +400,10 @@ index 82825e7..ce83fc7 100644
  	if (vtime_accounting_enabled_this_cpu())
  		vtime_task_switch_generic(prev);
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 2e109bf..49ce56d 100644
+index eb6d951..652d4cb 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -5146,7 +5146,7 @@ static inline void prepare_task(struct task_struct *next)
+@@ -5149,7 +5149,7 @@ static inline void prepare_task(struct task_struct *next)
  	WRITE_ONCE(next->on_cpu, 1);
  }
  
@@ -412,7 +412,7 @@ index 2e109bf..49ce56d 100644
  {
  	/*
  	 * This must be the very last reference to @prev from this CPU. After
-@@ -5190,7 +5190,7 @@ static void zap_balance_callbacks(struct rq *rq)
+@@ -5193,7 +5193,7 @@ static void zap_balance_callbacks(struct rq *rq)
  	rq->balance_callback = found ? &balance_push_callback : NULL;
  }
  
@@ -421,7 +421,7 @@ index 2e109bf..49ce56d 100644
  {
  	void (*func)(struct rq *rq);
  	struct balance_callback *next;
-@@ -5225,7 +5225,7 @@ struct balance_callback balance_push_callback = {
+@@ -5228,7 +5228,7 @@ struct balance_callback balance_push_callback = {
  	.func = balance_push,
  };
  
@@ -430,7 +430,7 @@ index 2e109bf..49ce56d 100644
  __splice_balance_callbacks(struct rq *rq, bool split)
  {
  	struct balance_callback *head = rq->balance_callback;
-@@ -5299,7 +5299,7 @@ prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf
+@@ -5302,7 +5302,7 @@ prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf
  	__acquire(__rq_lockp(this_rq()));
  }
  
@@ -439,7 +439,7 @@ index 2e109bf..49ce56d 100644
  	__releases(__rq_lockp(rq))
  {
  	/*
-@@ -5333,7 +5333,7 @@ static inline void kmap_local_sched_out(void)
+@@ -5336,7 +5336,7 @@ static inline void kmap_local_sched_out(void)
  #endif
  }
  
@@ -448,7 +448,7 @@ index 2e109bf..49ce56d 100644
  {
  #ifdef CONFIG_KMAP_LOCAL
  	if (unlikely(current->kmap_ctrl.idx))
-@@ -5387,7 +5387,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
+@@ -5390,7 +5390,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
   * past. 'prev == current' is still correct but we need to recalculate this_rq
   * because prev may have moved to another CPU.
   */
@@ -458,10 +458,10 @@ index 2e109bf..49ce56d 100644
  {
  	struct rq *rq = this_rq();
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index e707da7..b2633c0 100644
+index 5c98d8d..1d3ee08 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -13773,12 +13773,15 @@ redo:
+@@ -13824,12 +13824,15 @@ redo:
  		 * still unbalanced. ld_moved simply stays zero, so it is
  		 * correctly treated as an imbalance.
  		 */
@@ -580,7 +580,7 @@ index 7d2ec52..174d77c 100644
  {
  	raw_spin_rq_unlock(rq);
 diff --git a/mm/slub.c b/mm/slub.c
-index 54ec125..db83b12 100644
+index 544cff3..a0f0bdc 100644
 --- a/mm/slub.c
 +++ b/mm/slub.c
 @@ -422,6 +422,7 @@ struct node_barn {

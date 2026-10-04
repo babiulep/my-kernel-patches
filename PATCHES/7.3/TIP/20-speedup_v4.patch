@@ -78,7 +78,7 @@ index a6a0192..9670556 100644
 +$(KBUILD_RUST_DIRS): | rust
 +endif
 diff --git a/MAINTAINERS b/MAINTAINERS
-index f98ebdd..f8f8ff4 100644
+index adde848..fdaca6d 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -14060,6 +14060,7 @@ Q:	https://patchwork.kernel.org/project/linux-kbuild/list/
@@ -424,17 +424,17 @@ index 335c360..09f05d0 100644
  
  #include <generated/utsrelease.h>
 diff --git a/init/Kconfig b/init/Kconfig
-index 005c540..effa5ab 100644
+index 34b7ccf..92ea35e 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1,201 +1,6 @@
+@@ -1,206 +1,5 @@
  # SPDX-License-Identifier: GPL-2.0-only
 -config CC_VERSION_TEXT
 -	string
 -	default "$(CC_VERSION_TEXT)"
 -	help
 -	  This is used in unclear ways:
- 
+-
 -	  - Re-run Kconfig when the compiler is updated
 -	    The 'default' property references the environment variable,
 -	    CC_VERSION_TEXT so it is recorded in include/config/auto.conf.cmd.
@@ -602,6 +602,11 @@ index 005c540..effa5ab 100644
 -
 -config CC_HAS_MULTIDIMENSIONAL_NONSTRING
 -	def_bool $(success,echo 'char tag[][4] __attribute__((__nonstring__)) = { };' | $(CC) $(CLANG_FLAGS) -x c - -c -o /dev/null -Werror)
+-
+-config CC_OPT_INLINE_MEMSET
+-	string
+-	default "-finline-stringops=memset" if $(cc-option,-finline-stringops=memset)
+-	default "-mllvm -max-store-memset=4294967294" if $(cc-option,-mllvm -max-store-memset=4294967294)
 -
 -config LD_CAN_USE_KEEP_IN_OVERLAY
 -	# ld.lld prior to 21.0.0 did not support KEEP within an overlay description
