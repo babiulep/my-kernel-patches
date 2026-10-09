@@ -3,6 +3,9 @@
 
 - [README 2025](README2025.md) 
 
+## 2026-10-09
+- TIP: update patches
+
 ## 2026-10-04
 - TIP: update patches
 - TIP: attempt to fix POC selector for latest tip branch

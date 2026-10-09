@@ -121,10 +121,10 @@ index 652d4cb..7f44a61 100644
  	/* A delayed task cannot be in clone(). */
  	WARN_ON_ONCE(p->se.sched_delayed);
 diff --git a/kernel/sched/ext/ext.c b/kernel/sched/ext/ext.c
-index aed5286..7f0ab45 100644
+index 522cf6e..c2243aa 100644
 --- a/kernel/sched/ext/ext.c
 +++ b/kernel/sched/ext/ext.c
-@@ -6644,6 +6644,9 @@ static void scx_root_disable(struct scx_sched *sch)
+@@ -6672,6 +6672,9 @@ static void scx_root_disable(struct scx_sched *sch)
  	mutex_unlock(&scx_enable_mutex);
  
  	WARN_ON_ONCE(scx_set_enable_state(SCX_DISABLED) != SCX_DISABLING);
@@ -134,7 +134,7 @@ index aed5286..7f0ab45 100644
  done:
  	scx_bypass(sch, false);
  }
-@@ -7948,6 +7951,10 @@ static void scx_root_enable_workfn(struct kthread_work *work)
+@@ -7976,6 +7979,10 @@ static void scx_root_enable_workfn(struct kthread_work *work)
  		}
  	}
  
@@ -3004,10 +3004,10 @@ index 0000000..e645ed7
 +	poc_sync_resolve(p, exec - (p->poc_sync.mark - 1));
 +}
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index 174d77c..7e2f363 100644
+index 5948c3c..02ad742 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
-@@ -1201,6 +1201,11 @@ struct rq {
+@@ -1200,6 +1200,11 @@ struct rq {
  	call_single_data_t	nohz_csd;
  #endif /* CONFIG_NO_HZ_COMMON */
  
@@ -3019,7 +3019,7 @@ index 174d77c..7e2f363 100644
  #ifdef CONFIG_UCLAMP_TASK
  	/* Utilization clamp values based on CPU's RUNNABLE tasks */
  	struct uclamp_rq	uclamp[UCLAMP_CNT] ____cacheline_aligned;
-@@ -2411,6 +2416,8 @@ static inline struct task_group *task_group(struct task_struct *p)
+@@ -2410,6 +2415,8 @@ static inline struct task_group *task_group(struct task_struct *p)
  
  #endif /* !CONFIG_CGROUP_SCHED */
  
