@@ -1,8 +1,6 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
-- [README 2025](README2025.md) 
-
 These are based on the following patch series:
 - [sirlucjan](https://github.com/sirlucjan/kernel-patches.git)  
 - [firelzrd](https://github.com/firelzrd)  
