@@ -3,6 +3,11 @@
 
 - [README 2025](README2025.md) 
 
+These are based on the work of the following patches: 
+[sirlucjan](https://github.com/sirlucjan/kernel-patches.git)  
+[firelzrd](https://github.com/firelzrd)  
+[cachyos](https://github.com/CachyOS/kernel-patches.git)
+
 ## 2026-10-09
 - TIP: update patches
 
