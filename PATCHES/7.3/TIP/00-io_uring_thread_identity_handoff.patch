@@ -364,7 +364,7 @@ index d1aa4ed..4137276 100644
 +
  #endif
 diff --git a/include/linux/io_uring_types.h b/include/linux/io_uring_types.h
-index 39629ee..dadbe36 100644
+index 8126af6..45f645d 100644
 --- a/include/linux/io_uring_types.h
 +++ b/include/linux/io_uring_types.h
 @@ -4,9 +4,11 @@
@@ -444,7 +444,7 @@ index 39629ee..dadbe36 100644
  };
  
  struct io_alloc_cache {
-@@ -350,6 +388,11 @@ struct io_ring_ctx {
+@@ -352,6 +390,11 @@ struct io_ring_ctx {
  	/* submission data */
  	struct {
  		struct mutex		uring_lock;
@@ -456,7 +456,7 @@ index 39629ee..dadbe36 100644
  
  		/*
  		 * Ring buffer of indices into array of io_uring_sqe, which is
-@@ -608,6 +651,7 @@ enum {
+@@ -610,6 +653,7 @@ enum {
  	REQ_F_IMPORT_BUFFER_BIT,
  	REQ_F_SQE_COPIED_BIT,
  	REQ_F_IOPOLL_BIT,
@@ -464,7 +464,7 @@ index 39629ee..dadbe36 100644
  
  	/* not a real bit, just to check we're not overflowing the space */
  	__REQ_F_LAST_BIT,
-@@ -703,6 +747,8 @@ enum {
+@@ -705,6 +749,8 @@ enum {
  	REQ_F_SQE_COPIED	= IO_REQ_FLAG(REQ_F_SQE_COPIED_BIT),
  	/* request must be iopolled to completion (set in ->issue()) */
  	REQ_F_IOPOLL		= IO_REQ_FLAG(REQ_F_IOPOLL_BIT),
@@ -1632,7 +1632,7 @@ index 42f00a4..df45183 100644
  int io_wq_max_workers(struct io_wq *wq, int *new_count);
  bool io_wq_worker_stopped(void);
 diff --git a/io_uring/io_uring.c b/io_uring/io_uring.c
-index cbea989..67e2075 100644
+index cf5218d..e4ad7e7 100644
 --- a/io_uring/io_uring.c
 +++ b/io_uring/io_uring.c
 @@ -98,6 +98,7 @@
@@ -1985,8 +1985,8 @@ index cbea989..67e2075 100644
 +
  static void io_rings_free(struct io_ring_ctx *ctx)
  {
- 	io_free_region(ctx->user, &ctx->sq_region);
-@@ -2585,6 +2682,94 @@ struct file *io_uring_ctx_get_file(unsigned int fd, bool registered)
+ 	/* ring memory is not charged to RLIMIT_MEMLOCK, hence no user */
+@@ -2586,6 +2683,94 @@ struct file *io_uring_ctx_get_file(unsigned int fd, bool registered)
  }
  
  
@@ -2081,7 +2081,7 @@ index cbea989..67e2075 100644
  SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
  		u32, min_complete, u32, flags, const void __user *, argp,
  		size_t, argsz)
-@@ -2635,63 +2820,28 @@ SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
+@@ -2636,63 +2821,28 @@ SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
  		if (unlikely(ret))
  			goto out;
  
@@ -2237,7 +2237,7 @@ index 896aab1..1f53661 100644
  
  static inline void io_commit_cqring(struct io_ring_ctx *ctx)
 diff --git a/io_uring/kbuf.c b/io_uring/kbuf.c
-index 7c30917..8f04e6c 100644
+index 6e2facf..1420535 100644
 --- a/io_uring/kbuf.c
 +++ b/io_uring/kbuf.c
 @@ -371,10 +371,9 @@ int io_buffers_select(struct io_kiocb *req, struct buf_sel_arg *arg,
@@ -2685,7 +2685,7 @@ index 1e1a316..5843d48 100644
  ifdef CONFIG_FUNCTION_TRACER
  # Do not trace internal ftrace files
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 10f2d05..37a197e 100644
+index eb198c8..15eb3f4 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -2194,7 +2194,8 @@ __latent_entropy struct task_struct *copy_process(

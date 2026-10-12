@@ -6,6 +6,10 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-10-12
+- TIP: latest fixes from Piotr Gorski
+- TIP: offset fixes
+
 ## 2026-10-09
 - TIP: update patches
 

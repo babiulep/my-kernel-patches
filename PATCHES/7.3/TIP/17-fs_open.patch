@@ -1,5 +1,5 @@
 diff --git a/fs/internal.h b/fs/internal.h
-index c658c8a5ebd5..9632239036ac 100644
+index c658c8a..9632239 100644
 --- a/fs/internal.h
 +++ b/fs/internal.h
 @@ -205,6 +205,7 @@ int do_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group,
@@ -11,10 +11,10 @@ index c658c8a5ebd5..9632239036ac 100644
  /*
   * inode.c
 diff --git a/fs/namei.c b/fs/namei.c
-index 3f9bf103ba12..f71481b9bf8f 100644
+index c87c14e..78013c9 100644
 --- a/fs/namei.c
 +++ b/fs/namei.c
-@@ -4789,6 +4789,7 @@ static const char *open_last_lookups(struct nameidata *nd,
+@@ -4818,6 +4818,7 @@ finish_lookup:
  static int do_open(struct nameidata *nd,
  		   struct file *file, const struct open_flags *op)
  {
@@ -22,7 +22,7 @@ index 3f9bf103ba12..f71481b9bf8f 100644
  	struct mnt_idmap *idmap;
  	int open_flag = op->open_flag;
  	bool do_truncate;
-@@ -4830,11 +4831,17 @@ static int do_open(struct nameidata *nd,
+@@ -4859,11 +4860,17 @@ static int do_open(struct nameidata *nd,
  		error = mnt_want_write(nd->path.mnt);
  		if (error)
  			return error;
@@ -41,7 +41,7 @@ index 3f9bf103ba12..f71481b9bf8f 100644
  	if (!error)
  		error = security_file_post_open(file, op->acc_mode);
  	if (!error && do_truncate)
-@@ -4843,8 +4850,10 @@ static int do_open(struct nameidata *nd,
+@@ -4872,8 +4879,10 @@ static int do_open(struct nameidata *nd,
  		WARN_ON(1);
  		error = -EINVAL;
  	}
@@ -55,10 +55,10 @@ index 3f9bf103ba12..f71481b9bf8f 100644
  }
  
 diff --git a/fs/open.c b/fs/open.c
-index 6b1c14e684a9..2a7697cee00b 100644
+index 6b1c14e..2a7697c 100644
 --- a/fs/open.c
 +++ b/fs/open.c
-@@ -931,6 +931,11 @@ static inline int file_get_write_access(struct file *f)
+@@ -931,6 +931,11 @@ cleanup_inode:
  	return error;
  }
  

@@ -63,24 +63,6 @@ index df22113..3b0ed46 100644
  {
  	/* With PTI, we unconditionally serialize before running user code. */
  	if (cpu_feature_enabled(X86_FEATURE_PTI))
-diff --git a/arch/x86/kernel/cpu/amd.c b/arch/x86/kernel/cpu/amd.c
-index 3972966..b3725a8 100644
---- a/arch/x86/kernel/cpu/amd.c
-+++ b/arch/x86/kernel/cpu/amd.c
-@@ -1044,11 +1044,8 @@ static const struct x86_cpu_id zen5_rdseed_microcode[] = {
- 
- static void init_amd_zen5(struct cpuinfo_x86 *c)
- {
--	if (!x86_match_min_microcode_rev(zen5_rdseed_microcode)) {
--		clear_cpu_cap(c, X86_FEATURE_RDSEED);
--		msr_clear_bit(MSR_AMD64_CPUID_FN_7, 18);
--		pr_emerg_once("RDSEED32 is broken. Disabling the corresponding CPUID bit.\n");
--	}
-+	if (!x86_match_min_microcode_rev(zen5_rdseed_microcode))
-+		pr_emerg_once("RDSEED32 is broken. Please update your firmware.\n");
- 
- 	if (cpu_has(c, X86_FEATURE_INVLPGB) &&
- 	    !cpu_has(c, X86_FEATURE_TLBSYNC_SFW_NO))
 diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
 index dc7191b..2154ad8 100644
 --- a/drivers/bluetooth/btusb.c
