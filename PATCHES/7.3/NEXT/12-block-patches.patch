@@ -152,7 +152,7 @@ index 355a731..57ef248 100644
  	 * bic associated with the task issuing current bio for
  	 * merging. This and the next field are used as a support to
 diff --git a/block/mq-deadline.c b/block/mq-deadline.c
-index 5f643c0..d500825 100644
+index e5db1ee..948110c 100644
 --- a/block/mq-deadline.c
 +++ b/block/mq-deadline.c
 @@ -604,7 +604,19 @@ static bool dd_bio_merge(struct request_queue *q, struct bio *bio,

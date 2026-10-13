@@ -17,7 +17,7 @@ index 1163736..c24f43d 100644
  	bool
  	help
 diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
-index 54c344d..8cd95f0 100644
+index 24a0308..b5038b6 100644
 --- a/arch/arm64/Kconfig
 +++ b/arch/arm64/Kconfig
 @@ -46,6 +46,7 @@ config ARM64
@@ -153,7 +153,7 @@ index 581f80e..e669a27 100644
 +}
 +#endif
 diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
-index 828ef01..d8ef19f 100644
+index 58dce0b..00079eb 100644
 --- a/arch/x86/Kconfig
 +++ b/arch/x86/Kconfig
 @@ -108,6 +108,7 @@ config X86
@@ -162,7 +162,7 @@ index 828ef01..d8ef19f 100644
  	select ARCH_HAS_SYSCALL_WRAPPER
 +	select ARCH_HAS_THREAD_HANDOFF		if X86_64
  	select ARCH_HAS_UBSAN
- 	select ARCH_HAS_DEBUG_WX
+ 	select ARCH_HAS_CHECK_WX
  	select ARCH_HAS_ZONE_DMA_SET if EXPERT
 diff --git a/arch/x86/kernel/process.c b/arch/x86/kernel/process.c
 index 346c438..ed52af8 100644
@@ -364,7 +364,7 @@ index 505caa9..e46565a 100644
 +
  #endif
 diff --git a/include/linux/io_uring_types.h b/include/linux/io_uring_types.h
-index 90fea94..6812404 100644
+index 53941c6..6fcd70a 100644
 --- a/include/linux/io_uring_types.h
 +++ b/include/linux/io_uring_types.h
 @@ -4,9 +4,11 @@
@@ -444,7 +444,7 @@ index 90fea94..6812404 100644
  };
  
  struct io_alloc_cache {
-@@ -350,6 +388,11 @@ struct io_ring_ctx {
+@@ -352,6 +390,11 @@ struct io_ring_ctx {
  	/* submission data */
  	struct {
  		struct mutex		uring_lock;
@@ -456,7 +456,7 @@ index 90fea94..6812404 100644
  
  		/*
  		 * Ring buffer of indices into array of io_uring_sqe, which is
-@@ -610,6 +653,7 @@ enum {
+@@ -612,6 +655,7 @@ enum {
  	REQ_F_IMPORT_BUFFER_BIT,
  	REQ_F_SQE_COPIED_BIT,
  	REQ_F_IOPOLL_BIT,
@@ -464,7 +464,7 @@ index 90fea94..6812404 100644
  
  	/* not a real bit, just to check we're not overflowing the space */
  	__REQ_F_LAST_BIT,
-@@ -705,6 +749,8 @@ enum {
+@@ -707,6 +751,8 @@ enum {
  	REQ_F_SQE_COPIED	= IO_REQ_FLAG(REQ_F_SQE_COPIED_BIT),
  	/* request must be iopolled to completion (set in ->issue()) */
  	REQ_F_IOPOLL		= IO_REQ_FLAG(REQ_F_IOPOLL_BIT),
@@ -474,14 +474,14 @@ index 90fea94..6812404 100644
  
  struct io_tw_req {
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index 5ce350a..ef2fa48 100644
+index 1c93da7..ab500bf 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -1821,6 +1821,7 @@ extern struct pid __rcu *cad_pid;
+@@ -1823,6 +1823,7 @@ extern struct pid __rcu *cad_pid;
  #define PF_KTHREAD		0x00200000	/* I am a kernel thread */
  #define PF_RANDOMIZE		0x00400000	/* Randomize virtual address space */
  #define PF_NO_NOTIFY_SIGNAL	0x00800000	/* see no_notify_signal_save() */
-+#define PF_IO_HANDOFF          0x00800000      /* io_uring: hand identity off if the task blocks */
++#define PF_IO_HANDOFF		0x00800000	/* io_uring: hand identity off if the task blocks */
  #define PF__HOLE__01000000	0x01000000
  #define PF__HOLE__02000000	0x02000000
  #define PF_NO_SETAFFINITY	0x04000000	/* Userland is not allowed to meddle with cpus_mask */
@@ -693,10 +693,10 @@ index 34b31a8..6043c5d 100644
  
  /* This part must be outside protection */
 diff --git a/init/Kconfig b/init/Kconfig
-index 6e82b49..15421e6 100644
+index 54f78d8..5c11b60 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -1985,9 +1985,20 @@ config AIO
+@@ -1764,9 +1764,20 @@ config AIO
  	  by some high performance threaded applications. Disabling
  	  this option saves about 7k.
  
@@ -1240,7 +1240,7 @@ index 0000000..f315f2a
 +
 +#endif
 diff --git a/io_uring/io-wq.c b/io_uring/io-wq.c
-index 2ca223e..d29e5a8 100644
+index eecba70..ccf54ce 100644
 --- a/io_uring/io-wq.c
 +++ b/io_uring/io-wq.c
 @@ -20,6 +20,7 @@
@@ -1315,7 +1315,7 @@ index 2ca223e..d29e5a8 100644
  		/*
  		 * EXIT may have been set after checking it above, check after
  		 * adding the task_work and remove any creation item if it is
-@@ -687,19 +706,48 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
+@@ -691,19 +710,48 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
  	} while (1);
  }
  
@@ -1374,7 +1374,7 @@ index 2ca223e..d29e5a8 100644
  
  	while (!test_bit(IO_WQ_BIT_EXIT, &wq->state)) {
  		long ret;
-@@ -724,6 +772,11 @@ static int io_wq_worker(void *data)
+@@ -728,6 +776,11 @@ static int io_wq_worker(void *data)
  		if ((last_timeout && (exit_mask || acct->nr_workers > 1)) ||
  		    test_bit(IO_WQ_BIT_EXIT_ON_IDLE, &wq->state)) {
  			acct->nr_workers--;
@@ -1386,7 +1386,7 @@ index 2ca223e..d29e5a8 100644
  			raw_spin_unlock(&acct->workers_lock);
  			__set_current_state(TASK_RUNNING);
  			break;
-@@ -733,7 +786,12 @@ static int io_wq_worker(void *data)
+@@ -737,7 +790,12 @@ static int io_wq_worker(void *data)
  		raw_spin_unlock(&acct->workers_lock);
  		if (io_run_task_work())
  			continue;
@@ -1399,7 +1399,7 @@ index 2ca223e..d29e5a8 100644
  		if (signal_pending(current)) {
  			struct ksignal ksig;
  
-@@ -752,9 +810,197 @@ static int io_wq_worker(void *data)
+@@ -756,9 +814,197 @@ static int io_wq_worker(void *data)
  		io_worker_handle_work(acct, worker);
  
  	io_worker_exit(worker);
@@ -1631,7 +1631,7 @@ index 42f00a4..df45183 100644
  int io_wq_max_workers(struct io_wq *wq, int *new_count);
  bool io_wq_worker_stopped(void);
 diff --git a/io_uring/io_uring.c b/io_uring/io_uring.c
-index a67b2ad..1decc24 100644
+index 0c91d46..f443b24 100644
 --- a/io_uring/io_uring.c
 +++ b/io_uring/io_uring.c
 @@ -98,6 +98,7 @@
@@ -1699,7 +1699,7 @@ index a67b2ad..1decc24 100644
  	}
  }
  
-@@ -1437,12 +1454,31 @@ static inline int __io_issue_sqe(struct io_kiocb *req,
+@@ -1442,12 +1459,31 @@ static inline int __io_issue_sqe(struct io_kiocb *req,
  static int io_issue_sqe(struct io_kiocb *req, unsigned int issue_flags)
  {
  	const struct io_issue_def *def = &io_issue_defs[req->opcode];
@@ -1731,7 +1731,7 @@ index a67b2ad..1decc24 100644
  
  	if (ret == IOU_COMPLETE) {
  		if (issue_flags & IO_URING_F_COMPLETE_DEFER)
-@@ -1635,7 +1671,7 @@ struct file *io_file_get_normal(struct io_kiocb *req, int fd)
+@@ -1640,7 +1676,7 @@ struct file *io_file_get_normal(struct io_kiocb *req, int fd)
  	return file;
  }
  
@@ -1740,7 +1740,7 @@ index a67b2ad..1decc24 100644
  {
  	const struct io_cold_def *def = &io_cold_defs[req->opcode];
  
-@@ -1675,7 +1711,8 @@ fail:
+@@ -1680,7 +1716,8 @@ fail:
  	}
  }
  
@@ -1750,7 +1750,7 @@ index a67b2ad..1decc24 100644
  	__must_hold(&req->ctx->uring_lock)
  {
  	unsigned int issue_flags = IO_URING_F_NONBLOCK |
-@@ -1683,6 +1720,8 @@ static inline void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
+@@ -1688,6 +1725,8 @@ static inline void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
  	int ret;
  
  	ret = io_issue_sqe(req, issue_flags);
@@ -1759,7 +1759,7 @@ index a67b2ad..1decc24 100644
  
  	/*
  	 * We async punt it if the file wasn't marked NOWAIT, or if the file
-@@ -1690,6 +1729,7 @@ static inline void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
+@@ -1695,6 +1734,7 @@ static inline void io_queue_sqe(struct io_kiocb *req, unsigned int extra_flags)
  	 */
  	if (unlikely(ret))
  		io_queue_async(req, issue_flags, ret);
@@ -1767,7 +1767,7 @@ index a67b2ad..1decc24 100644
  }
  
  static void io_queue_sqe_fallback(struct io_kiocb *req)
-@@ -1855,7 +1895,7 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
+@@ -1860,7 +1900,7 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
  		if (state->need_plug && def->plug) {
  			state->plug_started = true;
  			state->need_plug = false;
@@ -1776,7 +1776,7 @@ index a67b2ad..1decc24 100644
  		}
  	}
  
-@@ -1915,6 +1955,22 @@ static __cold int io_submit_fail_init(const struct io_uring_sqe *sqe,
+@@ -1920,6 +1960,22 @@ static __cold int io_submit_fail_init(const struct io_uring_sqe *sqe,
  	return 0;
  }
  
@@ -1799,7 +1799,7 @@ index a67b2ad..1decc24 100644
  static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
  			 const struct io_uring_sqe *sqe, unsigned int *left)
  	__must_hold(&ctx->uring_lock)
-@@ -1952,7 +2008,7 @@ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
+@@ -1957,7 +2013,7 @@ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
  		/* last request of the link, flush it */
  		req = link->head;
  		link->head = NULL;
@@ -1808,7 +1808,7 @@ index a67b2ad..1decc24 100644
  			goto fallback;
  
  	} else if (unlikely(req->flags & (IO_REQ_LINK_FLAGS |
-@@ -1960,15 +2016,16 @@ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
+@@ -1965,15 +2021,16 @@ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
  		if (req->flags & IO_REQ_LINK_FLAGS) {
  			link->head = req;
  			link->last = req;
@@ -1829,7 +1829,7 @@ index a67b2ad..1decc24 100644
  }
  
  /*
-@@ -1983,13 +2040,14 @@ static void io_submit_state_end(struct io_ring_ctx *ctx)
+@@ -1988,13 +2045,14 @@ static void io_submit_state_end(struct io_ring_ctx *ctx)
  	/* flush only after queuing links as they can generate completions */
  	io_submit_flush_completions(ctx);
  	if (state->plug_started)
@@ -1845,7 +1845,7 @@ index a67b2ad..1decc24 100644
  				  unsigned int max_ios)
  {
  	state->plug_started = false;
-@@ -1997,6 +2055,8 @@ static void io_submit_state_start(struct io_submit_state *state,
+@@ -2002,6 +2060,8 @@ static void io_submit_state_start(struct io_submit_state *state,
  	state->submit_nr = max_ios;
  	/* set only head, no need to init link_last in advance */
  	state->link.head = NULL;
@@ -1854,7 +1854,7 @@ index a67b2ad..1decc24 100644
  }
  
  static void io_commit_sqring(struct io_ring_ctx *ctx)
-@@ -2055,47 +2115,11 @@ static bool io_get_sqe(struct io_ring_ctx *ctx, const struct io_uring_sqe **sqe)
+@@ -2060,47 +2120,11 @@ static bool io_get_sqe(struct io_ring_ctx *ctx, const struct io_uring_sqe **sqe)
  	return true;
  }
  
@@ -1905,7 +1905,7 @@ index a67b2ad..1decc24 100644
  
  	if (unlikely(left)) {
  		ret -= left;
-@@ -2111,6 +2135,79 @@ int io_submit_sqes(struct io_ring_ctx *ctx, unsigned int nr)
+@@ -2116,6 +2140,79 @@ int io_submit_sqes(struct io_ring_ctx *ctx, unsigned int nr)
  	return ret;
  }
  
@@ -1984,8 +1984,8 @@ index a67b2ad..1decc24 100644
 +
  static void io_rings_free(struct io_ring_ctx *ctx)
  {
- 	io_free_region(ctx->user, &ctx->sq_region);
-@@ -2715,6 +2812,94 @@ struct file *io_uring_ctx_get_file(unsigned int fd, bool registered)
+ 	/* ring memory is not charged to RLIMIT_MEMLOCK, hence no user */
+@@ -2721,6 +2818,94 @@ struct file *io_uring_ctx_get_file(unsigned int fd, bool registered)
  }
  
  
@@ -2080,7 +2080,7 @@ index a67b2ad..1decc24 100644
  SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
  		u32, min_complete, u32, flags, const void __user *, argp,
  		size_t, argsz)
-@@ -2765,63 +2950,28 @@ SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
+@@ -2771,63 +2956,28 @@ SYSCALL_DEFINE6(io_uring_enter, unsigned int, fd, u32, to_submit,
  		if (unlikely(ret))
  			goto out;
  
@@ -2236,7 +2236,7 @@ index 1092617..9186306 100644
  
  static inline void io_commit_cqring(struct io_ring_ctx *ctx)
 diff --git a/io_uring/kbuf.c b/io_uring/kbuf.c
-index 7c30917..8f04e6c 100644
+index 6e2facf..1420535 100644
 --- a/io_uring/kbuf.c
 +++ b/io_uring/kbuf.c
 @@ -371,10 +371,9 @@ int io_buffers_select(struct io_kiocb *req, struct buf_sel_arg *arg,
@@ -2487,7 +2487,7 @@ index 667f981..45c2f77 100644
  	/* size of async data needed, if any */
  	unsigned short		async_size;
 diff --git a/io_uring/rw.c b/io_uring/rw.c
-index 755166e..9910e43 100644
+index 3d13a96..0e397e2 100644
 --- a/io_uring/rw.c
 +++ b/io_uring/rw.c
 @@ -135,7 +135,7 @@ static bool io_rw_recycle(struct io_kiocb *req, unsigned int issue_flags)
@@ -2602,7 +2602,7 @@ index 76ad1ad..9a13981 100644
  	struct io_ring_ctx	*ctx;
  };
 diff --git a/io_uring/tw.c b/io_uring/tw.c
-index f573bcc..f26faeb 100644
+index f9affd6..0b2084b 100644
 --- a/io_uring/tw.c
 +++ b/io_uring/tw.c
 @@ -9,6 +9,7 @@
@@ -2630,9 +2630,9 @@ index f573bcc..f26faeb 100644
  	struct io_ring_ctx *ctx = req->ctx;
 +	struct task_struct *task;
  
- 	/* tw run already pending, nothing else to do */
- 	if (!mpscq_push(&tctx->task_list, &req->io_task_work.node))
-@@ -227,8 +233,14 @@ void io_req_normal_work_add(struct io_kiocb *req)
+ 	/* SQPOLL can retire the request on push, see io_ring_exit_work() */
+ 	guard(rcu)();
+@@ -230,8 +236,14 @@ void io_req_normal_work_add(struct io_kiocb *req)
  		return;
  	}
  
@@ -2672,7 +2672,7 @@ index 73b6068..5d82651 100644
  			return;
  		io_req_complete_defer(req);
 diff --git a/kernel/Makefile b/kernel/Makefile
-index a095f86..b93bf39 100644
+index 89f05e3..c2d3841 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -14,6 +14,7 @@ obj-y     = fork.o exec_domain.o exec_state.o panic.o \
@@ -2684,10 +2684,10 @@ index a095f86..b93bf39 100644
  ifdef CONFIG_FUNCTION_TRACER
  # Do not trace internal ftrace files
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 39be510..098a901 100644
+index c58a9eb..36679e7 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
-@@ -2192,7 +2192,8 @@ __latent_entropy struct task_struct *copy_process(
+@@ -2191,7 +2191,8 @@ __latent_entropy struct task_struct *copy_process(
  		goto bad_fork_cleanup_count;
  
  	delayacct_tsk_init(p);	/* Must remain after dup_task_struct() */
@@ -2697,7 +2697,7 @@ index 39be510..098a901 100644
  	p->flags |= PF_FORKNOEXEC;
  	INIT_LIST_HEAD(&p->children);
  	INIT_LIST_HEAD(&p->sibling);
-@@ -2689,11 +2690,12 @@ struct task_struct * __init fork_idle(int cpu)
+@@ -2691,11 +2692,12 @@ struct task_struct * __init fork_idle(int cpu)
   * creating io_uring workers. It returns a created task, or an error pointer.
   * The returned task is inactive, and the caller must fire it up through
   * wake_up_new_task(p). All signals are blocked in the created task.
@@ -2712,10 +2712,10 @@ index 39be510..098a901 100644
  		.flags		= flags,
  		.fn		= fn,
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 57dad4f..db06b3f 100644
+index 047fbe8..eb6d951 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
-@@ -97,6 +97,8 @@
+@@ -96,6 +96,8 @@
  
  #include "../workqueue_internal.h"
  #include "../../io_uring/io-wq.h"
@@ -2724,7 +2724,7 @@ index 57dad4f..db06b3f 100644
  #include "../smpboot.h"
  #include "../locking/mutex.h"
  
-@@ -5693,6 +5695,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
+@@ -5741,6 +5743,38 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
   * In case the task is currently running, return the runtime plus current's
   * pending runtime that have not been accounted yet.
   */
@@ -2763,7 +2763,7 @@ index 57dad4f..db06b3f 100644
  unsigned long long task_sched_runtime(struct task_struct *p)
  {
  	struct rq_flags rf;
-@@ -7348,6 +7382,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
+@@ -7428,6 +7462,8 @@ static inline void sched_submit_work(struct task_struct *tsk)
  		wq_worker_sleeping(tsk);
  	else if (task_flags & PF_IO_WORKER)
  		io_wq_worker_sleeping(tsk);
