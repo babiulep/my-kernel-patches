@@ -419,7 +419,7 @@ index 82825e7..ce83fc7 100644
  	if (vtime_accounting_enabled_this_cpu())
  		vtime_task_switch_generic(prev);
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index eb6d951..652d4cb 100644
+index 879a68a..41c6828 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -5149,7 +5149,7 @@ static inline void prepare_task(struct task_struct *next)
@@ -477,10 +477,10 @@ index eb6d951..652d4cb 100644
  {
  	struct rq *rq = this_rq();
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index 5c98d8d..1d3ee08 100644
+index 7bf3193..b105a72 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -13824,12 +13824,15 @@ redo:
+@@ -13765,12 +13765,15 @@ redo:
  		 * still unbalanced. ld_moved simply stays zero, so it is
  		 * correctly treated as an imbalance.
  		 */

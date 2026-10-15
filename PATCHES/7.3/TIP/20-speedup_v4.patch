@@ -78,10 +78,10 @@ index a6a0192..9670556 100644
 +$(KBUILD_RUST_DIRS): | rust
 +endif
 diff --git a/MAINTAINERS b/MAINTAINERS
-index adde848..fdaca6d 100644
+index 13d7566..407a760 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -14060,6 +14060,7 @@ Q:	https://patchwork.kernel.org/project/linux-kbuild/list/
+@@ -14057,6 +14057,7 @@ Q:	https://patchwork.kernel.org/project/linux-kbuild/list/
  T:	git git://git.kernel.org/pub/scm/linux/kernel/git/kbuild/linux.git
  F:	Documentation/kbuild/kconfig*
  F:	scripts/Kconfig.include
@@ -90,7 +90,7 @@ index adde848..fdaca6d 100644
  
  KCORE
 diff --git a/Makefile b/Makefile
-index 8c73fe7..230306b 100644
+index 5030d8c..110c165 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -568,6 +568,9 @@ LZMA		= lzma

@@ -1,5 +1,5 @@
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index e75344f..179d325 100644
+index 8157ff4..a7b128f 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
 @@ -1983,6 +1983,14 @@ Kernel parameters
@@ -18,10 +18,10 @@ index e75344f..179d325 100644
  	hibernate.compressor= 	[HIBERNATION] Compression algorithm to be
  				used with hibernation.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 0aa66bf..f98ebdd 100644
+index e677a4f..13d7566 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -17421,6 +17421,7 @@ F:	include/linux/swapfile.h
+@@ -17418,6 +17418,7 @@ F:	include/linux/swapfile.h
  F:	include/linux/swapops.h
  F:	mm/page_io.c
  F:	mm/swap.h

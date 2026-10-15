@@ -6,6 +6,9 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-10-15
+- TIP: offset fixes
+
 ## 2026-10-14
 - NEXT: update patches incl. NVIDIA (experimental)
 
