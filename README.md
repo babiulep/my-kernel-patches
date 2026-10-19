@@ -6,6 +6,10 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-10-19
+- TIP: add patch [reading from the page cache without folio references](https://www.phoronix.com/news/Reading-Page-Cache-WO-Folio-Ref)
+- TIP: latest fixes from Piotr Gorski
+
 ## 2026-10-15
 - TIP: offset fixes
 

@@ -1,0 +1,225 @@
+diff --git a/arch/x86/include/asm/tdx.h b/arch/x86/include/asm/tdx.h
+index 1fcfaed..c116ee6 100644
+--- a/arch/x86/include/asm/tdx.h
++++ b/arch/x86/include/asm/tdx.h
+@@ -199,8 +199,6 @@ u64 tdh_phymem_page_reclaim(struct page *page, u64 *tdx_pt, u64 *tdx_owner, u64
+ u64 tdh_mem_track(struct tdx_td *tdr);
+ u64 tdh_mem_page_remove(struct tdx_td *td, u64 gpa, enum pg_level level, u64 *ext_err1, u64 *ext_err2);
+ u64 tdh_phymem_cache_wb(bool resume);
+-u64 tdh_phymem_page_wbinvd_tdr(struct tdx_td *td);
+-u64 tdh_phymem_page_wbinvd_hkid(u64 hkid, kvm_pfn_t pfn);
+ #else
+ static inline void tdx_init(void) { }
+ static inline u32 tdx_get_nr_guest_keyids(void) { return 0; }
+diff --git a/arch/x86/kvm/vmx/tdx.c b/arch/x86/kvm/vmx/tdx.c
+index aac79fe..e0035f5 100644
+--- a/arch/x86/kvm/vmx/tdx.c
++++ b/arch/x86/kvm/vmx/tdx.c
+@@ -320,7 +320,7 @@ static inline void tdx_disassociate_vp(struct kvm_vcpu *vcpu)
+ })
+ 
+ /* TDH.PHYMEM.PAGE.RECLAIM is allowed only when destroying the TD. */
+-static int __tdx_reclaim_page(struct page *page)
++static int tdx_reclaim_page(struct page *page)
+ {
+ 	u64 err, rcx, rdx, r8;
+ 
+@@ -334,24 +334,15 @@ static int __tdx_reclaim_page(struct page *page)
+ 	if (TDX_BUG_ON_3(err, TDH_PHYMEM_PAGE_RECLAIM, rcx, rdx, r8, NULL))
+ 		return -EIO;
+ 
++	tdx_quirk_reset_paddr(page_to_phys(page), PAGE_SIZE);
++
+ 	return 0;
+ }
+ 
+-static int tdx_reclaim_page(struct page *page)
+-{
+-	int r;
+-
+-	r = __tdx_reclaim_page(page);
+-	if (!r)
+-		tdx_quirk_reset_paddr(page_to_phys(page), PAGE_SIZE);
+-	return r;
+-}
+-
+ 
+ /*
+- * Reclaim the TD control page(s) which are crypto-protected by TDX guest's
+- * private KeyID.  Assume the cache associated with the TDX private KeyID has
+- * been flushed.
++ * Reclaim the TD control page(s) which are crypto-protected by private
++ * KeyIDs.
+  */
+ static void tdx_reclaim_control_page(struct page *ctrl_page)
+ {
+@@ -550,7 +541,6 @@ out:
+ static void tdx_reclaim_td_control_pages(struct kvm *kvm)
+ {
+ 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
+-	u64 err;
+ 	int i;
+ 
+ 	/*
+@@ -575,21 +565,7 @@ static void tdx_reclaim_td_control_pages(struct kvm *kvm)
+ 	if (!kvm_tdx->td.tdr_page)
+ 		return;
+ 
+-	if (__tdx_reclaim_page(kvm_tdx->td.tdr_page))
+-		return;
+-
+-	/*
+-	 * Use a SEAMCALL to ask the TDX module to flush the cache based on the
+-	 * KeyID. TDX module may access TDR while operating on TD (Especially
+-	 * when it is reclaiming TDCS).
+-	 */
+-	err = tdh_phymem_page_wbinvd_tdr(&kvm_tdx->td);
+-	if (TDX_BUG_ON(err, TDH_PHYMEM_PAGE_WBINVD, kvm))
+-		return;
+-
+-	tdx_quirk_reset_paddr(page_to_phys(kvm_tdx->td.tdr_page), PAGE_SIZE);
+-
+-	tdx_free_control_page(kvm_tdx->td.tdr_page);
++	tdx_reclaim_control_page(kvm_tdx->td.tdr_page);
+ 	kvm_tdx->td.tdr_page = NULL;
+ }
+ 
+@@ -1855,10 +1831,6 @@ static int tdx_sept_remove_leaf_spte(struct kvm *kvm, gfn_t gfn,
+ 	if (TDX_BUG_ON_2(err, TDH_MEM_PAGE_REMOVE, entry, level_state, kvm))
+ 		return -EIO;
+ 
+-	err = tdh_phymem_page_wbinvd_hkid((u16)kvm_tdx->hkid, pfn);
+-	if (TDX_BUG_ON(err, TDH_PHYMEM_PAGE_WBINVD, kvm))
+-		return -EIO;
+-
+ 	tdx_quirk_reset_paddr(PFN_PHYS(pfn), PAGE_SIZE);
+ 	tdx_pamt_put(pfn);
+ 	return 0;
+diff --git a/arch/x86/virt/vmx/tdx/tdx.c b/arch/x86/virt/vmx/tdx/tdx.c
+index 96ced04..94aec4f 100644
+--- a/arch/x86/virt/vmx/tdx/tdx.c
++++ b/arch/x86/virt/vmx/tdx/tdx.c
+@@ -1666,22 +1666,6 @@ static inline u64 tdx_tdr_pa(struct tdx_td *td)
+ 	return page_to_phys(td->tdr_page);
+ }
+ 
+-/*
+- * The TDX module exposes a CLFLUSH_BEFORE_ALLOC bit to specify whether
+- * a CLFLUSH of pages is required before handing them to the TDX module.
+- * Be conservative and make the code simpler by doing the CLFLUSH
+- * unconditionally.
+- */
+-static void tdx_clflush_page(struct page *page)
+-{
+-	clflush_cache_range(page_to_virt(page), PAGE_SIZE);
+-}
+-
+-static void tdx_clflush_pfn(kvm_pfn_t pfn)
+-{
+-	clflush_cache_range(__va(PFN_PHYS(pfn)), PAGE_SIZE);
+-}
+-
+ static int pg_level_to_tdx_sept_level(enum pg_level level)
+ {
+ 	WARN_ON_ONCE(level == PG_LEVEL_NONE);
+@@ -1703,7 +1687,6 @@ u64 tdh_mng_addcx(struct tdx_td *td, struct page *tdcs_page)
+ 		.rdx = tdx_tdr_pa(td),
+ 	};
+ 
+-	tdx_clflush_page(tdcs_page);
+ 	return seamcall(TDH_MNG_ADDCX, &args);
+ }
+ EXPORT_SYMBOL_FOR_KVM(tdh_mng_addcx);
+@@ -1719,7 +1702,6 @@ u64 tdh_mem_page_add(struct tdx_td *td, u64 gpa, kvm_pfn_t pfn, struct page *sou
+ 	};
+ 	u64 ret;
+ 
+-	tdx_clflush_pfn(pfn);
+ 	ret = seamcall_ret(TDH_MEM_PAGE_ADD, &args);
+ 
+ 	*ext_err1 = args.rcx;
+@@ -1739,7 +1721,6 @@ u64 tdh_mem_sept_add(struct tdx_td *td, u64 gpa, enum pg_level level,
+ 	};
+ 	u64 ret;
+ 
+-	tdx_clflush_page(page);
+ 	ret = seamcall_ret(TDH_MEM_SEPT_ADD, &args);
+ 
+ 	*ext_err1 = args.rcx;
+@@ -1756,7 +1737,6 @@ u64 tdh_vp_addcx(struct tdx_vp *vp, struct page *tdcx_page)
+ 		.rdx = vp->tdvpr_pa,
+ 	};
+ 
+-	tdx_clflush_page(tdcx_page);
+ 	return seamcall(TDH_VP_ADDCX, &args);
+ }
+ EXPORT_SYMBOL_FOR_KVM(tdh_vp_addcx);
+@@ -1771,7 +1751,6 @@ u64 tdh_mem_page_aug(struct tdx_td *td, u64 gpa, enum pg_level level,
+ 	};
+ 	u64 ret;
+ 
+-	tdx_clflush_pfn(pfn);
+ 	ret = seamcall_ret(TDH_MEM_PAGE_AUG, &args);
+ 
+ 	*ext_err1 = args.rcx;
+@@ -1816,7 +1795,6 @@ u64 tdh_mng_create(struct tdx_td *td, u16 hkid)
+ 		.rdx = hkid,
+ 	};
+ 
+-	tdx_clflush_page(td->tdr_page);
+ 	return seamcall(TDH_MNG_CREATE, &args);
+ }
+ EXPORT_SYMBOL_FOR_KVM(tdh_mng_create);
+@@ -1828,7 +1806,6 @@ u64 tdh_vp_create(struct tdx_td *td, struct tdx_vp *vp)
+ 		.rdx = tdx_tdr_pa(td),
+ 	};
+ 
+-	tdx_clflush_page(vp->tdvpr_page);
+ 	return seamcall(TDH_VP_CREATE, &args);
+ }
+ EXPORT_SYMBOL_FOR_KVM(tdh_vp_create);
+@@ -2027,32 +2004,6 @@ u64 tdh_phymem_cache_wb(bool resume)
+ }
+ EXPORT_SYMBOL_FOR_KVM(tdh_phymem_cache_wb);
+ 
+-static inline u64 mk_keyed_paddr(u16 hkid, kvm_pfn_t pfn)
+-{
+-	/* KeyID bits are just above the physical address bits. */
+-	return PFN_PHYS(pfn) | ((u64)hkid << boot_cpu_data.x86_phys_bits);
+-}
+-
+-u64 tdh_phymem_page_wbinvd_tdr(struct tdx_td *td)
+-{
+-	struct tdx_module_args args = {};
+-
+-	args.rcx = mk_keyed_paddr(tdx_global_keyid, page_to_pfn(td->tdr_page));
+-
+-	return seamcall(TDH_PHYMEM_PAGE_WBINVD, &args);
+-}
+-EXPORT_SYMBOL_FOR_KVM(tdh_phymem_page_wbinvd_tdr);
+-
+-u64 tdh_phymem_page_wbinvd_hkid(u64 hkid, kvm_pfn_t pfn)
+-{
+-	struct tdx_module_args args = {};
+-
+-	args.rcx = mk_keyed_paddr(hkid, pfn);
+-
+-	return seamcall(TDH_PHYMEM_PAGE_WBINVD, &args);
+-}
+-EXPORT_SYMBOL_FOR_KVM(tdh_phymem_page_wbinvd_hkid);
+-
+ bool tdx_supports_dynamic_pamt(const struct tdx_sys_info *sysinfo)
+ {
+ 	return sysinfo->features.tdx_features0 & TDX_FEATURES0_DYNAMIC_PAMT;
+diff --git a/arch/x86/virt/vmx/tdx/tdx.h b/arch/x86/virt/vmx/tdx/tdx.h
+index db20954..bfeaa2d 100644
+--- a/arch/x86/virt/vmx/tdx/tdx.h
++++ b/arch/x86/virt/vmx/tdx/tdx.h
+@@ -43,7 +43,6 @@
+ #define TDH_SYS_TDMR_INIT		36
+ #define TDH_MEM_TRACK			38
+ #define TDH_PHYMEM_CACHE_WB		40
+-#define TDH_PHYMEM_PAGE_WBINVD		41
+ #define TDH_VP_WR			43
+ #define TDH_SYS_CONFIG			45
+ #define TDH_SYS_SHUTDOWN		52

@@ -1,8 +1,8 @@
 diff --git a/kernel/time/tick-sched.c b/kernel/time/tick-sched.c
-index a7893a0..5bb85f5 100644
+index 5d53ab1..a87755a 100644
 --- a/kernel/time/tick-sched.c
 +++ b/kernel/time/tick-sched.c
-@@ -1083,7 +1083,7 @@ static bool report_idle_softirq(void)
+@@ -1089,7 +1089,7 @@ static bool report_idle_softirq(void)
  		return false;
  
  	if (ratelimit < 10) {
