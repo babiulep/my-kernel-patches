@@ -1,8 +1,8 @@
 diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index b5d7e6a..f0c1bd1 100644
+index 1b2ae71..1bc8e1b 100644
 --- a/Documentation/admin-guide/kernel-parameters.txt
 +++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -1961,6 +1961,14 @@ Kernel parameters
+@@ -1954,6 +1954,14 @@ Kernel parameters
  		protect_image	Turn on image protection during restoration
  				(that will set all pages holding image data
  				during restoration read-only).
@@ -18,10 +18,10 @@ index b5d7e6a..f0c1bd1 100644
  	hibernate.compressor= 	[HIBERNATION] Compression algorithm to be
  				used with hibernation.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 7b5cab7..007aa8e 100644
+index 0e9fe9c..2a73a3c 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -17452,6 +17452,7 @@ F:	include/linux/swapfile.h
+@@ -17470,6 +17470,7 @@ F:	include/linux/swapfile.h
  F:	include/linux/swapops.h
  F:	mm/page_io.c
  F:	mm/swap.h

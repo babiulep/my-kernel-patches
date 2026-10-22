@@ -7,7 +7,7 @@ These are based on the following patch series:
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
 ## 2026-10-22
-- 7.4: testing first patches
+- 7.4: testing first patches v2
 
 ## 2026-10-19
 - TIP: btrfs patch [Btrfs Brings More Performance Improvements For Linux 7.4](https://www.phoronix.com/news/Linux-7.4-Btrfs)
