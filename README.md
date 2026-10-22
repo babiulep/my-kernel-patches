@@ -6,6 +6,9 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-10-22
+- 7.4: testing first patches
+
 ## 2026-10-19
 - TIP: btrfs patch [Btrfs Brings More Performance Improvements For Linux 7.4](https://www.phoronix.com/news/Linux-7.4-Btrfs)
 - TIP: add patch [reading from the page cache without folio references](https://www.phoronix.com/news/Reading-Page-Cache-WO-Folio-Ref)

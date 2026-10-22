@@ -1,0 +1,15 @@
+diff --git a/tools/objtool/Makefile b/tools/objtool/Makefile
+index db99c47..c4fcbf5 100644
+--- a/tools/objtool/Makefile
++++ b/tools/objtool/Makefile
+@@ -93,8 +93,8 @@ LIBOPCODES_LIBS := $(shell \
+ 		       '$(pound)include <bfd.h>' \
+ 		       '$(pound)include <dis-asm.h>' \
+ 		       'int main(void) { disassemble_init_for_target(0); return 0; }' | \
+-			$(HOSTCC) $(HOSTCFLAGS) -DPACKAGE='"objtool"' -xc - -o /dev/null $$libs 2>/dev/null && \
+-			echo "$$libs" && break; \
++			$(HOSTCC) $(HOSTCFLAGS) -DPACKAGE='"objtool"' -xc - -o /dev/null $libs 2>/dev/null && \
++			echo "$libs" && break; \
+ 	done)
+ 
+ # Styled disassembler support requires binutils >= 2.39

@@ -1,0 +1,11 @@
+diff --git a/drivers/virt/coco/tdx-host/Kconfig b/drivers/virt/coco/tdx-host/Kconfig
+index 57d0c01..bb4c9c4 100644
+--- a/drivers/virt/coco/tdx-host/Kconfig
++++ b/drivers/virt/coco/tdx-host/Kconfig
+@@ -1,5 +1,5 @@
+ config TDX_HOST_SERVICES
+-	tristate
++	tristate "TDX_HOST_SERVICES"
+ 	depends on INTEL_TDX_HOST
+ 	select FW_LOADER
+ 	select FW_UPLOAD
