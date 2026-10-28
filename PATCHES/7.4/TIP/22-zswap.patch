@@ -1,5 +1,5 @@
 diff --git a/mm/zswap.c b/mm/zswap.c
-index 37f34e4..6716c55 100644
+index ae19e30..f194d86 100644
 --- a/mm/zswap.c
 +++ b/mm/zswap.c
 @@ -20,6 +20,7 @@
@@ -10,7 +10,7 @@ index 37f34e4..6716c55 100644
  #include <linux/swap_ops.h>
  #include <linux/crypto.h>
  #include <linux/scatterlist.h>
-@@ -972,6 +973,21 @@ static bool zswap_decompress(struct zswap_entry *entry, struct folio *folio)
+@@ -990,6 +991,21 @@ static bool zswap_decompress(struct zswap_entry *entry, struct folio *folio)
  /*********************************
  * writeback code
  **********************************/
@@ -32,7 +32,7 @@ index 37f34e4..6716c55 100644
  /*
   * Attempts to free an entry by adding a folio to the swap cache,
   * decompressing the entry data into the folio, and issuing a
-@@ -983,8 +999,12 @@ static bool zswap_decompress(struct zswap_entry *entry, struct folio *folio)
+@@ -1001,8 +1017,12 @@ static bool zswap_decompress(struct zswap_entry *entry, struct folio *folio)
   * in the first place.  After the folio has been decompressed into
   * the swap cache, the compressed version stored by zswap can be
   * freed.
@@ -46,7 +46,7 @@ index 37f34e4..6716c55 100644
  				 swp_entry_t swpentry)
  {
  	struct xarray *tree;
-@@ -992,7 +1012,6 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
+@@ -1010,7 +1030,6 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
  	struct folio *folio;
  	struct mempolicy *mpol;
  	struct swap_info_struct *si;
@@ -54,17 +54,17 @@ index 37f34e4..6716c55 100644
  	int ret = 0;
  
  	/* try to allocate swap cache folio */
-@@ -1050,8 +1069,7 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
- 	folio_set_reclaim(folio);
+@@ -1082,8 +1101,7 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
+ 	folio_put(folio);
  
  	/* start writeback */
--	__swap_writepage(&ctx, folio);
+-	__swap_writeout(&ctx, folio);
 -	swap_write_submit(&ctx);
 +	swap_writeout(ctx, folio);
  
- out:
- 	if (ret) {
-@@ -1091,7 +1109,7 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
+ 	return 0;
+ 
+@@ -1123,7 +1141,7 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
  				       void *arg)
  {
  	struct zswap_entry *entry = container_of(item, struct zswap_entry, lru);
@@ -73,7 +73,7 @@ index 37f34e4..6716c55 100644
  	swp_entry_t swpentry;
  	enum lru_status ret = LRU_REMOVED_RETRY;
  	int writeback_result;
-@@ -1146,7 +1164,7 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
+@@ -1178,7 +1196,7 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
  	 */
  	spin_unlock(&l->lock);
  
@@ -82,7 +82,7 @@ index 37f34e4..6716c55 100644
  
  	if (writeback_result) {
  		zswap_reject_reclaim_fail++;
-@@ -1157,9 +1175,9 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
+@@ -1189,9 +1207,9 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
  		 * into the warmer region. We should terminate shrinking (if we're in the dynamic
  		 * shrinker context).
  		 */
@@ -94,7 +94,7 @@ index 37f34e4..6716c55 100644
  		}
  	} else {
  		zswap_written_back_pages++;
-@@ -1171,8 +1189,12 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
+@@ -1203,8 +1221,12 @@ static enum lru_status shrink_memcg_cb(struct list_head *item, struct list_lru_o
  static unsigned long zswap_shrinker_scan(struct shrinker *shrinker,
  		struct shrink_control *sc)
  {
@@ -108,7 +108,7 @@ index 37f34e4..6716c55 100644
  
  	if (!zswap_shrinker_enabled ||
  			!mem_cgroup_zswap_writeback_enabled(sc->memcg)) {
-@@ -1180,8 +1202,12 @@ static unsigned long zswap_shrinker_scan(struct shrinker *shrinker,
+@@ -1212,8 +1234,12 @@ static unsigned long zswap_shrinker_scan(struct shrinker *shrinker,
  		return SHRINK_STOP;
  	}
  
@@ -122,7 +122,7 @@ index 37f34e4..6716c55 100644
  
  	if (encountered_page_in_swapcache)
  		return SHRINK_STOP;
-@@ -1287,7 +1313,9 @@ static struct shrinker *zswap_alloc_shrinker(void)
+@@ -1319,7 +1345,9 @@ static struct shrinker *zswap_alloc_shrinker(void)
   */
  static int shrink_memcg(struct mem_cgroup *memcg)
  {
@@ -132,7 +132,7 @@ index 37f34e4..6716c55 100644
  
  	if (!mem_cgroup_zswap_writeback_enabled(memcg))
  		return -ENOENT;
-@@ -1299,14 +1327,18 @@ static int shrink_memcg(struct mem_cgroup *memcg)
+@@ -1331,14 +1359,18 @@ static int shrink_memcg(struct mem_cgroup *memcg)
  	if (memcg && !mem_cgroup_online(memcg))
  		return -ENOENT;
  
