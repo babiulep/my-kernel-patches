@@ -6,6 +6,9 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-10-31
+- 7.4: NEXT - remove POC selector
+
 ## 2026-10-28
 - 7.4: split (into TIP and NEXT) and update patches
 
