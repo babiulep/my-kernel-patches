@@ -6,6 +6,9 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-11-13
+- 7.4: NEXT+TIP updates
+
 ## 2026-11-04
 - 7.4: NEXT - remove zswap.patch
 

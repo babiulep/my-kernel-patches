@@ -1826,10 +1826,10 @@ index 0000000..345087b
 +#endif /* _WG_COMPATASM_H */
 diff --git b/net/wireguard/compat/compat.h b/net/wireguard/compat/compat.h
 new file mode 100644
-index 0000000..77898c9
+index 0000000..6285729
 --- /dev/null
 +++ b/net/wireguard/compat/compat.h
-@@ -0,0 +1,1465 @@
+@@ -0,0 +1,1467 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * Copyright (C) 2015-2019 Jason A. Donenfeld <Jason@zx2c4.com>. All Rights Reserved.
@@ -3286,7 +3286,9 @@ index 0000000..77898c9
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 1, 5)
 +#include <net/udp_tunnel.h>
++#if !(defined(UTS_UBUNTU_RELEASE_ABI) && LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0) && UTS_UBUNTU_RELEASE_ABI >= 38)
 +#define setup_udp_tunnel_sock(net, sk, sock_cfg) setup_udp_tunnel_sock(net, sk->sk_socket, sock_cfg)
++#endif
 +#define udp_tunnel_sock_release(sk) udp_tunnel_sock_release(sk->sk_socket)
 +#endif
 +
@@ -46388,10 +46390,10 @@ index 0000000..9a36234
 +#endif
 diff --git b/net/wireguard/junk.c b/net/wireguard/junk.c
 new file mode 100644
-index 0000000..0ef4585
+index 0000000..316915c
 --- /dev/null
 +++ b/net/wireguard/junk.c
-@@ -0,0 +1,349 @@
+@@ -0,0 +1,356 @@
 +#include "junk.h"
 +#include "messages.h"
 +#include "peer.h"
@@ -46401,6 +46403,8 @@ index 0000000..0ef4585
 +#include <linux/string.h>
 +#include <linux/random.h>
 +#include <linux/ktime.h>
++
++#define JP_MAX_PACKET_SIZE 65535
 +
 +static int parse_b_tag(char* val, struct list_head* head) {
 +    int err;
@@ -46503,7 +46507,7 @@ index 0000000..0ef4585
 +    struct jp_tag* tag;
 +    int len;
 +
-+    if (!val || 0 > kstrtoint(val, 10, &len))
++    if (!val || 0 > kstrtoint(val, 10, &len) || len < 0)
 +        return -EINVAL;
 +
 +    tag = kzalloc(sizeof(*tag), GFP_KERNEL);
@@ -46534,7 +46538,7 @@ index 0000000..0ef4585
 +    struct jp_tag* tag;
 +    int len;
 +
-+    if (!val || 0 > kstrtoint(val, 10, &len))
++    if (!val || 0 > kstrtoint(val, 10, &len) || len < 0)
 +        return -EINVAL;
 +
 +    tag = kzalloc(sizeof(*tag), GFP_KERNEL);
@@ -46561,7 +46565,7 @@ index 0000000..0ef4585
 +    struct jp_tag* tag;
 +    int len;
 +
-+    if (!val || 0 > kstrtoint(val, 10, &len))
++    if (!val || 0 > kstrtoint(val, 10, &len) || len < 0)
 +        return -EINVAL;
 +
 +    tag = kzalloc(sizeof(*tag), GFP_KERNEL);
@@ -46683,6 +46687,11 @@ index 0000000..0ef4585
 +    mods_size = 0;
 +
 +    list_for_each_entry(tag, &head, head) {
++        if (tag->pkt_size < 0 ||
++            tag->pkt_size > JP_MAX_PACKET_SIZE - pkt_size) {
++            err = -EINVAL;
++            goto error;
++        }
 +        pkt_size += tag->pkt_size;
 +
 +        if (tag->func)
@@ -52871,10 +52880,10 @@ index 0000000..e1afa2c
 +#endif /* _WG_UAPI_WIREGUARD_H */
 diff --git b/net/wireguard/version.h b/net/wireguard/version.h
 new file mode 100644
-index 0000000..a3c29db
+index 0000000..9990d45
 --- /dev/null
 +++ b/net/wireguard/version.h
 @@ -0,0 +1,3 @@
 +#ifndef WIREGUARD_VERSION
-+#define WIREGUARD_VERSION "3.1.20260906"
++#define WIREGUARD_VERSION "3.1.20261113-02"
 +#endif

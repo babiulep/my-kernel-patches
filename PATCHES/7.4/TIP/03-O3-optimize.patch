@@ -1,5 +1,5 @@
 diff --git a/Makefile b/Makefile
-index 0319cd7..7441240 100644
+index fc48ea1..00922a0 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -936,10 +936,14 @@ endif # need-config
@@ -7,7 +7,7 @@ index 0319cd7..7441240 100644
  
  ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
 -KBUILD_CFLAGS += -O2
-+KBUILD_CFLAGS += -O3
++KBUILD_CFLAGS += -O2
  KBUILD_RUSTFLAGS += -Copt-level=2
  else ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 +ifneq ($(findstring clang,$(CC_VERSION_TEXT)),)
