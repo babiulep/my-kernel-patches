@@ -1,0 +1,58 @@
+# https://lore.kernel.org/all/20261114-rcu-tree_nocb-wunsequenced-v1-1-057996a86f0e@kernel.org/
+# https://lore.kernel.org/all/20261114-topology-wunsequenced-v1-1-686a36fe61f5@kernel.org/
+diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
+index 99878da03bce..f5975079f453 100644
+--- a/kernel/sched/topology.c
++++ b/kernel/sched/topology.c
+@@ -1994,7 +1994,6 @@ sd_init(struct sched_domain_topology_level *tl,
+ 					| sd_flags
+ 					,
+ 
+-		.last_balance		= jiffies,
+ 		.balance_interval	= sd_weight,
+ 
+ 		/* 50% success rate */
+@@ -2004,10 +2003,11 @@ sd_init(struct sched_domain_topology_level *tl,
+ 		.newidle_stamp		= now,
+ 
+ 		.max_newidle_lb_cost	= 0,
+-		.last_decay_max_lb_cost	= jiffies,
+ 		.child			= child,
+ 		.name			= tl->name,
+ 	};
++	sd->last_balance = jiffies;
++	sd->last_decay_max_lb_cost = jiffies;
+ 
+ 	WARN_ONCE((sd->flags & (SD_SHARE_CPUCAPACITY | SD_ASYM_CPUCAPACITY)) ==
+ 		  (SD_SHARE_CPUCAPACITY | SD_ASYM_CPUCAPACITY),
+diff --git a/kernel/rcu/tree_nocb.h b/kernel/rcu/tree_nocb.h
+index b6cfee4e5039..8448a7c578e8 100644
+--- a/kernel/rcu/tree_nocb.h
++++ b/kernel/rcu/tree_nocb.h
+@@ -1618,6 +1618,7 @@ static void show_rcu_nocb_state(struct rcu_data *rdp)
+ 	struct rcu_segcblist *rsclp = &rdp->cblist;
+ 	bool waslocked;
+ 	bool wassleep;
++	unsigned long j;
+ 
+ 	if (rdp->nocb_gp_rdp == rdp)
+ 		show_rcu_nocb_gp_state(rdp);
+@@ -1639,6 +1640,7 @@ static void show_rcu_nocb_state(struct rcu_data *rdp)
+ 		rsclp->gp_seq[RCU_NEXT_READY_TAIL].exp);
+ 	sprintf(bufn, "%ld", rsclp->seglen[RCU_NEXT_TAIL]);
+ 	sprintf(bufb, "%ld", rcu_cblist_n_cbs(&rdp->nocb_bypass));
++	j = jiffies;
+ 	pr_info("   CB %d^%d->%d %c%c%c%c%c F%ld L%ld C%d %c%s%c%s%c%s%c%s%c%s q%ld %c CPU %d%s\n",
+ 		rdp->cpu, rdp->nocb_gp_rdp->cpu,
+ 		nocb_next_rdp ? nocb_next_rdp->cpu : -1,
+@@ -1647,8 +1649,8 @@ static void show_rcu_nocb_state(struct rcu_data *rdp)
+ 		"lL"[raw_spin_is_locked(&rdp->nocb_lock)],
+ 		"sS"[!!rdp->nocb_cb_sleep],
+ 		".W"[swait_active(&rdp->nocb_cb_wq)],
+-		jiffies - rdp->nocb_bypass_first,
+-		jiffies - rdp->nocb_nobypass_last,
++		j - rdp->nocb_bypass_first,
++		j - rdp->nocb_nobypass_last,
+ 		rdp->nocb_nobypass_count,
+ 		".D"[rcu_segcblist_ready_cbs(rsclp)],
+ 		rcu_segcblist_segempty(rsclp, RCU_DONE_TAIL) ? "" : bufd,

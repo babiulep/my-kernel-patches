@@ -6,6 +6,9 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-11-15
+- 7.4: jiffies fix for recent clang
+
 ## 2026-11-13
 - 7.4: NEXT+TIP updates
 
