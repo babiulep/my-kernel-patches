@@ -56,3 +56,72 @@ index b6cfee4e5039..8448a7c578e8 100644
  		rdp->nocb_nobypass_count,
  		".D"[rcu_segcblist_ready_cbs(rsclp)],
  		rcu_segcblist_segempty(rsclp, RCU_DONE_TAIL) ? "" : bufd,
+diff --git a/net/mptcp/protocol.c b/net/mptcp/protocol.c
+index 8968db58083e..8a9efebf3497 100644
+--- a/net/mptcp/protocol.c
++++ b/net/mptcp/protocol.c
+@@ -3041,7 +3041,8 @@ void mptcp_reset_tout_timer(struct mptcp_sock *msk, unsigned long fail_tout)
+ 		return;
+ 
+ 	close_timeout = (unsigned long)inet_csk(sk)->icsk_mtup.probe_timestamp -
+-			tcp_jiffies32 + jiffies + mptcp_close_timeout(sk);
++			tcp_jiffies32;
++	close_timeout += jiffies + mptcp_close_timeout(sk);
+ 
+ 	/* the close timeout takes precedence on the fail one, and here at least one of
+ 	 * them is active
+diff --git a/drivers/net/ethernet/qualcomm/qca_spi.c b/drivers/net/ethernet/qualcomm/qca_spi.c
+index 38a779f4b866..3ea745d4aef7 100644
+--- a/drivers/net/ethernet/qualcomm/qca_spi.c
++++ b/drivers/net/ethernet/qualcomm/qca_spi.c
+@@ -800,9 +800,10 @@ static void
+ qcaspi_netdev_tx_timeout(struct net_device *dev, unsigned int txqueue)
+ {
+ 	struct qcaspi *qca = netdev_priv(dev);
++	unsigned long j = jiffies;
+ 
+ 	netdev_info(qca->net_dev, "Transmit timeout at %ld, latency %ld\n",
+-		    jiffies, jiffies - dev_trans_start(dev));
++		    j, j - dev_trans_start(dev));
+ 	qca->net_dev->stats.tx_errors++;
+ 	/* Trigger tx queue flush and QCA7000 reset */
+ 	set_bit(SPI_RESET, &qca->flags);
+diff --git a/drivers/net/ethernet/microchip/encx24j600.c b/drivers/net/ethernet/microchip/encx24j600.c
+index b011bf5c2305..ebc067cb2c9d 100644
+--- a/drivers/net/ethernet/microchip/encx24j600.c
++++ b/drivers/net/ethernet/microchip/encx24j600.c
+@@ -893,9 +893,10 @@ static netdev_tx_t encx24j600_tx(struct sk_buff *skb, struct net_device *dev)
+ static void encx24j600_tx_timeout(struct net_device *dev, unsigned int txqueue)
+ {
+ 	struct encx24j600_priv *priv = netdev_priv(dev);
++	unsigned long j = jiffies;
+ 
+ 	netif_err(priv, tx_err, dev, "TX timeout at %ld, latency %ld\n",
+-		  jiffies, jiffies - dev_trans_start(dev));
++		  j, j - dev_trans_start(dev));
+ 
+ 	dev->stats.tx_errors++;
+ 	netif_wake_queue(dev);
+diff --git a/block/blk-throttle.c b/block/blk-throttle.c
+index c5e26551956a..a1db2babd846 100644
+--- a/block/blk-throttle.c
++++ b/block/blk-throttle.c
+@@ -454,6 +454,7 @@ static void throtl_schedule_pending_timer(struct throtl_service_queue *sq,
+ 					  unsigned long expires)
+ {
+ 	unsigned long max_expire = jiffies + 8 * DFL_THROTL_SLICE;
++	unsigned long j;
+ 
+ 	/*
+ 	 * Since we are adjusting the throttle limit dynamically, the sleep
+@@ -465,8 +466,9 @@ static void throtl_schedule_pending_timer(struct throtl_service_queue *sq,
+ 	if (time_after(expires, max_expire))
+ 		expires = max_expire;
+ 	mod_timer(&sq->pending_timer, expires);
++	j = jiffies;
+ 	throtl_log(sq, "schedule timer. delay=%lu jiffies=%lu",
+-		   expires - jiffies, jiffies);
++		   expires - j, j);
+ }
+ 
+ /**
