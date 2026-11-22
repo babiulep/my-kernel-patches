@@ -5,6 +5,7 @@ These are based on the following patch series:
 - [sirlucjan](https://github.com/sirlucjan/kernel-patches.git)  
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
+- [cachymod patches](https://github.com/marioroy/cachymod)
 
 ## 2026-11-22
 - NVIDIA TIP 610.57.04: add 4-rdmsr.patch because of: [tip patch](https://git.kernel.org/pub/scm/linux/kernel/git/tip/tip.git/commit/?id=c54c6715f7673a5c2fee371d2755ff355b7d403a)
