@@ -1,0 +1,19 @@
+diff --git a/nvidia/nv.c b/nvidia/nv.c
+index be25b49..38a3f26 100644
+--- a/nvidia/nv.c
++++ b/nvidia/nv.c
+@@ -320,12 +320,12 @@ NvBool nv_detect_sme_enabled(
+     }
+ 
+ #if defined(MSR_AMD64_SYSCFG)
+-    rdmsr(MSR_AMD64_SYSCFG, lo_val, hi_val);
++    rdmsrq(MSR_AMD64_SYSCFG);
+ #if defined(MSR_AMD64_SYSCFG_MEM_ENCRYPT)
+     return (lo_val & MSR_AMD64_SYSCFG_MEM_ENCRYPT) ? NV_TRUE : NV_FALSE;
+ #endif //defined(MSR_AMD64_SYSCFG_MEM_ENCRYPT)
+ #elif defined(MSR_K8_SYSCFG)
+-    rdmsr(MSR_K8_SYSCFG, lo_val, hi_val);
++    rdmsrq(MSR_K8_SYSCFG);
+ #if defined(MSR_K8_SYSCFG_MEM_ENCRYPT)
+     return (lo_val & MSR_K8_SYSCFG_MEM_ENCRYPT) ? NV_TRUE : NV_FALSE;
+ #endif //defined(MSR_K8_SYSCFG_MEM_ENCRYPT)

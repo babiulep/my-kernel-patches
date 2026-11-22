@@ -7,6 +7,7 @@ These are based on the following patch series:
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
 ## 2026-11-22
+- NVIDIA TIP 610.57.04: add 4-rdmsr.patch [tip patch](https://git.kernel.org/pub/scm/linux/kernel/git/tip/tip.git/commit/?id=c54c6715f7673a5c2fee371d2755ff355b7d403a)
 - 7.4: TIP - add [cachymod patches](https://github.com/marioroy/cachymod)
 
 ## 2026-11-15
