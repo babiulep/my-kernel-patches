@@ -1,0 +1,64 @@
+diff --git a/block/blk-throttle.c b/block/blk-throttle.c
+index c5e2655..a1db2ba 100644
+--- a/block/blk-throttle.c
++++ b/block/blk-throttle.c
+@@ -454,6 +454,7 @@ static void throtl_schedule_pending_timer(struct throtl_service_queue *sq,
+ 					  unsigned long expires)
+ {
+ 	unsigned long max_expire = jiffies + 8 * DFL_THROTL_SLICE;
++	unsigned long j;
+ 
+ 	/*
+ 	 * Since we are adjusting the throttle limit dynamically, the sleep
+@@ -465,8 +466,9 @@ static void throtl_schedule_pending_timer(struct throtl_service_queue *sq,
+ 	if (time_after(expires, max_expire))
+ 		expires = max_expire;
+ 	mod_timer(&sq->pending_timer, expires);
++	j = jiffies;
+ 	throtl_log(sq, "schedule timer. delay=%lu jiffies=%lu",
+-		   expires - jiffies, jiffies);
++		   expires - j, j);
+ }
+ 
+ /**
+diff --git a/drivers/net/ethernet/qualcomm/qca_spi.c b/drivers/net/ethernet/qualcomm/qca_spi.c
+index 249b4b5..dcf928c 100644
+--- a/drivers/net/ethernet/qualcomm/qca_spi.c
++++ b/drivers/net/ethernet/qualcomm/qca_spi.c
+@@ -800,9 +800,10 @@ static void
+ qcaspi_netdev_tx_timeout(struct net_device *dev, unsigned int txqueue)
+ {
+ 	struct qcaspi *qca = netdev_priv(dev);
++	unsigned long j = jiffies;
+ 
+ 	netdev_info(qca->net_dev, "Transmit timeout, latency %ld\n",
+-		    jiffies - dev_trans_start(dev));
++		    j, j - dev_trans_start(dev));
+ 	qca->net_dev->stats.tx_errors++;
+ 	/* Trigger tx queue flush and QCA7000 reset */
+ 	set_bit(SPI_RESET, &qca->flags);
+diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
+index 18c2aa9..306459c 100644
+--- a/kernel/sched/topology.c
++++ b/kernel/sched/topology.c
+@@ -1994,7 +1994,6 @@ sd_init(struct sched_domain_topology_level *tl,
+ 					| sd_flags
+ 					,
+ 
+-		.last_balance		= jiffies,
+ 		.balance_interval	= sd_weight,
+ 
+ 		/* 50% success rate */
+@@ -2004,10 +2003,11 @@ sd_init(struct sched_domain_topology_level *tl,
+ 		.newidle_stamp		= now,
+ 
+ 		.max_newidle_lb_cost	= 0,
+-		.last_decay_max_lb_cost	= jiffies,
+ 		.child			= child,
+ 		.name			= tl->name,
+ 	};
++	sd->last_balance = jiffies;
++	sd->last_decay_max_lb_cost = jiffies;
+ 
+ 	WARN_ONCE((sd->flags & (SD_SHARE_CPUCAPACITY | SD_ASYM_CPUCAPACITY)) ==
+ 		  (SD_SHARE_CPUCAPACITY | SD_ASYM_CPUCAPACITY),

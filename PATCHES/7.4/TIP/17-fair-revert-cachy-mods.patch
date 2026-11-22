@@ -1,0 +1,25 @@
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index 0190844..47f839e 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -72,7 +72,7 @@
+  *
+  * (default SCHED_TUNABLESCALING_LOG = *(1+ilog(ncpus))
+  */
+-unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
++unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_LOG;
+ 
+ /*
+  * Default base time slice (request size r_i) for SCHED_NORMAL/SCHED_BATCH:
+@@ -82,8 +82,9 @@ unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
+  *
+  * (default: 0.70 msec * (1 + ilog(ncpus)), units: nanoseconds)
+  */
+-unsigned int sysctl_sched_base_slice                   = 800000000ULL / HZ * (HZ > 500? 2: 1);
+-static unsigned int normalized_sysctl_sched_base_slice = 800000000ULL / HZ * (HZ > 500? 2: 1);
++unsigned int sysctl_sched_base_slice                   = 700000ULL;
++static unsigned int normalized_sysctl_sched_base_slice = 700000ULL;
++
+ __read_mostly unsigned int sysctl_sched_migration_cost = 500000UL;
+ 
+ static int __init setup_sched_thermal_decay_shift(char *str)

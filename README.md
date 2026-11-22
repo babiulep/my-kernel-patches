@@ -6,6 +6,9 @@ These are based on the following patch series:
 - [firelzrd](https://github.com/firelzrd)  
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 
+## 2026-11-22
+- 7.4: TIP - add [cachymod patches](https://github.com/marioroy/cachymod)
+
 ## 2026-11-15
 - 7.4: jiffies fixes for recent clang
 
