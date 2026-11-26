@@ -1,5 +1,5 @@
 diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
-index 7ba002d..0cee3ad 100644
+index ff90a8f..6225007 100644
 --- a/arch/x86/Kconfig
 +++ b/arch/x86/Kconfig
 @@ -1226,7 +1226,7 @@ config VM86
@@ -43,7 +43,7 @@ index c95c3aa..1ff7a2e 100644
  	help
  	  Write kernel log output directly into the VGA buffer or to a serial
 diff --git a/arch/x86/include/asm/msr-index.h b/arch/x86/include/asm/msr-index.h
-index c091482..6086598 100644
+index 1c7b5d2..7b6ae77 100644
 --- a/arch/x86/include/asm/msr-index.h
 +++ b/arch/x86/include/asm/msr-index.h
 @@ -598,7 +598,7 @@
@@ -68,7 +68,7 @@ index 1825691..dc9d4fb 100644
  /* Interface to notify scheduler that system supports ITMT */
  int sched_set_itmt_support(void);
 diff --git a/arch/x86/kernel/cpu/intel_epb.c b/arch/x86/kernel/cpu/intel_epb.c
-index 2c56f87..7035f5f 100644
+index a02d562..bd9be08 100644
 --- a/arch/x86/kernel/cpu/intel_epb.c
 +++ b/arch/x86/kernel/cpu/intel_epb.c
 @@ -170,6 +170,10 @@ static ssize_t energy_perf_bias_store(struct device *dev,
@@ -134,7 +134,7 @@ index 85ebde3..abef391 100644
 +	}
 +}
 diff --git a/arch/x86/kernel/tsc.c b/arch/x86/kernel/tsc.c
-index 723347e..aaf26b8 100644
+index 39baee2..690501a 100644
 --- a/arch/x86/kernel/tsc.c
 +++ b/arch/x86/kernel/tsc.c
 @@ -1588,6 +1588,9 @@ unsigned long calibrate_delay_is_known(void)
@@ -204,7 +204,7 @@ index 6779293..f83fa21 100644
  		value1 = clocksource_acpi_pm.read(&clocksource_acpi_pm);
  		for (i = 0; i < ACPI_PM_READ_CHECKS; i++) {
 diff --git a/drivers/cpufreq/intel_pstate.c b/drivers/cpufreq/intel_pstate.c
-index c78dcd6..d4c01f7 100644
+index 897e825..ff5f067 100644
 --- a/drivers/cpufreq/intel_pstate.c
 +++ b/drivers/cpufreq/intel_pstate.c
 @@ -382,6 +382,13 @@ static void intel_pstate_set_itmt_prio(int cpu)
@@ -324,10 +324,10 @@ index b088021..f050a1a 100644
  	md_run_setup();
  
 diff --git a/init/main.c b/init/main.c
-index 7b0c8c3..b3ed5b0 100644
+index f147803..55095a9 100644
 --- a/init/main.c
 +++ b/init/main.c
-@@ -1356,10 +1356,13 @@ static __init_or_module void
+@@ -1369,10 +1369,13 @@ static __init_or_module void
  trace_initcall_finish_cb(void *data, initcall_t fn, int ret)
  {
  	ktime_t rettime, *calltime = data;

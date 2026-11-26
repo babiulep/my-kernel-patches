@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index d5adfd6..3724d98 100644
+index 03c71a6..aa4a8d2 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -976,6 +976,40 @@ KBUILD_CFLAGS	+= $(CONFIG_CC_OPT_ALLOW_STORE_DATA_RACES_PARAM)
+@@ -977,6 +977,40 @@ KBUILD_CFLAGS	+= $(CONFIG_CC_OPT_ALLOW_STORE_DATA_RACES_PARAM)
  KBUILD_CFLAGS	+= $(CONFIG_CC_OPT_NO_ALLOW_STORE_DATA_RACES)
  endif
  

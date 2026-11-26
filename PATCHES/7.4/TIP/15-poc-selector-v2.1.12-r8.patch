@@ -62,7 +62,7 @@ index 3bf4e70..197163c 100644
  	bool "Kernel->user space relay support (formerly relayfs)"
  	select IRQ_WORK
 diff --git a/kernel/sched/ext/ext.c b/kernel/sched/ext/ext.c
-index a9e36b5..570ec46 100644
+index 2b90ebf..1089170 100644
 --- a/kernel/sched/ext/ext.c
 +++ b/kernel/sched/ext/ext.c
 @@ -24,6 +24,12 @@
@@ -78,7 +78,7 @@ index a9e36b5..570ec46 100644
  /*
   * Block a retained proxy donor, telling put_prev_task_scx() that the donor is
   * about to be dequeued and must not be reenqueued.
-@@ -7676,6 +7682,15 @@ static void scx_root_disable(struct scx_sched *sch)
+@@ -7702,6 +7708,15 @@ static void scx_root_disable(struct scx_sched *sch)
  	cpus_read_lock();
  	RCU_INIT_POINTER(scx_root, NULL);
  	scx_cid_retire_tables();
@@ -94,7 +94,7 @@ index a9e36b5..570ec46 100644
  	cpus_read_unlock();
  
  	/*
-@@ -8964,6 +8979,14 @@ static void scx_root_enable_workfn(struct kthread_work *work)
+@@ -8990,6 +9005,14 @@ static void scx_root_enable_workfn(struct kthread_work *work)
  	scx_cgroup_unlock();
  	percpu_up_write(&scx_fork_rwsem);
  
@@ -107,8 +107,8 @@ index a9e36b5..570ec46 100644
 +#endif /* CONFIG_SCHED_POC_SELECTOR */
 +
  	/*
- 	 * All tasks are READY. It's safe to turn on scx_enabled() and switch
- 	 * all eligible tasks.
+ 	 * All tasks are READY. Finish patching all scx_enabled() sites before
+ 	 * opening task_should_scx() and switching eligible tasks.
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
 index 9ee6b91..0190844 100644
 --- a/kernel/sched/fair.c
@@ -228,7 +228,7 @@ index 9ee6b91..0190844 100644
  		return select_idle_sibling(p, prev_cpu, new_cpu, sync);
  	}
 diff --git a/kernel/sched/idle.c b/kernel/sched/idle.c
-index f7dd151..cbe70e1 100644
+index 451b484..ea6e668 100644
 --- a/kernel/sched/idle.c
 +++ b/kernel/sched/idle.c
 @@ -305,6 +305,11 @@ static void do_idle(void)
@@ -1342,10 +1342,10 @@ index 0000000..992c100
 +#endif /* CONFIG_SYSFS */
 +#endif /* CONFIG_SCHED_POC_SELECTOR */
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index e957524..eab7791 100644
+index 32f7655..83eebf2 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
-@@ -2473,6 +2473,105 @@ static inline struct task_group *task_group(struct task_struct *p)
+@@ -2488,6 +2488,105 @@ static inline struct task_group *task_group(struct task_struct *p)
  
  #endif /* !CONFIG_CGROUP_SCHED */
  
@@ -1452,13 +1452,20 @@ index e957524..eab7791 100644
  {
  	set_task_rq(p, cpu);
 diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
-index 99878da..18c2aa9 100644
+index b980145..9ed9f44 100644
 --- a/kernel/sched/topology.c
 +++ b/kernel/sched/topology.c
-@@ -3187,6 +3187,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
+@@ -3186,13 +3186,11 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
+ 			sd = sd->parent;
  
  		if (sd->flags & SD_SHARE_LLC) {
- 			init_sched_domain_shared(&d, sd, SD_SHARE_LLC);
+-			/*
+-			 * The asym path above may have claimed a shared object
+-			 * on this very domain; claiming it again overwrites
+-			 * sd->shared and leaks the first reference.
+-			 */
+ 			if (!sd->shared)
+ 				init_sched_domain_shared(&d, sd, SD_SHARE_LLC);
 +#ifdef CONFIG_SCHED_POC_SELECTOR
 +			poc_sd_shared_init(sd, cpumask_first(sched_domain_span(sd)));
 +#endif

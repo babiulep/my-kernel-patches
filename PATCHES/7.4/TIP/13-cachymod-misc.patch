@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index 7637135..d5adfd6 100644
+index ad07446..03c71a6 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -816,7 +816,7 @@ ifdef need-config
+@@ -817,7 +817,7 @@ ifdef need-config
  include $(objtree)/include/config/auto.conf
  endif
  
