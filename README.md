@@ -1,10 +1,10 @@
 # my-kernel-patches
 ## Patches for the linux kernel
 
-These are based on the following patch series:
+These are based on the following patch series:  
 - [sirlucjan](https://github.com/sirlucjan/kernel-patches.git)  
 - [firelzrd](https://github.com/firelzrd)  
-- [cachyos](https://github.com/CachyOS/kernel-patches.git)
+- [cachyos](https://github.com/CachyOS/kernel-patches.git)  
 - [cachymod](https://github.com/marioroy/cachymod)
 
 ## 2026-11-28
