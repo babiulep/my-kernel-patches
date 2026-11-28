@@ -1,8 +1,8 @@
 diff --git a/Makefile b/Makefile
-index eff57fc..c0140a6 100644
+index 9cab1d2..17a8036 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -952,6 +952,22 @@ endif
+@@ -953,6 +953,22 @@ endif
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
  KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
  
@@ -23,13 +23,13 @@ index eff57fc..c0140a6 100644
 +endif
 +
  # Tell gcc to never replace conditional load with a non-conditional one
- ifdef CONFIG_CC_IS_GCC
- # gcc-10 renamed --param=allow-store-data-races=0 to
+ KBUILD_CFLAGS	+= $(CONFIG_CC_OPT_NO_ALLOW_STORE_DATA_RACES)
+ 
 diff --git a/init/Kconfig b/init/Kconfig
-index 5c11b60..9d873b8 100644
+index 645dac4..22e1abd 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -124,6 +124,19 @@ config BUILD_SALT
+@@ -125,6 +125,19 @@ config BUILD_SALT
  	  This is mostly useful for distributions which want to ensure the
  	  build is unique between builds. It's safe to leave the default.
  

@@ -8,6 +8,7 @@ These are based on the following patch series:
 - [cachymod](https://github.com/marioroy/cachymod)
 
 ## 2026-11-28
+- NEXT/TIP: add/update patches
 - NEXT/NVIDIA: support the Linux 7.4/5 procfs rework and dma_fence_init() flags  
   (rewrite for dkms of [open-gpu-kernel-modules pull request 1608](https://github.com/NVIDIA/open-gpu-kernel-modules/pull/1608)
 

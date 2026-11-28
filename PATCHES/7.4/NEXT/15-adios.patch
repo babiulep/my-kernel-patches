@@ -1,18 +1,5 @@
-From 7ac1edddff57028f2c9c1b96acff30a52072e1d4 Mon Sep 17 00:00:00 2001
-From: Masahito S <firelzrd@gmail.com>
-Date: Mon, 9 Nov 2026 15:46:54 +0900
-Subject: [PATCH] linux7.3-rc1-ADIOS-3.3.0r3
-
----
- block/Kconfig.iosched |   14 +
- block/Makefile        |    8 +
- block/adios.c         | 1986 +++++++++++++++++++++++++++++++++++++++++
- block/elevator.c      |   19 +-
- 4 files changed, 2020 insertions(+), 7 deletions(-)
- create mode 100644 block/adios.c
-
 diff --git a/block/Kconfig.iosched b/block/Kconfig.iosched
-index 27f11320b8..e98585dd83 100644
+index 27f1132..e98585d 100644
 --- a/block/Kconfig.iosched
 +++ b/block/Kconfig.iosched
 @@ -16,6 +16,20 @@ config MQ_IOSCHED_KYBER
@@ -37,7 +24,7 @@ index 27f11320b8..e98585dd83 100644
  	tristate "BFQ I/O scheduler"
  	select BLK_ICQ
 diff --git a/block/Makefile b/block/Makefile
-index e7bd320e3d..5523e5f62f 100644
+index e7bd320..5523e5f 100644
 --- a/block/Makefile
 +++ b/block/Makefile
 @@ -25,6 +25,7 @@ obj-$(CONFIG_BLK_CGROUP_IOLATENCY)	+= blk-iolatency.o
@@ -59,9 +46,9 @@ index e7bd320e3d..5523e5f62f 100644
 +clean:
 +	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 +
-diff --git a/block/adios.c b/block/adios.c
+diff --git b/block/adios.c b/block/adios.c
 new file mode 100644
-index 0000000000..e55d966a6d
+index 0000000..e55d966
 --- /dev/null
 +++ b/block/adios.c
 @@ -0,0 +1,1986 @@
@@ -2053,10 +2040,10 @@ index 0000000000..e55d966a6d
 +MODULE_DESCRIPTION(ADIOS_PROGNAME);
 \ No newline at end of file
 diff --git a/block/elevator.c b/block/elevator.c
-index 2161b6eea6..72a0dc6b34 100644
+index 549cf51..7bfd590 100644
 --- a/block/elevator.c
 +++ b/block/elevator.c
-@@ -740,6 +740,14 @@ void elevator_set_default(struct request_queue *q)
+@@ -754,6 +754,14 @@ void elevator_set_default(struct request_queue *q)
  	if (q->tag_set->flags & BLK_MQ_F_NO_SCHED_BY_DEFAULT)
  		return;
  
@@ -2071,7 +2058,7 @@ index 2161b6eea6..72a0dc6b34 100644
  	/*
  	 * For single queue devices, default to using mq-deadline. If we
  	 * have multiple queues or mq-deadline is not available, default
-@@ -749,13 +757,10 @@ void elevator_set_default(struct request_queue *q)
+@@ -763,13 +771,10 @@ void elevator_set_default(struct request_queue *q)
  	if (!ctx.type)
  		return;
  
@@ -2089,6 +2076,3 @@ index 2161b6eea6..72a0dc6b34 100644
  	elevator_put(ctx.type);
  }
  
--- 
-2.34.1
-

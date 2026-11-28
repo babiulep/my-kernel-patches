@@ -1,0 +1,60 @@
+diff --git a/drivers/gpu/drm/drm_atomic_state_helper.c b/drivers/gpu/drm/drm_atomic_state_helper.c
+index 267f443..7e6f6fe 100644
+--- a/drivers/gpu/drm/drm_atomic_state_helper.c
++++ b/drivers/gpu/drm/drm_atomic_state_helper.c
+@@ -412,6 +412,17 @@ __drm_atomic_helper_connector_state_init(struct drm_connector_state *conn_state,
+ }
+ EXPORT_SYMBOL(__drm_atomic_helper_connector_state_init);
+ 
++void
++__drm_atomic_helper_connector_reset(struct drm_connector *connector,
++				    struct drm_connector_state *conn_state)
++{
++	if (conn_state)
++		__drm_atomic_helper_connector_state_init(conn_state, connector);
++
++	connector->state = conn_state;
++}
++EXPORT_SYMBOL(__drm_atomic_helper_connector_reset);
++
+ /**
+  * drm_atomic_helper_connector_create_state - default &drm_connector_funcs.atomic_create_state hook for connectors
+  * @connector: connector object
+diff --git a/include/drm/drm_atomic_state_helper.h b/include/drm/drm_atomic_state_helper.h
+index 1a82217..5eb5237 100644
+--- a/include/drm/drm_atomic_state_helper.h
++++ b/include/drm/drm_atomic_state_helper.h
+@@ -66,6 +66,10 @@ void drm_atomic_helper_plane_destroy_state(struct drm_plane *plane,
+ 
+ void __drm_atomic_helper_connector_state_init(struct drm_connector_state *conn_state,
+ 					       struct drm_connector *connector);
++
++void __drm_atomic_helper_connector_reset(struct drm_connector *connector,
++					 struct drm_connector_state *conn_state);
++
+ struct drm_connector_state *
+ drm_atomic_helper_connector_create_state(struct drm_connector *connector);
+ void drm_atomic_helper_connector_tv_state_init(struct drm_connector_state *state,
+diff --git a/include/drm/drm_connector.h b/include/drm/drm_connector.h
+index f656ed8..2ee7c59 100644
+--- a/include/drm/drm_connector.h
++++ b/include/drm/drm_connector.h
+@@ -1658,6 +1658,18 @@ struct drm_connector_funcs {
+ 	 */
+ 	int (*dpms)(struct drm_connector *connector, int mode);
+ 
++	/**
++	 * @reset:
++	 *
++	 * Reset connector hardware and software state to off. This function isn't
++	 * called by the core directly, only through drm_mode_config_reset().
++	 * It's not a helper hook only for historical reasons.
++	 *
++	 * Atomic drivers can use drm_atomic_helper_connector_reset() to reset
++	 * atomic state using this hook.
++	 */
++	void (*reset)(struct drm_connector *connector);
++
+ 	/**
+ 	 * @detect:
+ 	 *

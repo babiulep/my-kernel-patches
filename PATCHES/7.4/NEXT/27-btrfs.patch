@@ -1,8 +1,8 @@
 diff --git a/fs/btrfs/direct-io.c b/fs/btrfs/direct-io.c
-index 90919d7..8cb8a75 100644
+index 3b90401..9c51041 100644
 --- a/fs/btrfs/direct-io.c
 +++ b/fs/btrfs/direct-io.c
-@@ -916,6 +916,13 @@ relock:
+@@ -934,6 +934,13 @@ relock:
  		goto relock;
  	}
  
