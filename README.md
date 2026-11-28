@@ -7,6 +7,10 @@ These are based on the following patch series:
 - [cachyos](https://github.com/CachyOS/kernel-patches.git)
 - [cachymod](https://github.com/marioroy/cachymod)
 
+## 2026-11-28
+- NEXT/NVIDIA: support the Linux 7.4 procfs rework and dma_fence_init() flags  
+  (rewrite for dkms of [open-gpu-kernel-modules pull request 1608](https://github.com/NVIDIA/open-gpu-kernel-modules/pull/1608)
+
 ## 2026-11-26
 - TIP: offset fixes + topology.c fix for PoC patch
 

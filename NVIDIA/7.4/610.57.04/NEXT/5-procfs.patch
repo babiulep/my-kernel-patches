@@ -1,0 +1,702 @@
+diff --git a/common/inc/nv-procfs-utils.h b/common/inc/nv-procfs-utils.h
+index 6ae773e..078ed9b 100644
+--- a/common/inc/nv-procfs-utils.h
++++ b/common/inc/nv-procfs-utils.h
+@@ -27,6 +27,8 @@
+ 
+ #ifdef CONFIG_PROC_FS
+ #include <linux/proc_fs.h>
++#include <linux/string.h>
++#include <linux/uaccess.h>
+ #include <linux/seq_file.h>
+ 
+ /*
+@@ -47,10 +49,14 @@ typedef struct proc_ops nv_proc_ops_t;
+ #define NV_PROC_OPS_SET_OWNER()
+ 
+ #define NV_PROC_OPS_OPEN    proc_open
++#define NV_PROC_OPS_RELEASE proc_release
++#if defined(NV_PROC_OPS_HAS_PROC_WRITE_BUF)
++#define NV_PROC_OPS_WRITE   proc_write_buf
++#else
+ #define NV_PROC_OPS_READ    proc_read
+ #define NV_PROC_OPS_WRITE   proc_write
+ #define NV_PROC_OPS_LSEEK   proc_lseek
+-#define NV_PROC_OPS_RELEASE proc_release
++#endif
+ #else
+ typedef struct file_operations nv_proc_ops_t;
+ 
+@@ -63,6 +69,86 @@ typedef struct file_operations nv_proc_ops_t;
+ #define NV_PROC_OPS_RELEASE release
+ #endif
+ 
++/*
++ * Helpers for seq_file based procfs entries.
++ *
++ * Without NV_PROC_OPS_HAS_PROC_WRITE_BUF, an entry's ->open() creates the
++ * seq_file with single_open(), reads and seeks go through seq_read() and
++ * seq_lseek(), ->release() frees the seq_file with single_release(), and
++ * write handlers copy the data in from userspace.
++ *
++ * With it, procfs owns the seq_file of an entry that has ->proc_show(): it
++ * creates the seq_file before calling ->proc_open(), reads and seeks
++ * through it itself, and frees it after ->proc_release(). ->proc_open()
++ * only attaches per-open data to the seq_file, ->proc_release() only frees
++ * that data, and ->proc_lseek() must not be set. Writes reach
++ * ->proc_write_buf() in a NUL-terminated kernel buffer of at most
++ * ->proc_write_size bytes (PAGE_SIZE - 1 if that is 0), and the position
++ * pointer is NULL for a stream.
++ *
++ *   NV_PROC_OPS_SEQ_SHOW(show)     read side of a readable seq_file entry
++ *   NV_PROC_OPS_SEQ_PRIVATE(show)  seq_file of a write-only entry that only
++ *                                  carries per-open data
++ *   NV_PROC_OPS_SEQ_RELEASE        ->release() of an entry whose ->open()
++ *                                  only calls nv_procfs_single_open()
++ *   NV_PROC_OPS_WRITE_SIZE(size)   largest single write an entry accepts
++ *   NV_PROC_WRITE_BUF              buffer type of a write handler
++ */
++#if defined(NV_PROC_OPS_HAS_PROC_WRITE_BUF)
++#define NV_PROC_OPS_SEQ_SHOW(show)      .proc_show = (show),
++#define NV_PROC_OPS_SEQ_PRIVATE(show)   .proc_show = (show),
++#define NV_PROC_OPS_SEQ_RELEASE
++#define NV_PROC_OPS_WRITE_SIZE(size)    .proc_write_size = (size),
++#define NV_PROC_WRITE_BUF               char *
++#else
++#define NV_PROC_OPS_SEQ_SHOW(show)      .NV_PROC_OPS_READ  = seq_read, \
++                                        .NV_PROC_OPS_LSEEK = seq_lseek,
++#define NV_PROC_OPS_SEQ_PRIVATE(show)
++#define NV_PROC_OPS_SEQ_RELEASE         .NV_PROC_OPS_RELEASE = single_release,
++#define NV_PROC_OPS_WRITE_SIZE(size)
++#define NV_PROC_WRITE_BUF               const char __user *
++#endif
++
++static inline int nv_procfs_single_open(
++    struct file *file,
++    int (*show)(struct seq_file *, void *),
++    void *data
++)
++{
++#if defined(NV_PROC_OPS_HAS_PROC_WRITE_BUF)
++    ((struct seq_file *)file->private_data)->private = data;
++    return 0;
++#else
++    return single_open(file, show, data);
++#endif
++}
++
++static inline int nv_procfs_single_release(
++    struct inode *inode,
++    struct file *file
++)
++{
++#if defined(NV_PROC_OPS_HAS_PROC_WRITE_BUF)
++    return 0;
++#else
++    return single_release(inode, file);
++#endif
++}
++
++static inline unsigned long nv_procfs_copy_from_write_buf(
++    void *to,
++    NV_PROC_WRITE_BUF from,
++    size_t count
++)
++{
++#if defined(NV_PROC_OPS_HAS_PROC_WRITE_BUF)
++    memcpy(to, from, count);
++    return 0;
++#else
++    return copy_from_user(to, from, count);
++#endif
++}
++
+ #define NV_CREATE_PROC_FILE(filename,parent,__name,__data)               \
+    ({                                                                    \
+         struct proc_dir_entry *__entry;                                  \
+@@ -91,6 +177,42 @@ typedef struct file_operations nv_proc_ops_t;
+ #define NV_PDE_DATA(inode) PDE_DATA(inode)
+ #endif
+ 
++#if defined(NV_PROC_OPS_HAS_PROC_WRITE_BUF)
++/*
++ * procfs passes NV_PDE_DATA(inode) to ->proc_show() as the seq_file's
++ * private data, like single_open() did. The lock is taken around the show
++ * function instead of around the whole read.
++ */
++#define NV_DEFINE_SINGLE_PROCFS_FILE_HELPER(name, lock)                     \
++    static int nv_procfs_show_lock_##name(                                  \
++        struct seq_file *s,                                                 \
++        void *v                                                             \
++    )                                                                       \
++    {                                                                       \
++        int ret;                                                            \
++        ret = nv_down_read_interruptible(&lock);                            \
++        if (ret < 0)                                                        \
++        {                                                                   \
++            return ret;                                                     \
++        }                                                                   \
++        ret = nv_procfs_read_##name(s, v);                                  \
++        up_read(&lock);                                                     \
++        return ret;                                                         \
++    }
++
++#define NV_DEFINE_SINGLE_PROCFS_FILE_READ_ONLY(name, lock)                  \
++    NV_DEFINE_SINGLE_PROCFS_FILE_HELPER(name, lock)                         \
++                                                                            \
++    static const nv_proc_ops_t nv_procfs_##name##_fops = {                  \
++        .proc_show = nv_procfs_show_lock_##name,                            \
++    };
++
++#define NV_DEFINE_SINGLE_PROCFS_FILE_READ_ONLY_WITHOUT_LOCK(name)           \
++    static const nv_proc_ops_t nv_procfs_##name##_fops = {                  \
++        .proc_show = nv_procfs_read_##name,                                 \
++    };
++
++#else
+ #define NV_DEFINE_SINGLE_PROCFS_FILE_HELPER(name, lock)                     \
+     static ssize_t nv_procfs_read_lock_##name(                              \
+         struct file *file,                                                  \
+@@ -172,6 +294,8 @@ typedef struct file_operations nv_proc_ops_t;
+         .NV_PROC_OPS_RELEASE = nv_procfs_release_##name,                    \
+     };
+ 
++#endif
++
+ #endif  /* CONFIG_PROC_FS */
+ 
+ #endif /* _NV_PROCFS_UTILS_H */
+diff --git a/conftest.sh b/conftest.sh
+index c318c52..6363baf 100755
+--- a/conftest.sh
++++ b/conftest.sh
+@@ -2711,6 +2711,30 @@ compile_test() {
+             compile_check_conftest "$CODE" "NV_PROC_OPS_PRESENT" "" "types"
+         ;;
+ 
++        proc_ops_has_proc_write_buf)
++            #
++            # Determine if 'struct proc_ops' has the 'proc_show' and
++            # 'proc_write_buf' members.
++            #
++            # They came with the procfs rework in linux-next (first seen in
++            # next-20261120, based on v7.4-rc3), which also removed
++            # 'proc_read' and 'proc_write': procfs now
++            # owns the seq_file of an entry with ->proc_show() and copies
++            # written data into a kernel buffer before calling
++            # ->proc_write_buf().
++            #
++            CODE="
++            #include <linux/proc_fs.h>
++            #include <linux/stddef.h>
++
++            int conftest_proc_ops_has_proc_write_buf(void) {
++                return offsetof(struct proc_ops, proc_show) +
++                       offsetof(struct proc_ops, proc_write_buf);
++            }"
++
++            compile_check_conftest "$CODE" "NV_PROC_OPS_HAS_PROC_WRITE_BUF" "" "types"
++        ;;
++
+         drm_crtc_state_has_async_flip)
+             #
+             # Determine if the 'drm_crtc_state' structure has a 'async_flip'
+@@ -4218,6 +4242,29 @@ compile_test() {
+             compile_check_conftest "$CODE" "NV_MEMORY_FAILURE_MF_SW_SIMULATED_DEFINED" "" "types"
+         ;;
+ 
++        dma_fence_init_has_flags_arg)
++            #
++            # Determine if dma_fence_init() takes the fence's initial flags
++            # as a sixth argument.
++            #
++            # Added in linux-next (seen in next-20261120, based on
++            # v7.4-rc3), which also removed dma_fence_init64(): a 64-bit
++            # seqno is requested with
++            # BIT(DMA_FENCE_FLAG_SEQNO64_BIT) in that argument.
++            #
++            CODE="
++            #include <linux/dma-fence.h>
++            void conftest_dma_fence_init_has_flags_arg(
++                struct dma_fence *fence,
++                const struct dma_fence_ops *ops,
++                spinlock_t *lock)
++            {
++                dma_fence_init(fence, ops, lock, 0, 0, 0);
++            }"
++
++            compile_check_conftest "$CODE" "NV_DMA_FENCE_INIT_HAS_FLAGS_ARG" "" "types"
++        ;;
++
+         fence_ops_use_64bit_seqno)
+             #
+             # Determine if dma_fence_ops has the use_64bit_seqno member
+diff --git a/nvidia/nv-caps.c b/nvidia/nv-caps.c
+index 97fbaeb..3fde96c 100644
+--- a/nvidia/nv-caps.c
++++ b/nvidia/nv-caps.c
+@@ -361,7 +361,7 @@ static void nv_cap_tables_init(void)
+ }
+ 
+ static ssize_t nv_cap_procfs_write(struct file *file,
+-                                    const char __user *buffer,
++                                    NV_PROC_WRITE_BUF buffer,
+                                     size_t count, loff_t *pos)
+ {
+     nv_cap_file_private_t *private = NULL;
+@@ -393,7 +393,7 @@ static ssize_t nv_cap_procfs_write(struct file *file,
+ 
+     proc_buffer = &private->buffer[private->offset];
+ 
+-    if (copy_from_user(proc_buffer, buffer, count))
++    if (nv_procfs_copy_from_write_buf(proc_buffer, buffer, count))
+     {
+         nv_printf(NV_DBG_ERRORS, "nv-caps: failed to copy in proc data!\n");
+         count = -EFAULT;
+@@ -403,7 +403,10 @@ static ssize_t nv_cap_procfs_write(struct file *file,
+     private->offset += count;
+     proc_buffer[count] = '\0';
+ 
+-    *pos = private->offset;
++    if (pos != NULL)
++    {
++        *pos = private->offset;
++    }
+ 
+ done:
+     up_read(&nv_system_pm_lock);
+@@ -447,7 +450,7 @@ static int nv_cap_procfs_open(struct inode *inode, struct file *file)
+     private->offset = 0;
+     private->modify = cap->modify;
+ 
+-    rc = single_open(file, nv_cap_procfs_read, private);
++    rc = nv_procfs_single_open(file, nv_cap_procfs_read, private);
+     if (rc < 0)
+     {
+         NV_KFREE(private, sizeof(nv_cap_file_private_t));
+@@ -469,7 +472,7 @@ static int nv_cap_procfs_release(struct inode *inode, struct file *file)
+         private = s->private;
+     }
+ 
+-    single_release(inode, file);
++    nv_procfs_single_release(inode, file);
+ 
+     if (private != NULL)
+     {
+@@ -486,11 +489,16 @@ static int nv_cap_procfs_release(struct inode *inode, struct file *file)
+         NV_KFREE(private, sizeof(nv_cap_file_private_t));
+     }
+ 
++#if !defined(NV_PROC_OPS_HAS_PROC_WRITE_BUF)
+     /*
+      * All open files using the proc entry will be invalidated
+      * if the entry is removed.
++     *
++     * With NV_PROC_OPS_HAS_PROC_WRITE_BUF, procfs frees the seq_file in
++     * file->private_data after this returns, so it must be left alone.
+      */
+     file->private_data = NULL;
++#endif
+ 
+     return 0;
+ }
+@@ -500,8 +508,7 @@ static nv_proc_ops_t g_nv_cap_procfs_fops = {
+     .NV_PROC_OPS_OPEN    = nv_cap_procfs_open,
+     .NV_PROC_OPS_RELEASE = nv_cap_procfs_release,
+     .NV_PROC_OPS_WRITE   = nv_cap_procfs_write,
+-    .NV_PROC_OPS_READ    = seq_read,
+-    .NV_PROC_OPS_LSEEK   = seq_lseek,
++    NV_PROC_OPS_SEQ_SHOW(nv_cap_procfs_read)
+ };
+ 
+ /* forward declaration of g_nv_cap_drv_fops */
+diff --git a/nvidia/nv-procfs.c b/nvidia/nv-procfs.c
+index 83c5408..6410aad 100644
+--- a/nvidia/nv-procfs.c
++++ b/nvidia/nv-procfs.c
+@@ -330,7 +330,7 @@ nv_procfs_open_registry(
+         return retval;
+     }
+ 
+-    retval = single_open(file, nv_procfs_read_registry, nvpp);
++    retval = nv_procfs_single_open(file, nv_procfs_read_registry, nvpp);
+     if (retval < 0)
+     {
+         nv_procfs_close_file(nvpp);
+@@ -340,7 +340,7 @@ nv_procfs_open_registry(
+     retval = nv_down_read_interruptible(&nv_system_pm_lock);
+     if (retval < 0)
+     {
+-        single_release(inode, file);
++        nv_procfs_single_release(inode, file);
+         nv_procfs_close_file(nvpp);
+     }
+ 
+@@ -425,7 +425,7 @@ nv_procfs_close_registry(
+ done:
+     up_read(&nv_system_pm_lock);
+ 
+-    single_release(inode, file);
++    nv_procfs_single_release(inode, file);
+ 
+     nv_procfs_close_file(nvpp);
+ 
+@@ -498,7 +498,7 @@ nv_procfs_read_registry(
+ static ssize_t
+ nv_procfs_write_file(
+     struct file   *file,
+-    const char __user *buffer,
++    NV_PROC_WRITE_BUF buffer,
+     size_t count,
+     loff_t *pos
+ )
+@@ -526,7 +526,7 @@ nv_procfs_write_file(
+ 
+     proc_buffer = &((char *)nvpp->data)[nvpp->off];
+ 
+-    if (copy_from_user(proc_buffer, buffer, count))
++    if (nv_procfs_copy_from_write_buf(proc_buffer, buffer, count))
+     {
+         nv_printf(NV_DBG_ERRORS, "NVRM: failed to copy in proc data!\n");
+         status = -EFAULT;
+@@ -536,7 +536,10 @@ nv_procfs_write_file(
+         nvpp->off += count;
+     }
+ 
+-    *pos = nvpp->off;
++    if (pos != NULL)
++    {
++        *pos = nvpp->off;
++    }
+ 
+ done:
+     up(&nvpp->sp_lock);
+@@ -547,9 +550,9 @@ done:
+ static nv_proc_ops_t nv_procfs_registry_fops = {
+      NV_PROC_OPS_SET_OWNER()
+     .NV_PROC_OPS_OPEN    = nv_procfs_open_registry,
+-    .NV_PROC_OPS_READ    = seq_read,
++    NV_PROC_OPS_SEQ_SHOW(nv_procfs_read_registry)
+     .NV_PROC_OPS_WRITE   = nv_procfs_write_file,
+-    .NV_PROC_OPS_LSEEK   = seq_lseek,
++    NV_PROC_OPS_WRITE_SIZE(NV_PROC_WRITE_BUFFER_SIZE - 1)
+     .NV_PROC_OPS_RELEASE = nv_procfs_close_registry,
+ };
+ 
+@@ -567,7 +570,7 @@ nv_procfs_show_suspend_depth(
+ static ssize_t
+ nv_procfs_write_suspend_depth(
+     struct file *file,
+-    const char __user *buf,
++    NV_PROC_WRITE_BUF buf,
+     size_t count,
+     loff_t *pos
+ )
+@@ -585,7 +588,7 @@ nv_procfs_write_suspend_depth(
+         return -EINVAL;
+     }
+ 
+-    if (copy_from_user(kbuf, buf, count))
++    if (nv_procfs_copy_from_write_buf(kbuf, buf, count))
+     {
+         return -EFAULT;
+     }
+@@ -620,16 +623,15 @@ nv_procfs_open_suspend_depth(
+     struct file *file
+ )
+ {
+-    return single_open(file, nv_procfs_show_suspend_depth, NULL);
++    return nv_procfs_single_open(file, nv_procfs_show_suspend_depth, NULL);
+ }
+ 
+ static nv_proc_ops_t nv_procfs_suspend_depth_fops = {
+      NV_PROC_OPS_SET_OWNER()
+     .NV_PROC_OPS_OPEN    = nv_procfs_open_suspend_depth,
+-    .NV_PROC_OPS_READ    = seq_read,
++    NV_PROC_OPS_SEQ_SHOW(nv_procfs_show_suspend_depth)
+     .NV_PROC_OPS_WRITE   = nv_procfs_write_suspend_depth,
+-    .NV_PROC_OPS_LSEEK   = seq_lseek,
+-    .NV_PROC_OPS_RELEASE = single_release
++    NV_PROC_OPS_SEQ_RELEASE
+ };
+ 
+ static int
+@@ -645,7 +647,7 @@ nv_procfs_show_suspend(
+ static ssize_t
+ nv_procfs_write_suspend(
+     struct file *file,
+-    const char __user *buf,
++    NV_PROC_WRITE_BUF buf,
+     size_t count,
+     loff_t *pos
+ )
+@@ -665,7 +667,7 @@ nv_procfs_write_suspend(
+         return -EINVAL;
+     }
+ 
+-    if (copy_from_user(kbuf, buf, count))
++    if (nv_procfs_copy_from_write_buf(kbuf, buf, count))
+     {
+         return -EFAULT;
+     }
+@@ -708,16 +710,15 @@ nv_procfs_open_suspend(
+     struct file *file
+ )
+ {
+-    return single_open(file, nv_procfs_show_suspend, NULL);
++    return nv_procfs_single_open(file, nv_procfs_show_suspend, NULL);
+ }
+ 
+ static nv_proc_ops_t nv_procfs_suspend_fops = {
+      NV_PROC_OPS_SET_OWNER()
+     .NV_PROC_OPS_OPEN    = nv_procfs_open_suspend,
+-    .NV_PROC_OPS_READ    = seq_read,
++    NV_PROC_OPS_SEQ_SHOW(nv_procfs_show_suspend)
+     .NV_PROC_OPS_WRITE   = nv_procfs_write_suspend,
+-    .NV_PROC_OPS_LSEEK   = seq_lseek,
+-    .NV_PROC_OPS_RELEASE = single_release
++    NV_PROC_OPS_SEQ_RELEASE
+ };
+ 
+ #endif
+@@ -764,7 +765,7 @@ nv_procfs_open_exercise_error_forwarding(
+         return retval;
+     }
+ 
+-    retval = single_open(file, nv_procfs_show_exercise_error_forwarding, nvpp);
++    retval = nv_procfs_single_open(file, nv_procfs_show_exercise_error_forwarding, nvpp);
+     if (retval < 0)
+     {
+         nv_procfs_close_file(nvpp);
+@@ -774,7 +775,7 @@ nv_procfs_open_exercise_error_forwarding(
+     retval = nv_down_read_interruptible(&nv_system_pm_lock);
+     if (retval < 0)
+     {
+-        single_release(inode, file);
++        nv_procfs_single_release(inode, file);
+         nv_procfs_close_file(nvpp);
+     }
+ 
+@@ -816,7 +817,7 @@ nv_procfs_close_exercise_error_forwarding(
+ done:
+     up_read(&nv_system_pm_lock);
+ 
+-    single_release(inode, file);
++    nv_procfs_single_release(inode, file);
+ 
+     nv_procfs_close_file(nvpp);
+ 
+@@ -826,7 +827,9 @@ done:
+ static nv_proc_ops_t nv_procfs_exercise_error_forwarding_fops = {
+      NV_PROC_OPS_SET_OWNER()
+     .NV_PROC_OPS_OPEN    = nv_procfs_open_exercise_error_forwarding,
++    NV_PROC_OPS_SEQ_PRIVATE(nv_procfs_show_exercise_error_forwarding)
+     .NV_PROC_OPS_WRITE   = nv_procfs_write_file,
++    NV_PROC_OPS_WRITE_SIZE(NV_PROC_WRITE_BUFFER_SIZE - 1)
+     .NV_PROC_OPS_RELEASE = nv_procfs_close_exercise_error_forwarding,
+ };
+ 
+@@ -869,7 +872,7 @@ nv_procfs_open_unbind_lock(
+         return retval;
+     }
+ 
+-    retval = single_open(file, nv_procfs_read_unbind_lock, nvpp);
++    retval = nv_procfs_single_open(file, nv_procfs_read_unbind_lock, nvpp);
+     if (retval < 0)
+     {
+         nv_procfs_close_file(nvpp);
+@@ -879,7 +882,7 @@ nv_procfs_open_unbind_lock(
+     retval = nv_down_read_interruptible(&nv_system_pm_lock);
+     if (retval < 0)
+     {
+-        single_release(inode, file);
++        nv_procfs_single_release(inode, file);
+         nv_procfs_close_file(nvpp);
+     }
+ 
+@@ -943,7 +946,7 @@ nv_procfs_close_unbind_lock(
+ done:
+     up_read(&nv_system_pm_lock);
+ 
+-    single_release(inode, file);
++    nv_procfs_single_release(inode, file);
+ 
+     nv_procfs_close_file(nvpp);
+ 
+@@ -953,9 +956,9 @@ done:
+ static nv_proc_ops_t nv_procfs_unbind_lock_fops = {
+     NV_PROC_OPS_SET_OWNER()
+     .NV_PROC_OPS_OPEN    = nv_procfs_open_unbind_lock,
+-    .NV_PROC_OPS_READ    = seq_read,
++    NV_PROC_OPS_SEQ_SHOW(nv_procfs_read_unbind_lock)
+     .NV_PROC_OPS_WRITE   = nv_procfs_write_file,
+-    .NV_PROC_OPS_LSEEK   = seq_lseek,
++    NV_PROC_OPS_WRITE_SIZE(NV_PROC_WRITE_BUFFER_SIZE - 1)
+     .NV_PROC_OPS_RELEASE = nv_procfs_close_unbind_lock,
+ };
+ 
+@@ -1105,7 +1108,7 @@ nv_procfs_open_offline_pages(
+         return retval;
+     }
+ 
+-    retval = single_open(file, nv_procfs_read_offline_pages, nvpp);
++    retval = nv_procfs_single_open(file, nv_procfs_read_offline_pages, nvpp);
+     if (retval < 0)
+     {
+         nv_procfs_close_file(nvpp);
+@@ -1115,7 +1118,7 @@ nv_procfs_open_offline_pages(
+     retval = nv_down_read_interruptible(&nv_system_pm_lock);
+     if (retval < 0)
+     {
+-        single_release(inode, file);
++        nv_procfs_single_release(inode, file);
+         nv_procfs_close_file(nvpp);
+     }
+ 
+@@ -1133,7 +1136,7 @@ nv_procfs_close_offline_pages(
+ 
+     up_read(&nv_system_pm_lock);
+ 
+-    single_release(inode, file);
++    nv_procfs_single_release(inode, file);
+ 
+     nv_procfs_close_file(nvpp);
+ 
+@@ -1190,7 +1193,7 @@ nv_procfs_open_numa_status(
+         return retval;
+     }
+ 
+-    retval = single_open(file, nv_procfs_read_numa_status, nvpp);
++    retval = nv_procfs_single_open(file, nv_procfs_read_numa_status, nvpp);
+     if (retval < 0)
+     {
+         nv_procfs_close_file(nvpp);
+@@ -1200,7 +1203,7 @@ nv_procfs_open_numa_status(
+     retval = nv_down_read_interruptible(&nv_system_pm_lock);
+     if (retval < 0)
+     {
+-        single_release(inode, file);
++        nv_procfs_single_release(inode, file);
+         nv_procfs_close_file(nvpp);
+     }
+ 
+@@ -1282,7 +1285,7 @@ done:
+ 
+     up_read(&nv_system_pm_lock);
+ 
+-    single_release(inode, file);
++    nv_procfs_single_release(inode, file);
+ 
+     nv_procfs_close_file(nvpp);
+ 
+@@ -1292,17 +1295,16 @@ done:
+ static const nv_proc_ops_t nv_procfs_numa_status_fops = {
+     NV_PROC_OPS_SET_OWNER()
+     .NV_PROC_OPS_OPEN    = nv_procfs_open_numa_status,
+-    .NV_PROC_OPS_READ    = seq_read,
++    NV_PROC_OPS_SEQ_SHOW(nv_procfs_read_numa_status)
+     .NV_PROC_OPS_WRITE   = nv_procfs_write_file,
+-    .NV_PROC_OPS_LSEEK   = seq_lseek,
++    NV_PROC_OPS_WRITE_SIZE(NV_PROC_WRITE_BUFFER_SIZE - 1)
+     .NV_PROC_OPS_RELEASE = nv_procfs_close_numa_status,
+ };
+ 
+ static const nv_proc_ops_t nv_procfs_offline_pages_fops = {
+     NV_PROC_OPS_SET_OWNER()
+     .NV_PROC_OPS_OPEN    = nv_procfs_open_offline_pages,
+-    .NV_PROC_OPS_READ    = seq_read,
+-    .NV_PROC_OPS_LSEEK   = seq_lseek,
++    NV_PROC_OPS_SEQ_SHOW(nv_procfs_read_offline_pages)
+     .NV_PROC_OPS_RELEASE = nv_procfs_close_offline_pages,
+ };
+ 
+diff --git a/nvidia/nvidia.Kbuild b/nvidia/nvidia.Kbuild
+index 52cad78..4d1da5a 100644
+--- a/nvidia/nvidia.Kbuild
++++ b/nvidia/nvidia.Kbuild
+@@ -209,6 +209,7 @@ NV_CONFTEST_SYMBOL_COMPILE_TESTS += is_export_symbol_gpl_pci_find_dvsec_capabili
+ NV_CONFTEST_TYPE_COMPILE_TESTS += vmf_insert_pfn_prot
+ NV_CONFTEST_TYPE_COMPILE_TESTS += sysfs_slab_unlink
+ NV_CONFTEST_TYPE_COMPILE_TESTS += proc_ops
++NV_CONFTEST_TYPE_COMPILE_TESTS += proc_ops_has_proc_write_buf
+ NV_CONFTEST_TYPE_COMPILE_TESTS += vmalloc_has_pgprot_t_arg
+ NV_CONFTEST_TYPE_COMPILE_TESTS += mm_has_mmap_lock
+ NV_CONFTEST_TYPE_COMPILE_TESTS += pci_channel_state
+diff --git a/nvidia-drm/nvidia-drm-fence.c b/nvidia-drm/nvidia-drm-fence.c
+index 7af1ed7..45eae67 100644
+--- a/nvidia-drm/nvidia-drm-fence.c
++++ b/nvidia-drm/nvidia-drm-fence.c
+@@ -38,6 +38,23 @@
+ 
+ #define NV_DRM_SEMAPHORE_SURFACE_FENCE_MAX_TIMEOUT_MS 5000
+ 
++/*
++ * dma_fence_init() takes the fence's initial flags as a sixth argument on
++ * newer kernels. Passing 0 keeps the behaviour of the 5-argument form.
++ */
++static inline void nv_dma_fence_init(struct dma_fence *fence,
++                                     const struct dma_fence_ops *ops,
++                                     spinlock_t *lock,
++                                     u64 context,
++                                     u64 seqno)
++{
++#if defined(NV_DMA_FENCE_INIT_HAS_FLAGS_ARG)
++    dma_fence_init(fence, ops, lock, context, seqno, 0);
++#else
++    dma_fence_init(fence, ops, lock, context, seqno);
++#endif
++}
++
+ struct nv_drm_fence_context;
+ 
+ struct nv_drm_fence_context_ops {
+@@ -367,9 +384,9 @@ static struct dma_fence *__nv_drm_prime_fence_context_create_fence(
+ 
+     spin_lock_init(&nv_fence->lock);
+ 
+-    dma_fence_init(&nv_fence->base, &nv_drm_gem_prime_fence_ops,
+-                   &nv_fence->lock, nv_prime_fence_context->base.context,
+-                   seqno);
++    nv_dma_fence_init(&nv_fence->base, &nv_drm_gem_prime_fence_ops,
++                      &nv_fence->lock, nv_prime_fence_context->base.context,
++                      seqno);
+ 
+     /* The context maintains a reference to any pending fences. */
+     dma_fence_get(&nv_fence->base);
+@@ -1457,9 +1474,9 @@ static struct dma_fence *__nv_drm_semsurf_fence_ctx_create_fence(
+ #endif
+ 
+     /* Initializes the fence with one reference (for the caller) */
+-    dma_fence_init(fence, &nv_drm_semsurf_fence_ops,
+-                   &nv_fence->lock,
+-                   ctx->base.context, wait_value);
++    nv_dma_fence_init(fence, &nv_drm_semsurf_fence_ops,
++                      &nv_fence->lock,
++                      ctx->base.context, wait_value);
+ 
+     __nv_drm_semsurf_ctx_add_pending(ctx, nv_fence, timeout_value_ms);
+ 
+diff --git a/nvidia-drm/nvidia-drm-sources.mk b/nvidia-drm/nvidia-drm-sources.mk
+index a477066..0421387 100644
+--- a/nvidia-drm/nvidia-drm-sources.mk
++++ b/nvidia-drm/nvidia-drm-sources.mk
+@@ -98,6 +98,7 @@ NV_CONFTEST_TYPE_COMPILE_TESTS += drm_file_get_master
+ NV_CONFTEST_TYPE_COMPILE_TESTS += drm_modeset_lock_all_end
+ NV_CONFTEST_TYPE_COMPILE_TESTS += drm_driver_has_dumb_destroy
+ NV_CONFTEST_TYPE_COMPILE_TESTS += fence_ops_use_64bit_seqno
++NV_CONFTEST_TYPE_COMPILE_TESTS += dma_fence_init_has_flags_arg
+ NV_CONFTEST_TYPE_COMPILE_TESTS += drm_aperture_remove_conflicting_framebuffers_has_driver_arg
+ NV_CONFTEST_TYPE_COMPILE_TESTS += drm_aperture_remove_conflicting_framebuffers_has_no_primary_arg
+ NV_CONFTEST_TYPE_COMPILE_TESTS += drm_aperture_remove_conflicting_pci_framebuffers_has_driver_arg
+diff --git a/nvidia-modeset/nvidia-modeset.Kbuild b/nvidia-modeset/nvidia-modeset.Kbuild
+index 15694fe..5fc7aa1 100644
+--- a/nvidia-modeset/nvidia-modeset.Kbuild
++++ b/nvidia-modeset/nvidia-modeset.Kbuild
+@@ -95,6 +95,7 @@ $(obj)/$(NVIDIA_MODESET_INTERFACE): $(addprefix $(obj)/,$(NVIDIA_MODESET_OBJECTS
+ NV_OBJECTS_DEPEND_ON_CONFTEST += $(NVIDIA_MODESET_OBJECTS)
+ 
+ NV_CONFTEST_TYPE_COMPILE_TESTS += proc_ops
++NV_CONFTEST_TYPE_COMPILE_TESTS += proc_ops_has_proc_write_buf
+ NV_CONFTEST_FUNCTION_COMPILE_TESTS += pde_data
+ NV_CONFTEST_FUNCTION_COMPILE_TESTS += list_is_first
+ NV_CONFTEST_FUNCTION_COMPILE_TESTS += ktime_get_raw_ts64
